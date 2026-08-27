@@ -71,6 +71,7 @@ examples:
   frontend-backend-agent:
     label: Airline Frontend Backend Agent
     domain_profile: airline
+    thinker_prompt: thinker
     agent_prompt_keys:
       - thinker
       - generic_talker
@@ -88,6 +89,13 @@ examples:
   generic-frontend-backend-agent:
     label: Generic Frontend Backend Agent
     domain_profile: generic
+    thinker_prompt: generic_thinker
+    tools:
+      - get_weather
+      - get_stock_price
+      - web_search
+      - calculate_bmi
+      - generate_random_number
     agent_prompt_keys:
       - talker
       - thinker

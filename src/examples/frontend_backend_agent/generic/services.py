@@ -308,12 +308,3 @@ async def web_search(arguments: Mapping[str, Any]) -> dict[str, Any]:
     if not answer:
         return unavailable("find a verified answer for that", code="empty_response")
     return {"status": "success", "answer": answer[:1200], "source": "Perplexity Sonar"}
-
-
-TOOL_SERVICES = {
-    "get_weather": get_weather,
-    "get_stock_price": get_stock_price,
-    "web_search": web_search,
-    "calculate_bmi": calculate_bmi,
-    "generate_random_number": generate_random_number,
-}

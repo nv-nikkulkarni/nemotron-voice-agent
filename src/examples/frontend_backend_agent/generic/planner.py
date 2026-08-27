@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -13,6 +14,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.nvidia.llm import NvidiaLLMService
 
 from examples.frontend_backend_agent.src.planner import parse_plan_json
+from examples.frontend_backend_agent.src.tools import ToolSpec, render_tool_block
 
 
 class GenericPlanner(Protocol):
@@ -30,15 +32,16 @@ class NvidiaGenericPlanner:
         *,
         llm: NvidiaLLMService,
         system_prompt: str,
-        enabled_tools: tuple[str, ...],
+        enabled_tools: Sequence[ToolSpec],
         max_tokens: int = 2048,
     ) -> None:
         """Bind the planner to one fixed prompt and allowlisted tool subset."""
         if not system_prompt.strip():
             raise ValueError("Generic Thinker requires a non-empty system prompt")
+        enabled = tuple(enabled_tools)
         self._llm = llm
-        self._system_prompt = system_prompt
-        self._enabled_tools = enabled_tools
+        self._system_prompt = f"{system_prompt.rstrip()}{render_tool_block(enabled)}"
+        self._enabled_tools = tuple(spec.name for spec in enabled)
         self._max_tokens = max_tokens
 
     async def plan(self, *, query: str, state: dict[str, Any]) -> dict[str, Any]:

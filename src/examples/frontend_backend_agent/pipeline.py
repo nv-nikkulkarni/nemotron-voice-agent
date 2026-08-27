@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -49,13 +48,11 @@ from utils import (
     parse_env_int,
     parse_json_dict,
     resolve_prompt,
-    resolve_tools_available,
 )
 
 load_dotenv(override=True)
 
 CHAT_HISTORY_RECENT_TURNS = parse_env_int("CHAT_HISTORY_RECENT_TURNS", 20)
-THINKER_PROMPT_KEY = "thinker"
 THINKER_TOOL_DELAY_MIN_SECONDS = 0.1
 THINKER_TOOL_DELAY_MAX_SECONDS = 0.5
 THINKER_FILLER_THRESHOLD_SECONDS = parse_env_float("THINKER_FILLER_THRESHOLD_SECONDS", 0.3, min_value=0.0)
@@ -106,8 +103,9 @@ async def bot(runner_args: RunnerArguments) -> None:
         body.get("prompt_content", ""),
         body.get("prompt_key", ""),
     )
-    thinker_prompt = _load_required_catalog_prompt(domain.thinker_prompt_key)
-    prompt_tools = tuple(resolve_tools_available(__file__, prompt_key))
+    thinker_prompt_key = str(body.get("thinker_prompt") or domain.thinker_prompt_key)
+    thinker_prompt = _load_required_catalog_prompt(thinker_prompt_key)
+    tool_names = tuple(name for name in body.get("tools", ()) if isinstance(name, str))
     default_llm = load_service_entry("llm", "")
     default_tts = load_service_entry("tts", "")
     default_asr = load_service_entry("asr", "")
@@ -193,9 +191,7 @@ async def bot(runner_args: RunnerArguments) -> None:
             thinker_llm=thinker_llm,
             thinker_prompt=thinker_prompt,
             thinker_max_tokens=thinker_max_tokens,
-            body=body,
-            prompt_key=prompt_key,
-            prompt_tools=prompt_tools,
+            tool_names=tool_names,
             tool_delay_seconds=THINKER_TOOL_DELAY_MAX_SECONDS,
             tool_delay_min_seconds=THINKER_TOOL_DELAY_MIN_SECONDS,
             load_service_entry=load_service_entry,
@@ -214,6 +210,7 @@ async def bot(runner_args: RunnerArguments) -> None:
     for name, handler in build_handlers(
         thinker,
         filler_threshold_seconds=THINKER_FILLER_THRESHOLD_SECONDS,
+        filler_policy=domain.filler_policy,
         filler_selector=domain.filler_selector,
         max_query_chars=domain.max_query_chars,
     ).items():

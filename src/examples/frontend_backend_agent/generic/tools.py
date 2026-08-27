@@ -5,16 +5,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable, Mapping
+from typing import Any
+
 from pipecat.adapters.schemas.tools_schema import AdapterType, ToolsSchema
 
-INTERNAL_TOOL_NAMES = (
-    "get_weather",
-    "get_stock_price",
-    "web_search",
-    "calculate_bmi",
-    "generate_random_number",
-)
-INTERNAL_TOOL_NAME_SET = frozenset(INTERNAL_TOOL_NAMES)
+from examples.frontend_backend_agent.generic import services, speech
+from examples.frontend_backend_agent.src.tools import ParamSpec, ToolContext, ToolSpec
+
+GenericService = Callable[[Mapping[str, Any]], Awaitable[dict[str, Any]]]
 
 CALL_BACKEND_TOOL: dict = {
     "type": "function",
@@ -66,13 +65,99 @@ TOOLS_SCHEMA = ToolsSchema(
 )
 
 
-def resolve_enabled_tools(raw_override: object, prompt_tools: tuple[str, ...]) -> tuple[str, ...]:
-    """Resolve a session subset against the immutable generic-tool allowlist."""
-    if isinstance(raw_override, str) and raw_override.strip():
-        requested = [] if raw_override.strip().lower() == "none" else raw_override.split(",")
-    elif isinstance(raw_override, list):
-        requested = raw_override
+def _stateless(service: GenericService):
+    async def run(arguments: Mapping[str, Any], context: ToolContext) -> dict[str, Any]:
+        del context
+        return await service(arguments)
+
+    return run
+
+
+def _validate_random_range(arguments: Mapping[str, Any]) -> None:
+    low = int(arguments.get("min", 1))
+    high = int(arguments.get("max", 100))
+    if low > high:
+        raise ValueError("invalid random range")
+
+
+TOOLS: dict[str, ToolSpec] = {
+    spec.name: spec
+    for spec in (
+        ToolSpec(
+            name="get_weather",
+            contract="live CURRENT conditions; never forecast, history, climate, or weather news",
+            capability="check current weather",
+            params={
+                "city": ParamSpec(str, label="the city or location", max_len=200),
+                "units": ParamSpec(
+                    str,
+                    required=False,
+                    choices=frozenset({"celsius", "fahrenheit"}),
+                    default="celsius",
+                ),
+            },
+            run=_stateless(services.get_weather),
+            speak=speech.weather,
+            timeout_s=12.0,
+        ),
+        ToolSpec(
+            name="get_stock_price",
+            contract="a live public-company quote; never news, predictions, crypto, commodities, or history",
+            capability="check current stock prices",
+            params={
+                "company_name": ParamSpec(str, label="the company name or stock ticker", max_len=200),
+            },
+            run=_stateless(services.get_stock_price),
+            speak=speech.stock,
+            timeout_s=12.0,
+        ),
+        ToolSpec(
+            name="web_search",
+            contract="current, recent, forecast, changing, externally verifiable, or uncertain information",
+            capability="search the live web",
+            params={
+                "query": ParamSpec(str, label="what you would like me to look up", max_len=1000),
+            },
+            run=_stateless(services.web_search),
+            speak=speech.search,
+            timeout_s=30.0,
+        ),
+        ToolSpec(
+            name="calculate_bmi",
+            contract="metric adult BMI; never infer weight or height",
+            capability="calculate BMI",
+            params={
+                "weight_kg": ParamSpec(float, label="your weight in kilograms", bounds=(1, 1000)),
+                "height_m": ParamSpec(float, label="your height in metres", bounds=(0.3, 4)),
+            },
+            run=_stateless(services.calculate_bmi),
+            speak=speech.bmi,
+            timeout_s=1.0,
+        ),
+        ToolSpec(
+            name="generate_random_number",
+            contract="one random inclusive integer; use only when randomness is explicit",
+            capability="generate a random number",
+            params={
+                "min": ParamSpec(int, required=False, bounds=(-1_000_000_000, 1_000_000_000), default=1),
+                "max": ParamSpec(int, required=False, bounds=(-1_000_000_000, 1_000_000_000), default=100),
+            },
+            run=_stateless(services.generate_random_number),
+            speak=speech.random_number,
+            validate=_validate_random_range,
+            timeout_s=1.0,
+        ),
+    )
+}
+
+
+def resolve_enabled_tools(raw_tools: object) -> tuple[str, ...]:
+    """Resolve registry-bound names against the immutable generic ToolSpec registry."""
+    if isinstance(raw_tools, str) and raw_tools.strip():
+        requested = [] if raw_tools.strip().lower() == "none" else raw_tools.split(",")
+    elif isinstance(raw_tools, list | tuple):
+        requested = raw_tools
     else:
-        requested = list(prompt_tools)
+        requested = ()
     normalized = (str(item).strip() for item in requested)
-    return tuple(dict.fromkeys(name for name in normalized if name in INTERNAL_TOOL_NAME_SET))
+    return tuple(dict.fromkeys(name for name in normalized if name in TOOLS))

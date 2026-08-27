@@ -21,6 +21,8 @@ from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent, 
 if TYPE_CHECKING:
     from pipecat.services.llm_service import FunctionCallParams
 
+    from examples.frontend_backend_agent.src.domain import FillerPolicy
+
 
 class ThinkerBackend(Protocol):
     """Minimal runtime interface required by the frontend tool handlers."""
@@ -45,6 +47,7 @@ def build_handlers(
     thinker: ThinkerBackend,
     *,
     filler_threshold_seconds: float = 0.8,
+    filler_policy: FillerPolicy = "planner_authored",
     filler_selector: Callable[[str], str] | None = None,
     max_query_chars: int = 4000,
 ) -> dict[str, Callable]:
@@ -66,10 +69,12 @@ def build_handlers(
             )
             return
         try:
-            if filler_selector is not None:
-                filler_text = filler_selector(query)
-            else:
+            if filler_policy == "planner_authored":
                 filler_text = str(arguments.get("filler_text", "") or "").strip()
+            elif filler_policy == "code_authored":
+                filler_text = filler_selector(query) if filler_selector is not None else "Let me check that."
+            else:
+                raise ValueError(f"Unknown filler policy: {filler_policy}")
             slots = {key: value for key, value in arguments.items() if key not in {"query", "intent", "filler_text"}}
             filler_task: asyncio.Task | None = None
             filler_started = False

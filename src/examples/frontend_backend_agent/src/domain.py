@@ -6,11 +6,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from importlib import import_module
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
+
+from examples.frontend_backend_agent.src.tools import ToolSpec
 
 
 class DomainBackend(Protocol):
@@ -33,12 +35,13 @@ class DomainBuildContext:
     thinker_llm: Any
     thinker_prompt: str
     thinker_max_tokens: int
-    body: Mapping[str, Any]
-    prompt_key: str
-    prompt_tools: tuple[str, ...]
+    tool_names: tuple[str, ...]
     tool_delay_seconds: float
     tool_delay_min_seconds: float
     load_service_entry: Callable[[str, str], dict]
+
+
+FillerPolicy = Literal["code_authored", "planner_authored"]
 
 
 @dataclass(slots=True, frozen=True)
@@ -54,6 +57,8 @@ class DomainSpec:
     intro_prompt: str = "Please greet the user briefly."
     tts_text_transform: Callable[[str], str] | None = None
     filler_selector: Callable[[str], str] | None = None
+    filler_policy: FillerPolicy = "code_authored"
+    tool_registry: Mapping[str, ToolSpec] = field(default_factory=dict)
     max_query_chars: int = 4000
 
 

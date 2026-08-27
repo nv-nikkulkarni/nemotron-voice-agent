@@ -74,6 +74,7 @@ def create_domain_spec() -> DomainSpec:
         thinker_prompt_key="thinker",
         talker_tools_schema=TOOLS_SCHEMA,
         build_backend=_build_backend,
+        filler_policy="planner_authored",
         runtime_context=_runtime_context,
         tts_text_transform=apply_frontend_backend_agent_pronunciation_for_tts,
         max_query_chars=4000,

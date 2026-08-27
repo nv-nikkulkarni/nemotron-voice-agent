@@ -218,6 +218,8 @@ def _sanitize_session_config(data: dict, fallback_example_key: str = "") -> dict
     config = dict(data)
     # Registry-owned: a client cannot pair a prompt catalog with another domain backend.
     config["domain_profile"] = example.get("domain_profile", "")
+    config["thinker_prompt"] = example.get("thinker_prompt", "")
+    config["tools"] = list(example.get("tools") or ())
 
     _bind_registry_prompt(example, config)
     return filter_session_config(config)

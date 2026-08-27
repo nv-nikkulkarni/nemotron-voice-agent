@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,23 +20,9 @@ from examples.frontend_backend_agent.generic.result_formatters import (
     missing_parameters,
     unsupported_request,
 )
-from examples.frontend_backend_agent.generic.services import TOOL_SERVICES
+from examples.frontend_backend_agent.src.tools import ToolContext, ToolSpec, validate_arguments
 
 MAX_PARALLEL_TOOL_CALLS = 3
-_TOOL_TIMEOUTS = {
-    "get_weather": 12.0,
-    "get_stock_price": 12.0,
-    "web_search": 30.0,
-    "calculate_bmi": 1.0,
-    "generate_random_number": 1.0,
-}
-_PARAMS = {
-    "get_weather": (frozenset({"city"}), frozenset({"units"})),
-    "get_stock_price": (frozenset({"company_name"}), frozenset()),
-    "web_search": (frozenset({"query"}), frozenset()),
-    "calculate_bmi": (frozenset({"weight_kg", "height_m"}), frozenset()),
-    "generate_random_number": (frozenset(), frozenset({"min", "max"})),
-}
 
 
 @dataclass(slots=True, frozen=True)
@@ -64,12 +50,16 @@ def _raw_calls(plan: dict[str, Any]) -> list[dict[str, Any]]:
     return [dict(item) for item in raw]
 
 
-def validate_plan(plan: dict[str, Any], enabled_tools: frozenset[str]) -> list[ValidatedToolCall]:
+def validate_plan(
+    plan: dict[str, Any],
+    tools: Mapping[str, ToolSpec],
+    enabled_tools: frozenset[str],
+) -> list[ValidatedToolCall]:
     """Validate the whole plan before allowing any external side effect."""
     calls: list[ValidatedToolCall] = []
     for raw in _raw_calls(plan):
         name = str(raw.get("tool") or "").strip()
-        if name not in TOOL_SERVICES:
+        if name not in tools:
             raise PlanValidationError(f"unknown tool: {name}")
         if name not in enabled_tools:
             raise PlanValidationError(f"disabled tool: {name}")
@@ -78,68 +68,29 @@ def validate_plan(plan: dict[str, Any], enabled_tools: frozenset[str]) -> list[V
             arguments = {}
         if not isinstance(arguments, dict):
             raise PlanValidationError(f"invalid params for {name}")
-        required, optional = _PARAMS[name]
-        if set(arguments) - required - optional:
+        if set(arguments) - set(tools[name].params):
             raise PlanValidationError(f"unexpected params for {name}")
         calls.append(ValidatedToolCall(name=name, arguments=dict(arguments)))
     return calls
 
 
-def _valid_text(value: object, *, max_length: int) -> bool:
-    return isinstance(value, str) and 0 < len(value.strip()) <= max_length
-
-
-def _validate_values(call: ValidatedToolCall) -> list[str]:
-    required, _ = _PARAMS[call.name]
-    missing = [name for name in sorted(required) if call.arguments.get(name) in (None, "")]
-    if missing:
-        return missing
-    if call.name == "get_weather":
-        if not _valid_text(call.arguments.get("city"), max_length=200):
-            raise ValueError("invalid city")
-        units = call.arguments.get("units", "celsius")
-        if not isinstance(units, str) or units.lower() not in {"celsius", "fahrenheit"}:
-            raise ValueError("invalid weather units")
-    elif call.name == "get_stock_price":
-        if not _valid_text(call.arguments.get("company_name"), max_length=200):
-            raise ValueError("invalid company")
-    elif call.name == "web_search":
-        if not _valid_text(call.arguments.get("query"), max_length=1000):
-            raise ValueError("invalid search query")
-    elif call.name == "calculate_bmi":
-        weight = call.arguments.get("weight_kg")
-        height = call.arguments.get("height_m")
-        if isinstance(weight, bool) or not isinstance(weight, int | float) or not 1 <= float(weight) <= 1000:
-            raise ValueError("invalid weight")
-        if isinstance(height, bool) or not isinstance(height, int | float) or not 0.3 <= float(height) <= 4:
-            raise ValueError("invalid height")
-    elif call.name == "generate_random_number":
-        low = call.arguments.get("min", 1)
-        high = call.arguments.get("max", 100)
-        if isinstance(low, bool) or not isinstance(low, int):
-            raise ValueError("invalid minimum")
-        if isinstance(high, bool) or not isinstance(high, int):
-            raise ValueError("invalid maximum")
-        if low > high or low < -1_000_000_000 or high > 1_000_000_000:
-            raise ValueError("invalid random range")
-    return []
-
-
 async def _execute(
     call: ValidatedToolCall,
+    spec: ToolSpec,
+    tool_context: ToolContext,
     on_tool_started: Callable[[str], Awaitable[None]] | None,
 ) -> dict[str, Any]:
     try:
         if on_tool_started:
             await on_tool_started(call.name)
-        data = await asyncio.wait_for(TOOL_SERVICES[call.name](call.arguments), timeout=_TOOL_TIMEOUTS[call.name])
-        return format_tool_result(call.name, call.arguments, data)
+        data = await asyncio.wait_for(spec.run(call.arguments, tool_context), timeout=spec.timeout_s)
+        return format_tool_result(spec, call.arguments, data)
     except asyncio.CancelledError:
         raise
     except TimeoutError:
         logger.warning(f"generic domain tool {call.name} timed out")
         return format_tool_result(
-            call.name,
+            spec,
             call.arguments,
             {"status": "unavailable", "assistant_should_say": "That check timed out. Would you like me to retry?"},
         )
@@ -148,46 +99,55 @@ async def _execute(
     except Exception as exc:  # noqa: BLE001 - fail closed at the tool boundary
         logger.warning(f"generic domain tool {call.name} failed: {type(exc).__name__}")
         return format_tool_result(
-            call.name,
+            spec,
             call.arguments,
             {"status": "unavailable", "assistant_should_say": "I couldn't complete that check right now."},
         )
 
 
-def _response_hint(plan: dict[str, Any], enabled_tools: frozenset[str]) -> dict[str, Any]:
+def _response_hint(
+    plan: dict[str, Any],
+    tools: Mapping[str, ToolSpec],
+    enabled_tools: tuple[str, ...],
+) -> dict[str, Any]:
     """Convert only the closed response-hint vocabulary into deterministic speech."""
+    enabled = frozenset(enabled_tools)
     reason = str(plan.get("reason") or "")
     context = str(plan.get("context") or "")
     if reason == "params_missing":
         requested = plan.get("params_needed")
-        if context not in _PARAMS or not isinstance(requested, list) or not requested:
+        spec = tools.get(context)
+        if spec is None or not isinstance(requested, list) or not requested:
             raise PlanValidationError("invalid missing-parameter hint")
         names = list(dict.fromkeys(str(item) for item in requested))
-        required, _ = _PARAMS[context]
+        required = {name for name, param in spec.params.items() if param.required}
         if len(names) > 4 or any(name not in required for name in names):
             raise PlanValidationError("invalid missing-parameter fields")
-        return missing_parameters(context, names)
+        return missing_parameters(spec, names)
     if reason == "tool_disabled":
-        if context not in _PARAMS or context in enabled_tools:
+        if context not in tools or context in enabled:
             raise PlanValidationError("invalid disabled-tool hint")
         return disabled_tool(context)
     if reason == "unsupported_request" and context in {"", "general"}:
-        return unsupported_request()
+        return unsupported_request(tuple(tools[name] for name in enabled_tools if name in tools))
     raise PlanValidationError("unknown response hint")
 
 
 async def dispatch_plan(
     plan: dict[str, Any],
+    tools: Mapping[str, ToolSpec],
     enabled_tools: tuple[str, ...],
     *,
+    tool_context: ToolContext | None = None,
     on_tool_started: Callable[[str], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
-    """Validate, then run at most three independent read-only tools in parallel."""
+    """Validate atomically, serialize mutating tools, and preserve planner order."""
     enabled = frozenset(enabled_tools)
+    enabled_specs = tuple(tools[name] for name in enabled_tools if name in tools)
     if plan.get("tool") == "response_hint" and not plan.get("tool_calls"):
-        return _response_hint(plan, enabled)
+        return _response_hint(plan, tools, enabled_tools)
     try:
-        calls = validate_plan(plan, enabled)
+        calls = validate_plan(plan, tools, enabled)
     except PlanValidationError as exc:
         message = str(exc)
         logger.warning(f"generic domain plan rejected: {message}")
@@ -195,15 +155,38 @@ async def dispatch_plan(
             return disabled_tool(message.split(":", 1)[1].strip())
         raise
     if not calls:
-        return unsupported_request()
+        return unsupported_request(enabled_specs)
     # Preflight every call before the first side effect. A malformed member of
     # a multi-tool plan prevents all other members from running.
     for call in calls:
+        spec = tools[call.name]
         try:
-            missing = _validate_values(call)
+            missing = validate_arguments(spec, call.arguments)
         except (TypeError, ValueError):
             return invalid_parameters(call.name)
         if missing:
-            return missing_parameters(call.name, missing)
-    payloads = await asyncio.gather(*(_execute(call, on_tool_started) for call in calls))
-    return payloads[0] if len(payloads) == 1 else combine_tool_results(payloads)
+            return missing_parameters(spec, missing)
+
+    context = tool_context or ToolContext()
+    payloads: list[dict[str, Any] | None] = [None] * len(calls)
+
+    async def run_one(index: int, call: ValidatedToolCall) -> None:
+        payloads[index] = await _execute(call, tools[call.name], context, on_tool_started)
+
+    async def run_mutating_chain(items: list[tuple[int, ValidatedToolCall]]) -> None:
+        for index, call in items:
+            await run_one(index, call)
+
+    mutating: list[tuple[int, ValidatedToolCall]] = []
+    coroutines: list[Awaitable[None]] = []
+    for index, call in enumerate(calls):
+        if tools[call.name].mutates:
+            mutating.append((index, call))
+        else:
+            coroutines.append(run_one(index, call))
+    if mutating:
+        coroutines.append(run_mutating_chain(mutating))
+    await asyncio.gather(*coroutines)
+
+    resolved = [payload for payload in payloads if payload is not None]
+    return resolved[0] if len(resolved) == 1 else combine_tool_results(resolved)

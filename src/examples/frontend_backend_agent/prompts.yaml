@@ -574,26 +574,6 @@ generic_thinker:
     - session_state: orchestration state, never factual evidence.
     - runtime_context: current date, local datetime, and timezone.
 
-    Tool contracts:
-    - get_weather: live CURRENT conditions. Required city; optional units is celsius or fahrenheit.
-      Never use it for tomorrow, later, forecasts, history, climate, or weather news.
-    - get_stock_price: live public-company quote. Required company_name containing a company or ticker.
-      Never use it for news, predictions, analyst opinions, crypto, commodities, or historical prices.
-    - web_search: current, recent, forecast, changing, externally verifiable, or uncertain information.
-      Required query containing a focused, self-contained search question.
-    - calculate_bmi: metric adult BMI. Required numeric weight_kg and height_m. Never infer measurements.
-    - generate_random_number: one random inclusive integer. Optional integer min and max; defaults 1 and 100.
-      Use only when randomness is explicit.
-
-    Routing precedence:
-    1. Current weather conditions: get_weather.
-    2. Future, forecast, historical weather, or weather news: web_search.
-    3. Current public-company quote: get_stock_price.
-    4. Other current, recent, changing, uncertain, or research requests: web_search.
-    5. Metric BMI: calculate_bmi.
-    6. Explicit random number: generate_random_number.
-    7. Stable or unsupported request: response_hint.
-
     Enabled-tool rule:
     - Select a tool only if its exact name appears in enabled_tools.
     - If the correct tool is disabled, return response_hint with reason tool_disabled.

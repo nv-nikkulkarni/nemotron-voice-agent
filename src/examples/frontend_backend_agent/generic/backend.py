@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from loguru import logger
@@ -17,6 +17,7 @@ from examples.frontend_backend_agent.generic.planner import GenericPlanner
 from examples.frontend_backend_agent.generic.result_formatters import planner_failure, timeout_failure
 from examples.frontend_backend_agent.generic.state import GenericThinkerSessionState
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent
+from examples.frontend_backend_agent.src.tools import ToolSpec
 
 
 class GenericThinkerBackend:
@@ -27,6 +28,7 @@ class GenericThinkerBackend:
         *,
         planner: GenericPlanner,
         enabled_tools: tuple[str, ...],
+        tools: Mapping[str, ToolSpec],
         overall_timeout_seconds: float = 40.0,
         planner_timeout_seconds: float = 15.0,
         state: GenericThinkerSessionState | None = None,
@@ -34,6 +36,7 @@ class GenericThinkerBackend:
     ) -> None:
         """Create a backend with bounded planner and end-to-end deadlines."""
         self._planner = planner
+        self._tools = dict(tools)
         self._enabled_tools = enabled_tools
         self._overall_timeout_seconds = max(1.0, overall_timeout_seconds)
         self._planner_timeout_seconds = min(max(1.0, planner_timeout_seconds), self._overall_timeout_seconds)
@@ -110,7 +113,12 @@ class GenericThinkerBackend:
                     self._planner.plan(query=query, state={"active_call_id": call_id}),
                     timeout=self._planner_timeout_seconds,
                 )
-                payload = await dispatch_plan(plan, self._enabled_tools, on_tool_started=self._on_tool_started)
+                payload = await dispatch_plan(
+                    plan,
+                    self._tools,
+                    self._enabled_tools,
+                    on_tool_started=self._on_tool_started,
+                )
         except asyncio.CancelledError:
             raise
         except TimeoutError:

@@ -9,7 +9,7 @@ from datetime import datetime
 
 from examples.frontend_backend_agent.generic.backend import GenericThinkerBackend
 from examples.frontend_backend_agent.generic.planner import NvidiaGenericPlanner
-from examples.frontend_backend_agent.generic.tools import TOOLS_SCHEMA, resolve_enabled_tools
+from examples.frontend_backend_agent.generic.tools import TOOLS, TOOLS_SCHEMA, resolve_enabled_tools
 from examples.frontend_backend_agent.src.domain import DomainBuildContext, DomainSpec
 from utils import parse_env_float
 
@@ -37,15 +37,17 @@ def select_filler(query: str) -> str:
 
 
 def _build_backend(context: DomainBuildContext) -> GenericThinkerBackend:
-    enabled_tools = resolve_enabled_tools(context.body.get("tools_available"), context.prompt_tools)
+    enabled_tools = resolve_enabled_tools(context.tool_names)
+    enabled_specs = tuple(TOOLS[name] for name in enabled_tools)
     planner = NvidiaGenericPlanner(
         llm=context.thinker_llm,
         system_prompt=context.thinker_prompt,
-        enabled_tools=enabled_tools,
+        enabled_tools=enabled_specs,
         max_tokens=context.thinker_max_tokens,
     )
     return GenericThinkerBackend(
         planner=planner,
+        tools=TOOLS,
         enabled_tools=enabled_tools,
         overall_timeout_seconds=parse_env_float("GENERIC_BACKEND_TIMEOUT_SECONDS", 40.0, min_value=1.0),
         planner_timeout_seconds=parse_env_float("GENERIC_PLANNER_TIMEOUT_SECONDS", 15.0, min_value=1.0),
@@ -62,5 +64,7 @@ def create_domain_spec() -> DomainSpec:
         build_backend=_build_backend,
         runtime_context=_runtime_context,
         filler_selector=select_filler,
+        filler_policy="code_authored",
+        tool_registry=TOOLS,
         max_query_chars=2000,
     )

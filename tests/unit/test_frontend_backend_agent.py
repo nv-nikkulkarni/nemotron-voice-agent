@@ -23,8 +23,8 @@ from examples.frontend_backend_agent.airline.database.db import apply_schema
 from examples.frontend_backend_agent.airline.state import MAX_LIFECYCLE_EVENTS, ThinkerSessionState
 from examples.frontend_backend_agent.airline.thinker import ThinkerBackend
 from examples.frontend_backend_agent.airline.tools import CALL_BACKEND_TOOL, CANCEL_BACKEND_TOOL
-from examples.frontend_backend_agent.airline.tts_filter import FrontendBackendAgentPronunciationTextFilter
 from examples.frontend_backend_agent.airline.transform import _server_booking_to_record, _server_flight_to_option
+from examples.frontend_backend_agent.airline.tts_filter import FrontendBackendAgentPronunciationTextFilter
 from examples.frontend_backend_agent.src.planner import NvidiaThinkerPlanner
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent, is_speakable_payload
 from examples.frontend_backend_agent.src.runtime_context import runtime_today
@@ -1456,10 +1456,8 @@ class FrontendBackendAgentTests(unittest.IsolatedAsyncioTestCase):
             ) -> dict[str, Any]:
                 if query == "first":
                     self.first_started.set()
-                    try:
+                    with suppress(asyncio.CancelledError):
                         await asyncio.sleep(10)
-                    except asyncio.CancelledError:
-                        pass
                 return {
                     "tool": "response_hint",
                     "reason": "unsupported_request",
