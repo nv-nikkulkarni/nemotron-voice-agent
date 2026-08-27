@@ -15,13 +15,15 @@ from unittest.mock import patch
 from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame, LLMTextFrame
 from pipecat.services.llm_service import FunctionCallParams
 
-from examples.frontend_backend_agent import pipeline as frontend_backend_pipeline
+import server
+from examples.frontend_backend_agent.airline import domain as airline_domain
 from examples.frontend_backend_agent.airline.airports import spoken_time
 from examples.frontend_backend_agent.airline.database.api import BookingAPI
 from examples.frontend_backend_agent.airline.database.db import apply_schema
 from examples.frontend_backend_agent.airline.state import MAX_LIFECYCLE_EVENTS, ThinkerSessionState
 from examples.frontend_backend_agent.airline.thinker import ThinkerBackend
 from examples.frontend_backend_agent.airline.tools import CALL_BACKEND_TOOL, CANCEL_BACKEND_TOOL
+from examples.frontend_backend_agent.airline.tts_filter import FrontendBackendAgentPronunciationTextFilter
 from examples.frontend_backend_agent.airline.transform import _server_booking_to_record, _server_flight_to_option
 from examples.frontend_backend_agent.src.planner import NvidiaThinkerPlanner
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent, is_speakable_payload
@@ -31,7 +33,6 @@ from examples.frontend_backend_agent.src.tool_handlers import (
     _normalize_arguments,
     build_handlers,
 )
-from examples.frontend_backend_agent.src.tts_filter import FrontendBackendAgentPronunciationTextFilter
 from examples.shared.nemotron_speech_text_filter import NemotronSpeechTextFilter
 
 
@@ -356,27 +357,58 @@ class FrontendBackendPipelineConfigTests(unittest.TestCase):
             {"BOOKING_BACKEND_URL": "http://custom.example:8001", "APP_RUNTIME": ""},
             clear=True,
         ):
-            url = frontend_backend_pipeline._booking_backend_url({"server": "http://booking-server:8001"})
+            url = airline_domain.booking_backend_url({"server": "http://booking-server:8001"})
 
         self.assertEqual(url, "http://custom.example:8001")
 
     def test_booking_backend_url_rewrites_docker_hostname_for_host_native(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
-            url = frontend_backend_pipeline._booking_backend_url({"server": "http://booking-server:8001"})
+            url = airline_domain.booking_backend_url({"server": "http://booking-server:8001"})
 
         self.assertEqual(url, "http://localhost:8001")
 
     def test_booking_backend_url_preserves_container_docker_hostname(self) -> None:
         with patch.dict("os.environ", {"APP_RUNTIME": "container"}, clear=True):
-            url = frontend_backend_pipeline._booking_backend_url({"server": "http://booking-server:8001"})
+            url = airline_domain.booking_backend_url({"server": "http://booking-server:8001"})
 
         self.assertEqual(url, "http://booking-server:8001")
 
     def test_booking_backend_url_preserves_custom_catalog_url(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
-            url = frontend_backend_pipeline._booking_backend_url({"server": "http://booking.internal:8001"})
+            url = airline_domain.booking_backend_url({"server": "http://booking.internal:8001"})
 
         self.assertEqual(url, "http://booking.internal:8001")
+
+    def test_server_keeps_catalog_prompts_with_the_selected_domain(self) -> None:
+        generic_with_airline_prompt = server._sanitize_session_config(
+            {
+                "pipeline_mode": "generic-frontend-backend-agent",
+                "prompt_key": "talker",
+            }
+        )
+        generic_with_unknown_prompt = server._sanitize_session_config(
+            {
+                "pipeline_mode": "generic-frontend-backend-agent",
+                "prompt_key": "does-not-exist",
+            }
+        )
+        airline_with_generic_prompt = server._sanitize_session_config(
+            {
+                "pipeline_mode": "frontend-backend-agent",
+                "prompt_key": "generic_talker",
+            }
+        )
+        custom = server._sanitize_session_config(
+            {
+                "pipeline_mode": "generic-frontend-backend-agent",
+                "prompt_content": "A repository operator supplied this custom prompt.",
+            }
+        )
+
+        self.assertEqual(generic_with_airline_prompt["prompt_key"], "generic_talker")
+        self.assertEqual(generic_with_unknown_prompt["prompt_key"], "generic_talker")
+        self.assertEqual(airline_with_generic_prompt["prompt_key"], "talker")
+        self.assertEqual(custom["prompt_content"], "A repository operator supplied this custom prompt.")
 
 
 class FrontendBackendAgentTests(unittest.IsolatedAsyncioTestCase):

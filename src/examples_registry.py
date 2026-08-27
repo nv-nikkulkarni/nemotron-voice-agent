@@ -24,6 +24,7 @@ class ExampleEntry(TypedDict):
     slots: list[str]
     capabilities: list[str]
     agent_prompt_keys: list[str]
+    domain_profile: str
     activity_check: ActivityCheckConfig | None
     defaults: dict[str, list[str] | str]
     welcome_message: bool
@@ -374,6 +375,7 @@ def _load_examples(data: dict) -> dict[str, ExampleEntry]:
         slots = entry.get("slots", [])
         capabilities = entry.get("capabilities", [])
         agent_prompt_keys = entry.get("agent_prompt_keys", [])
+        domain_profile = str(entry.get("domain_profile") or "").strip().lower()
         activity_check = entry.get("activity_check")
         defaults = entry.get("defaults", {})
         if not label or not bot_spec:
@@ -414,6 +416,7 @@ def _load_examples(data: dict) -> dict[str, ExampleEntry]:
             "slots": list(slots),
             "capabilities": list(capabilities),
             "agent_prompt_keys": list(agent_prompt_keys),
+            "domain_profile": domain_profile,
             "activity_check": normalized_activity_check,
             "defaults": normalized_defaults,
             "welcome_message": welcome_message,
@@ -542,6 +545,7 @@ def metadata(example: EnrichedExample) -> dict:
         "label": example["label"],
         "slots": example["slots"],
         "capabilities": example["capabilities"],
+        "domainProfile": example["domain_profile"],
         "default_session_language": str(example["defaults"].get("default_session_language") or ""),
         "defaults": defaults,
     }

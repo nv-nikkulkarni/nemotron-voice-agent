@@ -110,6 +110,49 @@ tts:
             self.assertEqual(config["tts_language_code"], "en-US")
             self.assertEqual(config["tts_zero_shot_audio_prompt_file"], "/data/prompts/clone.wav")
 
+    def test_talker_and_thinker_temperatures_hydrate_independently(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cloud_path = Path(tmpdir) / "services.cloud.yaml"
+            cloud_path.write_text(
+                dedent(
+                    """\
+                    llm:
+                      talker:
+                        name: Talker
+                        model_id: talker-model
+                        base_url: https://catalog.example/v1
+                        temperature: 0.2
+                    thinker-llm:
+                      thinker:
+                        name: Thinker
+                        model_id: thinker-model
+                        base_url: https://catalog.example/v1
+                        temperature: 0.0
+                    """
+                ),
+                encoding="utf-8",
+            )
+            config = {
+                "llm_id": "cloud-nim:talker",
+                "thinker_llm_id": "cloud-nim:thinker",
+                "temperature": "0.7",
+                "thinker_temperature": "0.9",
+            }
+
+            with patch.dict(
+                os.environ,
+                {
+                    "SERVICES_CLOUD_PATH": str(cloud_path),
+                    "SERVICES_LOCAL_PATH": str(Path(tmpdir) / "missing-services.local.yaml"),
+                },
+            ):
+                hydrate_config_from_catalog(config)
+
+            self.assertEqual(config["model_id"], "talker-model")
+            self.assertEqual(config["thinker_model_id"], "thinker-model")
+            self.assertEqual(config["temperature"], "0.7")
+            self.assertEqual(config["thinker_temperature"], "0.0")
+
     def test_chatterbox_hydrates_per_sentence_even_with_sticky_stitched(self) -> None:
         """UI TTS switches must not keep Magpie's stitched mode on Chatterbox."""
         with tempfile.TemporaryDirectory() as tmpdir:

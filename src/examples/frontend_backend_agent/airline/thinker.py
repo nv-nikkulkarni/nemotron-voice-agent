@@ -128,6 +128,10 @@ class ThinkerBackend:
             self.state.reset_search_and_booking()
         return has_pending_work
 
+    def cancel_pending_work(self) -> bool:
+        """Implement the domain-neutral cancellation contract."""
+        return self.cancel_pending_booking()
+
     async def _run_call(self, call_id: str, query: str, slots: dict[str, Any]) -> dict[str, Any]:
         """Dispatch the query to internal Thinker tools."""
         delay_seconds = self._next_tool_delay_seconds()
