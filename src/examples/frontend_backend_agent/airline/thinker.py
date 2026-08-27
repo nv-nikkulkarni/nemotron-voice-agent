@@ -50,6 +50,8 @@ class ThinkerBackend:
         planner: ThinkerPlanner | None = None,
         tool_delay_seconds: float = 0.0,
         tool_delay_min_seconds: float | None = None,
+        overall_timeout_seconds: float = 30.0,
+        planner_timeout_seconds: float = 30.0,
     ) -> None:
         """Create a Thinker backend for one voice session."""
         if planner is None:
@@ -61,6 +63,8 @@ class ThinkerBackend:
         self._planner = planner
         self._tool_delay_seconds = tool_delay_seconds
         self._tool_delay_min_seconds = tool_delay_min_seconds
+        self._overall_timeout_seconds = max(1.0, overall_timeout_seconds)
+        self._planner_timeout_seconds = min(max(1.0, planner_timeout_seconds), self._overall_timeout_seconds)
 
     async def call(
         self,
@@ -90,6 +94,8 @@ class ThinkerBackend:
         self.state.active_task = task
         try:
             payload = await task
+            if self.state.active_call_id != call_id:
+                raise asyncio.CancelledError
         except asyncio.CancelledError:
             self.state.add_event(
                 ThinkerLifecycleEvent(
@@ -112,6 +118,7 @@ class ThinkerBackend:
         if task is None or task.done():
             return False
         logger.info(f"Thinker call {self.state.active_call_id or '(unknown)'} aborted: {reason}")
+        self.state.active_call_id = None
         task.cancel()
         return True
 
@@ -134,11 +141,14 @@ class ThinkerBackend:
 
     async def _run_call(self, call_id: str, query: str, slots: dict[str, Any]) -> dict[str, Any]:
         """Dispatch the query to internal Thinker tools."""
-        delay_seconds = self._next_tool_delay_seconds()
-        if delay_seconds > 0:
-            await asyncio.sleep(delay_seconds)
-
-        payload = await self._dispatch(query, slots)
+        try:
+            async with asyncio.timeout(self._overall_timeout_seconds):
+                delay_seconds = self._next_tool_delay_seconds()
+                if delay_seconds > 0:
+                    await asyncio.sleep(delay_seconds)
+                payload = await self._dispatch(query, slots)
+        except TimeoutError:
+            payload = _timeout_failure()
         self.state.add_event(
             ThinkerLifecycleEvent(marker="IntermediateResponse", call_id=call_id, query=query, payload=payload)
         )
@@ -159,7 +169,12 @@ class ThinkerBackend:
 
     async def _dispatch(self, query: str, slots: dict[str, Any]) -> dict[str, Any]:
         try:
-            plan = await self._planner.plan(query=query, slots=slots, state=self._planner_state())
+            plan = await asyncio.wait_for(
+                self._planner.plan(query=query, slots=slots, state=self._planner_state()),
+                timeout=self._planner_timeout_seconds,
+            )
+        except TimeoutError:
+            return _timeout_failure()
         except Exception as exc:
             logger.warning(f"Thinker planner failed: {exc}")
             return response_hint(
@@ -281,6 +296,16 @@ class ThinkerBackend:
             params_resolved=plan.get("params_resolved") if isinstance(plan.get("params_resolved"), dict) else None,
             error=str(plan.get("error")) if plan.get("error") is not None else None,
         )
+
+
+def _timeout_failure() -> dict[str, Any]:
+    """Return a bounded-deadline fallback without exposing internal timing."""
+    return response_hint(
+        reason="timeout",
+        action="retry",
+        response_text="That check took too long, so I stopped it. Would you like me to try again?",
+        context="general",
+    )
 
 
 def _tool_exception_hint(tool_call: dict[str, Any], exc: Exception) -> dict[str, Any]:

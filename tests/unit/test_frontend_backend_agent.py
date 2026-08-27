@@ -1422,6 +1422,63 @@ class FrontendBackendAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["data"]["results"][0]["tool"], "flight_search")
         self.assertEqual(payload["data"]["results"][1]["reason"], "tool_error")
 
+    async def test_hung_airline_planner_returns_timeout_payload(self) -> None:
+        class HungPlanner:
+            async def plan(self, *, query: str, slots: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+                await asyncio.Event().wait()
+                raise AssertionError("unreachable")
+
+        thinker = ThinkerBackend(
+            backend=_TestBookingBackend(),
+            planner=HungPlanner(),
+        )
+        thinker._planner_timeout_seconds = 0.01
+
+        payload = await asyncio.wait_for(thinker.call("Search flights"), timeout=0.2)
+
+        self.assertEqual(payload["type"], "response_hint")
+        self.assertEqual(payload["reason"], "timeout")
+        self.assertEqual(payload["action"], "retry")
+        self.assertIsNone(thinker.state.active_task)
+        self.assertIsNone(thinker.state.active_call_id)
+
+    async def test_superseded_airline_call_cannot_deliver_late_payload(self) -> None:
+        class CancellationResistantPlanner:
+            def __init__(self) -> None:
+                self.first_started = asyncio.Event()
+
+            async def plan(
+                self,
+                *,
+                query: str,
+                slots: dict[str, Any],
+                state: dict[str, Any],
+            ) -> dict[str, Any]:
+                if query == "first":
+                    self.first_started.set()
+                    try:
+                        await asyncio.sleep(10)
+                    except asyncio.CancelledError:
+                        pass
+                return {
+                    "tool": "response_hint",
+                    "reason": "unsupported_request",
+                    "action": "answer_directly",
+                    "context": "general",
+                    "response_text": f"Result for {query}.",
+                }
+
+        planner = CancellationResistantPlanner()
+        thinker = ThinkerBackend(backend=_TestBookingBackend(), planner=planner)
+        first = asyncio.create_task(thinker.call("first"))
+        await asyncio.wait_for(planner.first_started.wait(), timeout=0.2)
+
+        second = await thinker.call("second")
+
+        with self.assertRaises(asyncio.CancelledError):
+            await first
+        self.assertEqual(second["response_text"], "Result for second.")
+
     async def test_abort_records_internal_marker_and_does_not_return_speakable_payload(self) -> None:
         thinker = _make_thinker(tool_delay_seconds=1.0)
 

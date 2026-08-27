@@ -15,6 +15,7 @@ from examples.frontend_backend_agent.airline.tts_filter import apply_frontend_ba
 from examples.frontend_backend_agent.src.domain import DomainBuildContext, DomainSpec
 from examples.frontend_backend_agent.src.planner import NvidiaThinkerPlanner
 from examples.frontend_backend_agent.src.runtime_context import runtime_today
+from utils import parse_env_float
 
 
 def default_booking_backend_url() -> str:
@@ -60,6 +61,8 @@ def _build_backend(context: DomainBuildContext) -> ThinkerBackend:
         planner=planner,
         tool_delay_seconds=context.tool_delay_seconds,
         tool_delay_min_seconds=context.tool_delay_min_seconds,
+        overall_timeout_seconds=parse_env_float("AIRLINE_BACKEND_TIMEOUT_SECONDS", 30.0, min_value=1.0),
+        planner_timeout_seconds=parse_env_float("AIRLINE_PLANNER_TIMEOUT_SECONDS", 30.0, min_value=1.0),
     )
 
 
