@@ -1,6 +1,6 @@
 # Frontend/Backend Agent Cascaded Example
 
-The Frontend/Backend Agent is one shared Pipecat voice pipeline with replaceable domain behavior. A fast Talker large language model (LLM) owns the conversation. A separate Thinker LLM plans work that requires tools, state, or domain policy. The pipeline includes airline and generic-assistant domains, and you can add another domain without copying the audio pipeline.
+The Frontend/Backend Agent is one shared Pipecat voice pipeline with replaceable domain behavior. A fast Talker large language model (LLM) owns the conversation. A separate Thinker LLM plans work that requires tools, state, or domain policy. The pipeline includes airline and generic-assistant domains. You can add a read-only generic flavor without copying the audio pipeline or its tool implementation.
 
 The agent is not a ReAct agent. The Talker can call only `call_backend` and `cancel_backend`. A session-local backend asks the Thinker for a bounded plan, validates that plan in Python, runs the allowed domain tools, and returns a structured result to the Talker.
 
@@ -12,9 +12,9 @@ Each request follows the same path for every domain:
 
 1. The transport receives user audio, and automatic speech recognition (ASR) produces a transcript.
 2. The Talker answers stable conversational requests directly or calls `call_backend` with a self-contained request.
-3. The session-local backend asks the Thinker for a plan using the domain's hidden Thinker prompt.
-4. Domain code validates the entire plan before it runs any tool.
-5. The backend runs the approved tools and returns a structured `response_hint` or `tool_result`.
+3. The session-local backend asks the Thinker for a plan. The selected registry entry controls the hidden Thinker prompt and, for the generic domain, the enabled internal tools.
+4. The generic planner appends a generated tool-contract block for only those enabled tools. The airline domain keeps its existing prompt-owned contracts. Domain code validates each plan before dispatch.
+5. The backend runs the approved tools and returns a structured `response_hint` or `tool_result`. The generic domain also generates user-facing capability text from the enabled tool specifications.
 6. The Talker converts `response_text` into a concise spoken reply, and text-to-speech (TTS) produces audio.
 7. `cancel_backend` or a newer superseding request cancels pending work and prevents stale results from reaching the conversation.
 
@@ -22,14 +22,14 @@ The React client is only the user interface. The agent orchestration runs in the
 
 ## Built-In Domains
 
-Both built-ins point to `examples.frontend_backend_agent.pipeline:bot`. The selected example registry entry supplies the trusted `domain_profile`.
+Both built-ins point to `examples.frontend_backend_agent.pipeline:bot`. The selected example registry entry supplies the trusted domain and hidden Thinker prompt. The generic entry also supplies its enabled tool set.
 
-| Registry Example | Domain Profile | Default Prompt | Backend Capabilities | Extra Dependency |
-| --- | --- | --- | --- | --- |
-| `frontend-backend-agent` | `airline` | `talker` | Flight search, selected-flight booking, and passenger name record (PNR) status | `booking-server` |
-| `generic-frontend-backend-agent` | `generic` | `generic_talker` | Current weather, current stock prices, live web search, body mass index (BMI), and random numbers | WeatherAPI, Finnhub, and Perplexity credentials for their respective live tools |
+| Registry Example | Domain Profile | Talker Prompt | Thinker Prompt | Internal Tools | Extra Dependency |
+| --- | --- | --- | --- | --- | --- |
+| `frontend-backend-agent` | `airline` | `talker` | `thinker` | Airline domain defaults | `booking-server` |
+| `generic-frontend-backend-agent` | `generic` | `generic_talker` | `generic_thinker` | `get_weather`, `get_stock_price`, `web_search`, `calculate_bmi`, and `generate_random_number` | WeatherAPI, Finnhub, and Perplexity credentials for their respective live tools |
 
-`domain_profile` is registry-owned. The server replaces any client-supplied value with the value from `examples_registry.yaml`. The pipeline then resolves that value through the code allowlist in `src/domain.py`; it never imports a client-provided module or path.
+`domain_profile`, `thinker_prompt`, and `tools` are registry-owned. The server binds these values from `examples_registry.yaml`; a client session cannot replace the hidden prompt or widen the enabled tool set. `tools_available` is not accepted as session configuration. The pipeline resolves `domain_profile` through the code allowlist in `src/domain.py`. It never imports a client-provided module or path.
 
 The existing `frontend-backend-agent` identifier remains the airline example. Existing airline prompts, booking behavior, booking-server selection, pronunciation handling, and call/cancel contract remain compatible.
 
@@ -107,7 +107,7 @@ docker compose --profile frontend-backend-agent/single-gpu down
 
 ## Configure the Shared Pipeline
 
-The following environment variables apply to the shared or generic orchestration path:
+The following environment variables bound shared and domain-specific orchestration:
 
 | Environment Variable | Default | Purpose |
 | --- | --- | --- |
@@ -116,8 +116,10 @@ The following environment variables apply to the shared or generic orchestration
 | `THINKER_TOOL_TIMEOUT_SECONDS` | `30.0` | Bounds the shared Talker-to-backend function handler |
 | `GENERIC_PLANNER_TIMEOUT_SECONDS` | `15.0` | Bounds generic Thinker planning |
 | `GENERIC_BACKEND_TIMEOUT_SECONDS` | `40.0` | Bounds the generic planner and tool execution together |
+| `AIRLINE_PLANNER_TIMEOUT_SECONDS` | `30.0` | Bounds airline Thinker planning; capped at the overall airline deadline |
+| `AIRLINE_BACKEND_TIMEOUT_SECONDS` | `30.0` | Bounds airline planning and tool execution together |
 
-The generic Talker prompt enables all 5 built-in generic tools through its `tools_available` metadata. A session can request a subset, but domain code filters the request against the immutable generic tool allowlist.
+The `generic-frontend-backend-agent` registry entry enables all 5 built-in generic tools. To expose a subset, create or edit a trusted registry entry. Client session data and Talker prompt metadata do not widen that set.
 
 For model and catalog settings, refer to [Configure LLM](../../../docs/how-to/configure-llm.md) and [Configure Services](../../../docs/how-to/configure-services.md). For prompt behavior, tool subsets, and domain extension, refer to [Configure Frontend/Backend Agent Domains](../../../docs/how-to/configure-frontend-backend-domains.md).
 
@@ -128,35 +130,59 @@ For model and catalog settings, refer to [Configure LLM](../../../docs/how-to/co
 | Field | Responsibility |
 | --- | --- |
 | `key` and `label` | Stable domain identity and human-readable name |
-| `thinker_prompt_key` | Hidden prompt that constrains the Thinker plan |
+| `thinker_prompt_key` | Default hidden prompt that constrains the Thinker plan; the trusted registry entry can select another catalog key |
 | `talker_tools_schema` | Talker-visible `call_backend` and `cancel_backend` definitions |
 | `build_backend` | Session-scoped factory for the domain backend and state |
 | `runtime_context` | Trusted date, time, or domain context appended to the Talker prompt |
 | `intro_prompt` | Initial Talker instruction when welcome messages are enabled |
 | `tts_text_transform` | Optional domain pronunciation transformation |
-| `filler_selector` | Optional trusted progress-speech selector |
+| `filler_policy` and `filler_selector` | Choose code-authored or planner-authored progress speech and provide the trusted selector when required |
+| `tool_registry` | Publish the domain's code-owned `ToolSpec` allowlist for registry-selected capabilities |
 | `max_query_chars` | Maximum delegated query length |
 
-The backend returned by `build_backend` implements 3 operations: `call`, `cancel_active`, and `cancel_pending_work`. The pipeline does not need to know the domain's internal tools, state machine, external services, or result format.
+`build_backend` receives a `DomainBuildContext` with `thinker_llm`, the resolved `thinker_prompt`, `thinker_max_tokens`, registry-owned `tool_names`, `tool_delay_seconds`, `tool_delay_min_seconds`, and `load_service_entry`. The context does not expose the raw session body or prompt metadata to domain code.
 
-## Add Another Domain
+The backend returned by `build_backend` implements 3 operations: `call`, `cancel_active`, and `cancel_pending_work`. The pipeline does not need to know the domain's state machine, external services, or result format.
 
-Use the following sequence to add a business domain:
+## Understand Tool Specifications
 
-1. Add a package under `src/examples/frontend_backend_agent/<domain>/` for its backend, planner adapter, tool validation, services, state, and result formatting.
-2. Implement the `DomainBackend` call and cancellation contract.
-3. Return a `DomainSpec` from a `create_domain_spec()` factory.
-4. Add the factory to `_DOMAIN_FACTORIES` in `src/domain.py`. This explicit allowlist is required.
-5. Add separate Talker and hidden Thinker prompts to `prompts.yaml`.
-6. Add an example entry to `examples_registry.yaml`. Point `bot` at the shared pipeline, set `domain_profile`, declare only the service slots that the domain needs, and hide internal prompts with `agent_prompt_keys`.
-7. Add model or sidecar entries to the example-local service catalogs when the domain needs another registered service.
-8. Add tests for registry isolation, unknown and disabled tools, malformed plans, cancellation, concurrent requests, timeouts, credential failures, and deterministic spoken output.
+`src/tools.py` defines the `ToolSpec` contract, and `generic/tools.py` declares each generic internal capability in one specification. The specification owns the tool name, planner contract, parameters, executor, speech formatter, deadline, mutation flag, and user-facing capability phrase. Generic validation, dispatch, result formatting, and Thinker context consume this same definition.
+
+The executable service function remains Python code. Configuration selects existing capabilities; it does not define network requests, authentication, retries, or response parsing. This boundary keeps executable behavior reviewable and prevents registry data from becoming a code-injection surface.
+
+At session startup, the generic planner renders an available-tool contract block from only the registry-enabled specifications. Its runtime `enabled_tools` list uses the same subset, and Python rejects plans outside that subset. Static output examples can still mention built-in names, but they do not enable those tools. The unsupported-request response also names only enabled capabilities.
+
+## Add a Read-Only Flavor
+
+You do not need a new Python package when a flavor reuses the generic domain's existing read-only tools, validation, services, result formatters, and concurrency rules:
+
+1. Add or reuse a user-facing Talker prompt and a hidden Thinker prompt in `prompts.yaml`.
+2. Add an entry to `examples_registry.yaml` that uses the shared `bot`, sets `domain_profile: generic`, selects `thinker_prompt`, and lists the allowed `tools`.
+3. Declare only the model, automatic speech recognition (ASR), and text-to-speech (TTS) service slots that the flavor needs.
+4. Hide internal prompts with `agent_prompt_keys`.
+5. Add tests that verify the registry selection, generated tool block, capability response, and disabled-tool behavior.
+
+The server treats the registry entry as trusted application configuration. Do not accept `domain_profile`, `thinker_prompt`, or `tools` from a client request.
+
+## Add a Capability or Stateful Domain
+
+Use the following sequence when you need a new executable capability or a stateful business domain:
+
+1. For a new generic capability, implement the service function and add one `ToolSpec` to the generic tool registry. Select its name in the relevant `examples_registry.yaml` entries. Do not duplicate its schema, deadline, or speech policy in dispatcher tables or prompt prose.
+2. For a stateful business domain, add a package under `src/examples/frontend_backend_agent/<domain>/` for its backend, services, state, validation, and result formatting.
+3. Implement the `DomainBackend` call and cancellation contract.
+4. Return a `DomainSpec` from a `create_domain_spec()` factory.
+5. Add the factory to `_DOMAIN_FACTORIES` in `src/domain.py`. This explicit allowlist is required.
+6. Add separate Talker and hidden Thinker prompts to `prompts.yaml`.
+7. Add an example entry to `examples_registry.yaml`. Point `bot` at the shared pipeline, set `domain_profile` and `thinker_prompt`, declare only required service slots, and hide internal prompts with `agent_prompt_keys`. Add `tools` when the domain supports registry-selected capabilities.
+8. Add model or sidecar entries to the example-local service catalogs when the domain needs another registered service.
+9. Add tests for registry isolation, unknown and disabled tools, malformed plans, cancellation, concurrent requests, timeouts, credential failures, and deterministic spoken output.
 
 Do not derive `domain_profile` from a user prompt or allow a request to provide a Python import path.
 
-## Prompt-Only Versus Domain-Code Changes
+## Registry Configuration Versus Domain Code
 
-A prompt-only flavor is appropriate when you keep the same internal tool names, parameter schemas, service adapters, state, validation, side effects, cancellation behavior, and result format. You can change the persona, spoken style, routing examples, direct-answer policy, and enabled subset of existing tools.
+A registry-configured flavor is appropriate when you keep the same internal tool names, parameter schemas, service adapters, state, validation, side effects, cancellation behavior, and result format. You can change the persona, spoken style, routing examples, direct-answer policy, hidden Thinker prompt, and enabled subset of existing tools without adding Python.
 
 Add or change domain code when you introduce any of the following behavior:
 
@@ -173,13 +199,16 @@ Prompt text cannot safely implement those controls because model output is untru
 The pipeline enforces the following boundaries:
 
 - The Talker sees only `call_backend` and `cancel_backend`; internal domain tools remain hidden.
-- The server owns `domain_profile`, and code restricts it to registered factories.
+- The server owns `domain_profile`, `thinker_prompt`, and `tools`. Code restricts the domain to registered factories and resolves tool names against that domain's registry.
+- The generic generated tool-contract block and user-facing capability sentence contain only enabled tool specifications.
 - Generic tool plans are validated atomically before any tool runs. Unknown tools, disabled tools, unexpected parameters, and more than 3 calls fail closed.
 - Up to 3 validated generic read-only tools can run concurrently. Results return in planner order.
 - A backend instance and its state belong to one voice session. A new delegated request cancels and replaces unfinished work in that session.
 - Cancellation invalidates the active call identifier, so a late result cannot become the current response.
+- Airline planning and overall backend execution have bounded deadlines. A superseded airline generation cannot deliver a late result.
 - Live-data tools read credentials from the process environment. Credentials never enter the Thinker request or tool parameters.
 - Missing credentials, timeouts, invalid responses, and upstream failures return bounded unavailable responses. The generic tools do not substitute fabricated data.
 - Deterministic Python formatters produce TTS-safe result text from validated inputs and returned service data.
+- The generic domain uses code-authored progress speech and ignores model-supplied filler text. The airline domain retains planner-authored filler for backward compatibility.
 
 After a prompt or domain change, test direct Talker replies, delegation, cancellation, parameter clarification, disabled tools, unavailable credentials, parallel calls, session isolation, and repeated tool-calling behavior.
