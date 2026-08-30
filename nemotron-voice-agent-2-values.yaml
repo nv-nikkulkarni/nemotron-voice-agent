@@ -1,0 +1,84 @@
+# Values for the separate Astra staging UI that targets nemotron-voice-agent-2.
+# Fusion appends "-deploy" to the requested app name.
+fusionv12:
+  environment: stg
+  appname: nemotron-voice-agent-2-deploy
+  project:
+    name: nemotron-voice-agent-2
+    deploymentEnv: stg
+    dl: nemotron-voice-agent-astra
+    nspect_id: ''
+    primary_owner: nikkulkarni@nvidia.com
+    secondary_owner: ''
+  appDefaults:
+    replicaCount: 1
+    autoscaling:
+      enabled: false
+    podAnnotations: {}
+    imagePullSecrets:
+    - name: astra-jfrog-docker-pullsecret
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    healthCheck:
+      enabled: true
+      path: /health
+  datadog:
+    enabled: false
+    defaultLanguage: python
+    defaultVersion: v3.10.2
+  apps:
+    backend:
+      enabled: true
+      replicaCount: 1
+      imagePullSecrets:
+      - name: astra-jfrog-docker-pullsecret
+      image:
+        repository: artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui
+        tag: "2.0.51-541af46e"
+      port: 7860
+      env:
+        LOG_LEVEL: INFO
+        APP_NAME: nemotron-voice-agent-2
+        ENVIRONMENT: stg
+        UI_BUILD_TIMESTAMP: "2026-08-27T09:12:42Z"
+        DEMO_MODE: "true"
+        DEMO_SESSION_SECONDS: "120"
+        DEMO_EXAMPLES: generic-frontend-backend-agent,omni-assistant-subagents
+        DEMO_SELF_HOSTED_ONLY: "true"
+        DEMO_RECORD_ENABLED: "true"
+      ingress:
+        enabled: true
+        hostname: nemotron-voice-agent-2-deploy-backend.stg.astra.nvidia.com
+  pvc:
+    storageClassName:
+  externalSecrets:
+    enabled: true
+    createSecretStore: true
+    secretStoreRef:
+      name: nemotron-voice-agent-2-deploy-secret-store
+      kind: SecretStore
+    vault:
+      server: https://prod.internal.vault.nvidia.com
+      namespace: it-fusion
+      path: KVv2
+      version: v2
+      auth:
+        jwt:
+          path: jwt/astrastg01-ocp-pdx04/
+          role: fusion-astra-nemotron-voice-agent-astra-nemotron-voice-agent-2-deploy-stg
+          serviceAccountName: vault-service-account
+          audiences:
+          - https://kubernetes.default.svc
+          expirationSeconds: 600
+  sharedSecrets:
+    enabled: true
+    autoMount: true
+    refreshInterval: 60m
+    dataFrom:
+    - extract:
+        key: fusion/astra/nemotron-voice-agent-astra/nemotron-voice-agent-2-deploy/stg
