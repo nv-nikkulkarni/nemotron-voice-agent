@@ -16,8 +16,9 @@
 #          --set ngcImagePullSecretName=ngc-registry \
 #          --set app.existingSecret=nvidia-api-key
 #
-# Image paths are constructed as:
+# Organization-owned image paths are constructed as:
 #   {ngcImageRegistry}/{ngcImageRegistryPath}/{*Image.name}:{*Image.tag}
+# Public NIM images use an explicit full `repository` value.
 #
 # Service connectivity (K8s Service names are fixed to match services.local.yaml):
 #   LLM -> "nvidia-llm"                      (port 8000 HTTP)
@@ -80,8 +81,8 @@ llmImage:
 # TTS NIM image — Magpie TTS Multilingual
 # =============================================================================
 ttsImage:
-  name: "magpie-tts-multilingual"
-  tag: "1.8.0"
+  repository: "nvcr.io/nim/nvidia/magpie-tts-multilingual"
+  tag: "1.10.0"
   pullPolicy: IfNotPresent
 
 # =============================================================================
@@ -141,7 +142,7 @@ omniImage:
 # NGC pull secret must have catalog read access to nvcr.io/nim.
 chatterboxImage:
   repository: "nvcr.io/nim/nvidia/chatterbox-tts-multilingual"
-  tag: "1.0.0"
+  tag: "1.1.0"
   pullPolicy: IfNotPresent
 
 # =============================================================================
@@ -305,8 +306,9 @@ llm:
 tts:
   enabled: true
 
-  # NIM model selection tag. Use batch_size=64 for high-throughput profiles.
-  nimTagsSelector: "name=magpie-tts-multilingual,batch_size=8"
+  # NVIDIA Speech NIM 26.07.0 profile. Keep the lowest-memory profile until
+  # higher-throughput profiles are qualified against the shared H100 topology.
+  nimTagsSelector: "batch_size=8"
 
   gpuDevices: "0"
   shmSize: 16Gi
@@ -341,9 +343,9 @@ tts:
 chatterboxTts:
   enabled: true     # Production full-model topology: Magpie + Chatterbox are both
                     # deployed and selectable in Generic and Omni.
-  # NIM profile selector. Leave "" if the Chatterbox NIM has a single profile;
-  # set once the correct tag string is confirmed against the NIM's model manifest.
-  nimTagsSelector: ""
+  # Chatterbox 1.1.0 publishes batch_size=8, 32, and 64 profiles. The 8 profile
+  # is the public NIM default and the lowest-memory option.
+  nimTagsSelector: "batch_size=8"
   gpuDevices: "0"
   shmSize: 16Gi
   cache:

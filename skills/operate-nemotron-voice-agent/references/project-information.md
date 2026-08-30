@@ -110,8 +110,8 @@ below. Recheck `nvcf_helm/values.yaml` before using them operationally.
 | Lightning Talker | `nemotron-3.5-lightning-30b-a3b:2.0.9-variant` | 1 GPU |
 | Super Thinker | `nemotron-3-super-120b-a12b:2.0.5` | 2 GPUs |
 | Omni server | `vllm-omni:v0.20.0-cu130-r2` | 1 GPU |
-| Magpie TTS | `magpie-tts-multilingual:1.8.0` | 1 GPU |
-| Chatterbox TTS | `chatterbox-tts-multilingual:1.0.0` | 1 GPU |
+| Magpie TTS | `magpie-tts-multilingual:1.10.0` | 1 GPU |
+| Chatterbox TTS | `chatterbox-tts-multilingual:1.1.0` | 1 GPU |
 | Redis | `redis:7.2.4-debian-12-r12` | CPU |
 | SeaweedFS | `seaweedfs:4.41` | CPU |
 | App | `nemotron-voice-agent:2.0.51` | five CPU replicas |
@@ -235,9 +235,11 @@ states. Do not delete backup refs or GitLab branches as part of ordinary feature
 
 At the August 30, 2026 source snapshot:
 
-- the checked-in chart is `0.1.122`;
+- the checked-in chart source is the unbuilt and unqualified `0.1.123` candidate;
 - the checked-in app/UI version is `2.0.51`;
 - `0.1.122` was built and pushed but was not Viking-qualified or deployed;
+- `0.1.123` updates only the chart inputs to Magpie `1.10.0` and Chatterbox
+  `1.1.0`; it has not been packaged, deployed, or qualified;
 - the last recorded isolated `nemotron-voice-agent-2` staging deployment remained on
   rejected `0.1.115`;
 - the last recorded retained production function remained on chart `0.1.103` and app

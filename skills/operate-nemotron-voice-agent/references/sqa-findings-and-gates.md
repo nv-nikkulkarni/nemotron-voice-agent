@@ -341,6 +341,16 @@ Viking or qualified and the `-2` environment still served rejected `0.1.115`.
 
 Do not infer a later deployment from checked-in version numbers. Query live state.
 
+### Candidate 0.1.123
+
+This source-only chart candidate updates Magpie TTS Multilingual from `1.8.0` to `1.10.0`
+and Chatterbox TTS Multilingual from `1.0.0` to `1.1.0`. Both services select the public
+`batch_size=8` profile. App/UI remains `2.0.51`.
+
+The candidate is not packaged, deployed, or qualified. Run image-pull, readiness,
+pronunciation, voice-catalog, streaming, latency, and concurrency gates in Viking before
+creating an NVCF/Astra staging version.
+
 ## Pronunciation Qualification
 
 The registry covers existing SQA failures, NVIDIA products, tickers, companies, AI models,

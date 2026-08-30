@@ -12,8 +12,10 @@ CHART = ROOT / "nvcf_helm" / "Chart.yaml"
 VALUES = ROOT / "nvcf_helm" / "values.yaml"
 VIKING_VALUES = ROOT / "nvcf_helm" / "values-viking.yaml"
 
-EXPECTED_CHART_VERSION = "0.1.122"
+EXPECTED_CHART_VERSION = "0.1.123"
 EXPECTED_APP_VERSION = "2.0.51"
+EXPECTED_MAGPIE_IMAGE = "nvcr.io/nim/nvidia/magpie-tts-multilingual:1.10.0"
+EXPECTED_CHATTERBOX_IMAGE = "nvcr.io/nim/nvidia/chatterbox-tts-multilingual:1.1.0"
 
 
 def _load(path: Path) -> dict:
@@ -37,3 +39,16 @@ def test_frontend_backend_uses_single_grounded_post_tool_response_by_default() -
     values = _load(VALUES)
 
     assert values["app"]["frontendBackendDirectToolResponse"] is True
+
+
+def test_tts_nims_use_pinned_public_release_inputs() -> None:
+    """Pin both selectable TTS services to explicit public NIM releases."""
+    values = _load(VALUES)
+
+    magpie = values["ttsImage"]
+    chatterbox = values["chatterboxImage"]
+
+    assert f"{magpie['repository']}:{magpie['tag']}" == EXPECTED_MAGPIE_IMAGE
+    assert f"{chatterbox['repository']}:{chatterbox['tag']}" == EXPECTED_CHATTERBOX_IMAGE
+    assert values["tts"]["nimTagsSelector"] == "batch_size=8"
+    assert values["chatterboxTts"]["nimTagsSelector"] == "batch_size=8"

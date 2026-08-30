@@ -216,8 +216,10 @@ requires a fresh immutable candidate and a clean rerun of the blocking matrix.
 The active isolated staging environment remains on rejected candidate
 `0.1.115`. Candidate `0.1.116` ran only on Viking and was also rejected.
 Chart `0.1.120` with app/UI `2.0.49` passed its strict repeated-tool matrix and
-automated exact-pronunciation probe. Chart `0.1.122` with app/UI `2.0.51` is
-built and pushed, but it is not deployed or qualified. The active isolated
+automated exact-pronunciation probe. Chart `0.1.122` with app/UI `2.0.51` was
+built and pushed, but it was not deployed or qualified. Chart `0.1.123` keeps
+app/UI `2.0.51` and updates the two TTS NIMs. It is not built or qualified.
+The active isolated
 `-2` environment remains on rejected candidate `0.1.115`, and no candidate has
 staging or production approval.
 
@@ -1657,7 +1659,26 @@ isolated `nemotron-voice-agent-2` NVCF function and
 `0.1.115`. The isolated rollout is waiting for Fusion reauthentication. Do not
 update that environment until the candidate passes the required Viking gates.
 
-### 19.3 True Astra production promotion
+### 19.3 TTS NIM Upgrade Candidate 0.1.123
+
+Chart source `0.1.123` keeps app/UI `2.0.51` and changes only the TTS deployment inputs:
+
+| Service | Candidate Image | Profile |
+|---|---|---|
+| Magpie TTS Multilingual | `nvcr.io/nim/nvidia/magpie-tts-multilingual:1.10.0` | `batch_size=8` |
+| Chatterbox TTS Multilingual | `nvcr.io/nim/nvidia/chatterbox-tts-multilingual:1.1.0` | `batch_size=8` |
+
+Magpie now resolves directly from the public NIM repository instead of assuming the new
+tag exists in the organization mirror. The existing NGC image pull secret remains the
+authentication boundary for both public repositories.
+
+This is an unbuilt and unqualified source candidate. It does not prove image access,
+model readiness, voice compatibility, custom pronunciation behavior, streaming latency,
+or concurrency. Qualify those boundaries in Viking before staging. The `0.1.122`
+artifact identities above remain historical evidence and are not identities for this
+candidate.
+
+### 19.4 True Astra production promotion
 
 Required boundary:
 

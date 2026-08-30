@@ -92,10 +92,10 @@ Full image reference for the LLM NIM container.
 
 {{/*
 Full image reference for the TTS NIM container.
-  nvcr.io/0491162300748285/magpie-tts-multilingual:1.8.0
+  nvcr.io/nim/nvidia/magpie-tts-multilingual:1.10.0
 */}}
 {{- define "nemotron-voice-agent.ttsImage" -}}
-{{ .Values.ngcImageRegistry }}/{{ .Values.ngcImageRegistryPath }}/{{ .Values.ttsImage.name }}:{{ .Values.ttsImage.tag }}
+{{ .Values.ttsImage.repository }}:{{ .Values.ttsImage.tag }}
 {{- end }}
 
 {{/*
@@ -137,7 +137,7 @@ Full image reference for the Omni vLLM container (public image, full repository)
 {{/*
 Full image reference for the Chatterbox TTS NIM container (NGC NIM catalog path,
 full repository like omniImage — not the org-path helper).
-  nvcr.io/nim/nvidia/chatterbox-tts-multilingual:1.0.0
+  nvcr.io/nim/nvidia/chatterbox-tts-multilingual:1.1.0
 */}}
 {{- define "nemotron-voice-agent.chatterboxImage" -}}
 {{ .Values.chatterboxImage.repository }}:{{ .Values.chatterboxImage.tag }}
