@@ -54,6 +54,11 @@ from examples.shared.pipeline_utils import (
     register_session_start_handlers,
     with_realtime_observers,
 )
+from examples.shared.tts_chunk_aggregator import (
+    LengthLimitedSentenceAggregator,
+    resolve_tts_chunk_chars,
+)
+from session_capture.capture import mark_pipeline_finished, run_finalize
 from tracing import IS_TRACING_ENABLED
 from utils import (
     is_nvcf,
@@ -150,7 +155,7 @@ async def bot(runner_args: RunnerArguments) -> None:
     tts_zero_shot_audio_prompt_file = body.get("tts_zero_shot_audio_prompt_file", "") or default_tts.get(
         "zero_shot_audio_prompt_file", ""
     )
-    custom_dictionary = load_ipa_dictionary()
+    custom_dictionary = load_ipa_dictionary(tts_model)
 
     tts_settings_kwargs: dict = {"voice": tts_voice}
     if tts_synthesis_mode:
@@ -172,6 +177,15 @@ async def bot(runner_args: RunnerArguments) -> None:
     if tts_zero_shot_audio_prompt_file:
         tts_kwargs["zero_shot_audio_prompt_file"] = tts_zero_shot_audio_prompt_file
     tts = NvidiaTTSService(**tts_kwargs)
+    # Split chunks for engines with a per-synthesis cap (Chatterbox ~500 chars / ~20s);
+    # other engines keep pipecat's default aggregator. See examples.shared.tts_chunk_aggregator.
+    tts_chunk_chars = resolve_tts_chunk_chars(tts_model, tts_voice, body, default_tts)
+    if tts_chunk_chars:
+        _agg_kwargs: dict = {"max_chars": tts_chunk_chars}
+        _mode = getattr(tts, "_text_aggregation_mode", None)
+        if _mode is not None:
+            _agg_kwargs["aggregation_type"] = _mode
+        tts._text_aggregator = LengthLimitedSentenceAggregator(**_agg_kwargs)
     logger.info(
         f"TTS: server={tts_server}, ssl={tts_ssl}, voice={tts_voice}, "
         f"model={tts_model or '(pipecat default)'}, function_id={tts_function_id or '(pipecat default)'}, "
@@ -188,7 +202,7 @@ async def bot(runner_args: RunnerArguments) -> None:
         ),
     )
 
-    audio_recorder = create_audio_recorder()
+    audio_recorder = create_audio_recorder(body.get("session_id", ""))
 
     pipeline = Pipeline(
         [
@@ -354,6 +368,18 @@ async def bot(runner_args: RunnerArguments) -> None:
         on_start=_on_session_start,
         welcome_enabled=welcome_enabled,
     )
+
+    @task.event_handler("on_pipeline_finished")
+    async def on_pipeline_finished(task, frame):
+        # Fires only once the CancelFrame queued by task.cancel() (below) has
+        # genuinely reached the end of the pipeline (or timed out) -- i.e. every
+        # processor, including the audio recorder's final turn, has actually
+        # flushed. Finalizing any earlier risks the last turn's WAV missing
+        # from the tarball, plus a late write recreating it after finalize's
+        # own cleanup deletes the session prefix. Offloaded via to_thread: this
+        # does blocking store I/O, tar assembly and, on the winning pod, a
+        # subprocess upload with up to a 300s timeout -- never safe on the loop.
+        await run_finalize(mark_pipeline_finished, body.get("session_id", ""))
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
