@@ -49,6 +49,7 @@ def build_handlers(
     filler_threshold_seconds: float = 0.8,
     filler_policy: FillerPolicy = "planner_authored",
     filler_selector: Callable[[str], str] | None = None,
+    interrupted_speech_consumer: Callable[[], bool] | None = None,
     max_query_chars: int = 4000,
 ) -> dict[str, Callable]:
     """Return tool handlers bound to one session-local backend agent."""
@@ -131,8 +132,10 @@ def build_handlers(
             )
             return
         if _direct_tool_response_enabled() and is_speakable_payload(payload):
-            await _emit_talker_response(params.llm, str(payload.get("response_text") or ""))
+            response_text = str(payload.get("response_text") or "")
+            await _emit_talker_response(params.llm, response_text, append_to_context=False)
             await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
+            _remember_backend_response(params.llm, response_text, payload)
             return
         await params.result_callback(payload)
 
@@ -144,16 +147,23 @@ def build_handlers(
             # migrate to the domain-neutral protocol.
             cancel_pending = getattr(thinker, "cancel_pending_booking", None)
         cleared_pending_work = bool(cancel_pending()) if callable(cancel_pending) else False
-        did_cancel = cancelled or cleared_pending_work
+        interrupted_speech = bool(interrupted_speech_consumer()) if interrupted_speech_consumer else False
+        did_cancel = cancelled or cleared_pending_work or interrupted_speech
+        if cancelled or cleared_pending_work:
+            reason = "cancelled"
+        elif interrupted_speech:
+            reason = "interrupted_speech"
+        else:
+            reason = "nothing_to_cancel"
         payload = {
             "type": "response_hint",
-            "reason": "cancelled" if did_cancel else "nothing_to_cancel",
+            "reason": reason,
             "action": "cancelled" if did_cancel else "nothing_to_cancel",
             "response_text": "Okay, I stopped that." if did_cancel else "There is nothing pending right now.",
             "context": "cancel_backend",
         }
         if _direct_tool_response_enabled():
-            await _emit_talker_response(params.llm, str(payload["response_text"]))
+            await _emit_talker_response(params.llm, str(payload["response_text"]), append_to_context=False)
             await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
             return
         await params.result_callback(payload)
@@ -161,7 +171,7 @@ def build_handlers(
     return {"call_backend": handle_call_backend, "cancel_backend": handle_cancel_backend}
 
 
-async def _emit_talker_response(llm, text: str) -> None:
+async def _emit_talker_response(llm, text: str, *, append_to_context: bool = True) -> None:
     """Emit Talker-authored filler through the normal LLM text/TTS path."""
     if _task_cancellation_requested():
         return
@@ -169,7 +179,9 @@ async def _emit_talker_response(llm, text: str) -> None:
     try:
         started = True
         await llm.push_frame(LLMFullResponseStartFrame())
-        await llm.push_frame(LLMTextFrame(text=text))
+        text_frame = LLMTextFrame(text=text)
+        text_frame.append_to_context = append_to_context
+        await llm.push_frame(text_frame)
     finally:
         if started:
             await llm.push_frame(LLMFullResponseEndFrame())
@@ -182,6 +194,16 @@ async def _cancel_pending_filler(task: asyncio.Task | None) -> None:
     task.cancel()
     with suppress(asyncio.CancelledError):
         await task
+
+
+def _remember_backend_response(llm, text: str, payload: dict[str, Any]) -> None:
+    remember_result = getattr(llm, "remember_backend_result", None)
+    if callable(remember_result):
+        remember_result(payload)
+        return
+    remember = getattr(llm, "remember_backend_response", None)
+    if callable(remember):
+        remember(text)
 
 
 def _normalize_arguments(arguments: dict) -> dict:

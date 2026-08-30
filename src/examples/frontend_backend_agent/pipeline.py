@@ -25,7 +25,9 @@ from pipecat.services.nvidia.tts import NvidiaTTSService, NvidiaTTSSettings
 from pipecat.workers.runner import WorkerRunner
 
 import examples_registry
+from examples.frontend_backend_agent.src.barge_in import BargeInState, BargeInTracker
 from examples.frontend_backend_agent.src.domain import DomainBuildContext, resolve_domain_spec
+from examples.frontend_backend_agent.src.reliable_talker import ReliableNvidiaLLMService
 from examples.frontend_backend_agent.src.tool_handlers import build_handlers
 from examples.shared.audio_recorder import create_audio_recorder
 from examples.shared.nemotron_speech_text_filter import NemotronSpeechTextFilter
@@ -36,6 +38,7 @@ from examples.shared.pipeline_utils import (
     register_session_start_handlers,
     with_realtime_observers,
 )
+from examples.shared.tool_call_speech_gate import ToolCallSpeechGate
 from session_capture.capture import mark_pipeline_finished, run_finalize
 from tracing import IS_TRACING_ENABLED
 from utils import (
@@ -58,6 +61,7 @@ THINKER_TOOL_DELAY_MIN_SECONDS = 0.1
 THINKER_TOOL_DELAY_MAX_SECONDS = 0.5
 THINKER_FILLER_THRESHOLD_SECONDS = parse_env_float("THINKER_FILLER_THRESHOLD_SECONDS", 0.3, min_value=0.0)
 THINKER_TOOL_TIMEOUT_SECONDS = parse_env_float("THINKER_TOOL_TIMEOUT_SECONDS", 30.0, min_value=1.0)
+FRONTEND_BACKEND_VAD_STOP_SECS = parse_env_float("FRONTEND_BACKEND_VAD_STOP_SECS", 0.5, min_value=0.0)
 
 
 def _build_context_messages(
@@ -164,7 +168,7 @@ async def bot(runner_args: RunnerArguments) -> None:
         llm_settings.temperature = talker_temperature
     if extra_params:
         llm_settings.extra = extra_params
-    talker_llm = NvidiaLLMService(
+    talker_llm = ReliableNvidiaLLMService(
         api_key=nvidia_api_key(),
         base_url=base_url,
         settings=llm_settings,
@@ -226,11 +230,13 @@ async def bot(runner_args: RunnerArguments) -> None:
     logger.info(f"Thinker tool delay: {THINKER_TOOL_DELAY_MIN_SECONDS:.3f}s-{THINKER_TOOL_DELAY_MAX_SECONDS:.3f}s")
     logger.info(f"Thinker filler threshold: {THINKER_FILLER_THRESHOLD_SECONDS:.3f}s")
     logger.info(f"Thinker tool timeout: {THINKER_TOOL_TIMEOUT_SECONDS:.3f}s")
+    barge_in_state = BargeInState()
     for name, handler in build_handlers(
         thinker,
         filler_threshold_seconds=THINKER_FILLER_THRESHOLD_SECONDS,
         filler_policy=domain.filler_policy,
         filler_selector=domain.filler_selector,
+        interrupted_speech_consumer=barge_in_state.consume_interrupted_speech,
         max_query_chars=domain.max_query_chars,
     ).items():
         cancel_on_interruption = name != "call_backend"
@@ -255,7 +261,7 @@ async def bot(runner_args: RunnerArguments) -> None:
     tts_zero_shot_audio_prompt_file = body.get("tts_zero_shot_audio_prompt_file", "") or default_tts.get(
         "zero_shot_audio_prompt_file", ""
     )
-    custom_dictionary = load_ipa_dictionary()
+    custom_dictionary = load_ipa_dictionary(tts_model)
     tts_settings_kwargs: dict = {"voice": tts_voice}
     if tts_synthesis_mode:
         tts_settings_kwargs["synthesis_mode"] = tts_synthesis_mode
@@ -290,16 +296,21 @@ async def bot(runner_args: RunnerArguments) -> None:
     preserve_prompt_messages = len(messages)
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,
-        user_params=build_user_aggregator_params(welcome_enabled),
+        user_params=build_user_aggregator_params(
+            welcome_enabled,
+            vad_stop_secs=FRONTEND_BACKEND_VAD_STOP_SECS,
+        ),
     )
     audio_recorder = create_audio_recorder(body.get("session_id", ""))
 
     pipeline = Pipeline(
         [
             transport.input(),
+            BargeInTracker(barge_in_state),
             stt,
             user_aggregator,
             talker_llm,
+            ToolCallSpeechGate(),
             tts,
             transport.output(),
             *([audio_recorder] if audio_recorder else []),
@@ -327,6 +338,20 @@ async def bot(runner_args: RunnerArguments) -> None:
         logger.info(f"User-to-bot latency: {latency:.3f}s")
         await task.queue_frame(
             RTVIServerMessageFrame(data={"type": "user-bot-latency", "latency": round(latency, 3), "first": False})
+        )
+
+    @latency_observer.event_handler("on_latency_breakdown")
+    async def on_breakdown(observer, breakdown):
+        await task.queue_frame(
+            RTVIServerMessageFrame(
+                data={
+                    "type": "latency-breakdown",
+                    "vad_smart_turn": round(breakdown.user_turn_secs, 3)
+                    if breakdown.user_turn_secs is not None
+                    else None,
+                    "events": breakdown.chronological_events(),
+                }
+            )
         )
 
     task = PipelineWorker(

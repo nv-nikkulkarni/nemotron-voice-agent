@@ -33,6 +33,12 @@ def select_filler(query: str) -> str:
         word in normalized for word in ("weather", "stock", "price", "news", "search", "latest", "current")
     ):
         return "Let me check those details."
+    if any(word in normalized for word in ("weather", "forecast", "rain", "temperature")):
+        return "Let me check the latest weather."
+    if any(word in normalized for word in ("stock", "ticker", "share price", "trading at")):
+        return "Let me look up the latest price."
+    if any(word in normalized for word in ("web", "search", "news", "research", "latest")):
+        return "Let me look that up."
     return "Let me check that."
 
 
