@@ -3,22 +3,28 @@
 
 """Session audio recorder using Pipecat's AudioBufferProcessor.
 
-Captures user (ASR input) and bot (TTS output) audio to separate WAV files.
-Controlled via environment variables:
+Captures user (ASR input) and bot (TTS output) audio to separate WAV files,
+one complete file per turn (the full clip arrives as a single ``bytes``
+buffer — no streaming write needed). Controlled via environment variables:
   - ENABLE_ASR_AUDIO_DUMP  (default: false)
   - ENABLE_TTS_AUDIO_DUMP  (default: false)
-  - AUDIO_DUMP_PATH        (default: <project_root>/audio_dumps)
+
+Files are written through ``session_store`` (session_store.keys.audio_key),
+keyed by the pipeline's own ``session_id`` — not a private random id. Audio is
+this way trivially found by whatever finalizes the session's capture, on any
+pod, with no dependency on the session log surviving.
 """
 
+import asyncio
+import io
 import os
-import uuid
 import wave
-from pathlib import Path
 
 from loguru import logger
 from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 
-from utils import PROJECT_ROOT
+import session_store
+from session_store import keys as store_keys
 
 
 def _env_bool(key: str, default: str = "false") -> bool:
@@ -27,68 +33,84 @@ def _env_bool(key: str, default: str = "false") -> bool:
 
 ENABLE_ASR_DUMP = _env_bool("ENABLE_ASR_AUDIO_DUMP")
 ENABLE_TTS_DUMP = _env_bool("ENABLE_TTS_AUDIO_DUMP")
-_raw_dump_path = Path(os.getenv("AUDIO_DUMP_PATH", "audio_dumps"))
-AUDIO_DUMP_PATH = _raw_dump_path if _raw_dump_path.is_absolute() else PROJECT_ROOT / _raw_dump_path
 
 
-def _write_wav(filepath: Path, audio: bytes, sample_rate: int) -> None:
-    """Write raw PCM16 mono audio to a WAV file."""
-    with wave.open(str(filepath), "wb") as wf:
+def _wav_bytes(audio: bytes, sample_rate: int) -> bytes:
+    """Wrap raw PCM16 mono audio in a WAV container, entirely in memory."""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(sample_rate)
         wf.writeframes(audio)
-    logger.info(f"Audio saved: {filepath} ({len(audio)} bytes, {sample_rate}Hz)")
+    return buf.getvalue()
 
 
-def _validate_dump_dir(dump_dir: Path) -> None:
-    """Create the dump directory and verify write permissions."""
-    dump_dir.mkdir(parents=True, exist_ok=True)
-    test_file = dump_dir / ".write_test"
-    try:
-        test_file.touch()
-        test_file.unlink()
-    except PermissionError:
-        raise PermissionError(
-            f"Cannot write to audio dump directory: {dump_dir}. Fix: sudo chown -R $(id -u):$(id -g) {dump_dir}"
-        ) from None
-
-
-def create_audio_recorder() -> AudioBufferProcessor | None:
+def create_audio_recorder(session_id: str = "") -> AudioBufferProcessor | None:
     """Create an AudioBufferProcessor that saves per-turn audio clips to WAV files.
 
-    Returns None if both ASR and TTS dumps are disabled.
-    Each session gets a unique stream ID, and each turn gets an incrementing index:
-      asr_{stream}_{turn}.wav, tts_{stream}_{turn}.wav
+    Returns None if both ASR and TTS dumps are disabled, OR if there's no real
+    session id to attach the recording to (see below).
+
+    ``session_id`` should be the pipeline's real session id whenever one is
+    available (it always is when session-config/capture is in play — see
+    ``body.get("session_id")`` in each example's ``bot()``). It's the key
+    capture later globs on: coordination state (session_capture.state) is
+    also keyed by this id, so audio written under any OTHER id has no
+    corresponding state and is never finalized, uploaded, or cleaned up by
+    anything -- a permanent, un-consented leak. Rather than fabricate a
+    throwaway id for that case (an earlier version of this function did:
+    ``session_id or uuid.uuid4().hex[:8]``), recording is simply disabled for
+    sessions with no real id.
+
     Caller must await recorder.start_recording() on client connect.
     """
     if not ENABLE_ASR_DUMP and not ENABLE_TTS_DUMP:
         return None
 
-    _validate_dump_dir(AUDIO_DUMP_PATH)
-    stream_id = uuid.uuid4().hex[:8]
+    # session_id comes from the pipeline body, i.e. the client's ?session_id=
+    # query param -- sanitize before it becomes an object key / filesystem path
+    # (an unsanitized "../.." would write attacker-controlled WAV bytes outside
+    # the store root).
+    sid = store_keys.sanitize_sid(session_id)
+    if not sid:
+        logger.warning("Audio recorder disabled: no session_id -- nothing would ever finalize/clean up its audio")
+        return None
     turn_counter = {"asr": 0, "tts": 0}
 
     recorder = AudioBufferProcessor(num_channels=1, enable_turn_audio=True)
+
+    async def _save(kind: str, audio: bytes, sample_rate: int) -> None:
+        # Offloaded to a thread (a store write is blocking I/O -- a network PUT
+        # under S3 -- and this handler runs on the shared pipeline event loop,
+        # once per turn, for every concurrent session on this worker) and
+        # guarded (a capture hiccup must never affect the live call; pipecat
+        # would otherwise just log-and-continue on the loop, having already
+        # blocked it for the duration of the failed write).
+        idx = turn_counter[kind]
+        turn_counter[kind] = idx + 1
+        key = store_keys.audio_key(sid, kind, idx)
+        try:
+            backend = session_store.backend()
+            await asyncio.to_thread(backend.put, key, _wav_bytes(audio, sample_rate))
+            logger.info(f"Audio saved: {key} ({len(audio)} bytes, {sample_rate}Hz)")
+        except Exception as exc:  # noqa: BLE001 - store backends raise their own exception types (botocore, OSError, ...)
+            logger.warning(f"session-capture: audio save failed for {key}: {exc}")
 
     @recorder.event_handler("on_user_turn_audio_data")
     async def on_user_turn(processor, audio: bytes, sample_rate: int, num_channels: int):
         if not ENABLE_ASR_DUMP or not audio:
             return
-        idx = turn_counter["asr"]
-        turn_counter["asr"] = idx + 1
-        _write_wav(AUDIO_DUMP_PATH / f"asr_{stream_id}_{idx:03d}.wav", audio, sample_rate)
+        await _save("asr", audio, sample_rate)
 
     @recorder.event_handler("on_bot_turn_audio_data")
     async def on_bot_turn(processor, audio: bytes, sample_rate: int, num_channels: int):
         if not ENABLE_TTS_DUMP or not audio:
             return
-        idx = turn_counter["tts"]
-        turn_counter["tts"] = idx + 1
-        _write_wav(AUDIO_DUMP_PATH / f"tts_{stream_id}_{idx:03d}.wav", audio, sample_rate)
+        await _save("tts", audio, sample_rate)
 
     logger.info(
         f"Audio recorder enabled (per-turn) — ASR={ENABLE_ASR_DUMP}, TTS={ENABLE_TTS_DUMP}, "
-        f"path={AUDIO_DUMP_PATH}, stream={stream_id}"
+        f"session={sid}"
     )
     return recorder
