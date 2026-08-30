@@ -1,0 +1,20 @@
+{{- if and .Values.omni.enabled (not .Values.omni.cache.nvcf) -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-omni-cache
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: omni
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.omni.cache.storageClass }}
+  storageClassName: {{ .Values.omni.cache.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.omni.cache.size }}
+{{- end }}

@@ -1,0 +1,20 @@
+{{- if and .Values.booking.enabled (not .Values.booking.cache.nvcf) -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-booking-data
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: booking
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.booking.cache.storageClass }}
+  storageClassName: {{ .Values.booking.cache.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.booking.cache.size }}
+{{- end }}

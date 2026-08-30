@@ -1,0 +1,21 @@
+name: nemotron-voice-agent-redis
+
+# Standalone Redis for the session bus (src/session_bus/), decoupled from the main
+# docker-compose.yml example profiles. Useful for:
+#   - the cross-pod media test (tests/session_bus/test_cross_pod.sh), which runs two
+#     app containers by hand against a single Redis instance;
+#   - iterating on session_bus/ code without spinning up a full example profile.
+#
+# Usage: docker compose -f docker-compose.redis.yaml up -d
+services:
+  redis:
+    image: redis:7.2.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped

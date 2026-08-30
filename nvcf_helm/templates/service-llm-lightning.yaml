@@ -1,0 +1,40 @@
+{{- if .Values.llmLightning.enabled -}}
+# Historical Lightning service used by the prewarmer and standalone generic agent.
+apiVersion: v1
+kind: Service
+metadata:
+  name: nemotron-lightning
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llm-lightning
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: llm-lightning
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+---
+# Compatibility alias used by the shared domain-configurable frontend/backend
+# service catalog and the upstream generic/multilingual examples.
+apiVersion: v1
+kind: Service
+metadata:
+  name: nvidia-llm
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llm-lightning
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: llm-lightning
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+{{- end }}

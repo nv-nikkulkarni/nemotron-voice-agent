@@ -1,0 +1,19 @@
+apiVersion: v2
+name: nemotron-voice-agent
+description: >
+  Real-time voice AI agent built on FastAPI + Pipecat with NVIDIA NIM
+  services for on-prem ASR, LLM, and TTS inference.
+type: application
+version: 0.1.122
+appVersion: "2.0.51"
+keywords:
+  - nvidia
+  - nim
+  - voice-agent
+  - asr
+  - tts
+  - llm
+  - pipecat
+home: https://github.com/nvidia/nemotron-voice-agent
+maintainers:
+  - name: NVIDIA

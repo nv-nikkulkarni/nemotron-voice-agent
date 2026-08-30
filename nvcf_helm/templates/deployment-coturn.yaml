@@ -1,0 +1,45 @@
+{{- if .Values.turn.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-coturn
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: coturn
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "nemotron-voice-agent.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: coturn
+  template:
+    metadata:
+      labels:
+        {{- include "nemotron-voice-agent.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: coturn
+    spec:
+      # hostNetwork is required for UDP relay — coturn must bind the node's
+      # external IP so WebRTC clients can reach media relay ports directly.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: coturn
+          image: "{{ .Values.turn.image.repository }}:{{ .Values.turn.image.tag }}"
+          imagePullPolicy: {{ .Values.turn.image.pullPolicy }}
+          args:
+            - "-n"
+            - "--log-file=stdout"
+            - "--listening-port={{ .Values.turn.service.signalingPort }}"
+            - "--min-port={{ .Values.turn.minPort }}"
+            - "--max-port={{ .Values.turn.maxPort }}"
+            - "--realm=voiceagent"
+            - "--lt-cred-mech"
+            - "--user={{ .Values.turn.username }}:{{ .Values.turn.password }}"
+            - "--no-multicast-peers"
+            - "--no-cli"
+            - "--fingerprint"
+          ports:
+            - name: signaling
+              containerPort: {{ .Values.turn.service.signalingPort }}
+              protocol: UDP
+{{- end }}

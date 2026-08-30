@@ -1,0 +1,27 @@
+{{- if and .Values.sessionStore.enabled .Values.sessionStore.persistence.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-session-store
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: session-store
+  # Deliberately NO helm.sh/resource-policy: keep, unlike pvc-session-capture.yaml.
+  # This store is a staging area between session-end and NGC upload, not the
+  # archive -- losing it on an upgrade costs only in-flight sessions, not
+  # archived data. A KEPT RWO oci-bv PVC is what caused sessionCapture's own
+  # 0.1.77 incident (zone-locked volume -> fresh-AZ node hangs in
+  # ContainerCreating -> deploy stuck DEPLOYING forever); not repeating that
+  # here. persistence.enabled is opt-in and off by default (emptyDir) for the
+  # same reason.
+spec:
+  # RWO is fine: only the single seaweedfs replica ever mounts this claim.
+  accessModes:
+    - ReadWriteOnce
+  {{- with .Values.sessionStore.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.sessionStore.persistence.size }}
+{{- end }}

@@ -78,6 +78,13 @@ COPY src/ src/
 COPY examples_registry.yaml examples_registry.yaml
 COPY benchmarking_tools/scaling-perf/ benchmarking_tools/scaling-perf/
 COPY --from=client-builder /client/dist/ client/dist/
+# NGC CLI for in-app session-capture upload. On NVCF the ServiceAccount token isn't
+# mounted and sidecar containers are opaque, so capture + upload run in the app process
+# (see _run_session_capture in server.py); bake the CLI so no runtime download is needed.
+RUN /app/.venv/bin/python -c "import urllib.request; urllib.request.urlretrieve('https://ngc.nvidia.com/downloads/ngccli_linux.zip', '/tmp/ngccli.zip')" \
+ && /app/.venv/bin/python -c "import zipfile; zipfile.ZipFile('/tmp/ngccli.zip').extractall('/app')" \
+ && chmod +x /app/ngc-cli/ngc \
+ && rm -f /tmp/ngccli.zip
 
 EXPOSE 7860
 

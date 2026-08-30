@@ -1,0 +1,23 @@
+{{- if and .Values.sessionCapture.enabled .Values.sessionCapture.persistence.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-session-data
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: session-capture
+  annotations:
+    # Keep captured-but-not-yet-uploaded tarballs across release upgrades / pod restarts.
+    helm.sh/resource-policy: keep
+spec:
+  # RWO is fine: the app + capture sidecars share this claim within a single pod, and the
+  # app Deployment uses strategy Recreate so an upgrade never contends for the volume.
+  accessModes:
+    - ReadWriteOnce
+  {{- with .Values.sessionCapture.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.sessionCapture.persistence.size }}
+{{- end }}

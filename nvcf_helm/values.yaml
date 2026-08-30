@@ -1,0 +1,815 @@
+# =============================================================================
+# Nemotron Voice Agent — Helm Values
+# =============================================================================
+#
+# Quick start (NVCF / WebSocket deployment):
+#   1. Create the NGC registry pull secret:
+#        kubectl create secret docker-registry ngc-registry \
+#          --docker-server=nvcr.io \
+#          --docker-username='$oauthtoken' \
+#          --docker-password=<NGC_API_KEY>
+#   2. Create the NVIDIA API key secret:
+#        kubectl create secret generic nvidia-api-key \
+#          --from-literal=NVIDIA_API_KEY=nvapi-...
+#   3. Install:
+#        helm install voice-agent ./helm/nemotron-voice-agent \
+#          --set ngcImagePullSecretName=ngc-registry \
+#          --set app.existingSecret=nvidia-api-key
+#
+# Image paths are constructed as:
+#   {ngcImageRegistry}/{ngcImageRegistryPath}/{*Image.name}:{*Image.tag}
+#
+# Service connectivity (K8s Service names are fixed to match services.local.yaml):
+#   LLM -> "nvidia-llm"                      (port 8000 HTTP)
+#   TTS -> "tts-service"                     (port 50051 gRPC, 9000 HTTP health)
+#   ASR -> "nemotron-asr-streaming-english"  (port 50052 gRPC, 9001 HTTP health)
+# =============================================================================
+
+# -- NGC registry coordinates (used to build every image reference)
+ngcImageRegistry: "nvcr.io"
+ngcImageRegistryPath: "0491162300748285"
+
+# -- NGC registry pull secret (must be a pre-existing docker-registry Secret).
+# Leave empty if cluster nodes already have credentials baked in.
+# On NVCF this is injected by the pipeline at deploy time.
+ngcImagePullSecretName: ""
+
+# -- Have the chart CREATE its own nvcr.io pull secret from an NGC key.
+# Use when the platform-injected pull secret can't read ngcImageRegistryPath
+# (e.g. NVCF's NGC_API_KEY is an nvapi- key with no registry access -> 403).
+# The key must have pull access to ngcImageRegistryPath. NOTE: it is passed as a
+# Helm value, so it is only as protected as your deploy config — prefer fixing
+# the function's NGC_API_KEY secret when you can.
+imagePullSecret:
+  create: false
+  ngcApiKey: ""
+
+# -- Set true when deploying on NVCF.
+# NVCF injects function secrets as a JSON file at /var/secrets/secrets.json
+# (not env vars). The app and each NIM read NVIDIA_API_KEY from it at startup,
+# so no K8s Secret objects / secretKeyRef blocks are used. NIM model-weight
+# downloads authenticate with that same key (it must have NGC model-download
+# permissions). Set false for on-prem and use nim.existingSecret / app.existingSecret.
+nvcf: true
+
+# Staging: NIM pods report Ready as soon as their container runs (probes swapped) so NVCF marks
+# the function ACTIVE without waiting for the ~15-20 min model-load/TRT-build. NIMs warm async.
+# Leave false for prod (full readiness gating).
+nimReadyImmediate: true
+
+nameOverride: ""
+fullnameOverride: ""
+
+# =============================================================================
+# App image — nemotron-voice-agent FastAPI server
+# =============================================================================
+appImage:
+  name: "nemotron-voice-agent"
+  tag: "2.0.51"
+  pullPolicy: IfNotPresent
+
+# =============================================================================
+# LLM NIM image — Nemotron-3-Nano
+# =============================================================================
+llmImage:
+  name: "nemotron-3-nano"
+  tag: "2.0.5"
+  pullPolicy: IfNotPresent
+
+# =============================================================================
+# TTS NIM image — Magpie TTS Multilingual
+# =============================================================================
+ttsImage:
+  name: "magpie-tts-multilingual"
+  tag: "1.8.0"
+  pullPolicy: IfNotPresent
+
+# =============================================================================
+# ASR NIM image — Nemotron ASR Streaming
+# =============================================================================
+asrImage:
+  name: "nemotron-asr-streaming"
+  tag: "1.2.0"
+  pullPolicy: IfNotPresent
+
+# =============================================================================
+# Extra NIM images for the additional examples (multilingual / omni / FBA).
+# =============================================================================
+# Super 120B LLM (multilingual-assistant default LLM) — mirrored under the org path.
+llmSuperImage:
+  # Sourced from the PUBLIC NGC NIM catalog (nvcr.io/nim/...) — the org registry
+  # (0491162300748285) has no Super mirror. Full `repository` like chatterboxImage;
+  # the NVCF pull secret must have nvcr.io/nim catalog read access (same as Chatterbox).
+  repository: "nvcr.io/nim/nvidia/nemotron-3-super-120b-a12b"
+  tag: "2.0.5"
+  pullPolicy: IfNotPresent
+
+# Nemotron 3.5 Lightning 30B-A3B — the Generic Frontend/Backend Talker LLM. Same
+# PUBLIC NGC NIM catalog pattern as Super/Chatterbox (full `repository`). 30B-A3B fits on
+# ONE GPU (tp=1); chosen for markedly better tool-calling reliability than Super-120B (see
+# tests/model_eval/). NVCF pull secret needs nvcr.io/nim catalog read (same as Super).
+llmLightningImage:
+  # SELF-CONTAINED copy in the ORG registry. The org isn't NGC-subscribed to the newer
+  # nemotron-3.5-lightning NIM, so NVCF's pull secret 403s the public nvcr.io/nim/nvidia image
+  # (unlike Super/Chatterbox, which the org IS subscribed to and pulls directly). A plain
+  # docker tag+push mirror did NOT fix it — push cross-repo-MOUNTS the layer blobs from
+  # nim/nvidia (still subscription-gated). This repo was made with `docker save` -> `skopeo
+  # copy docker-archive:… docker://…`, which uploads every blob NATIVELY into our registry
+  # (no mount) -> pullable by NVCF like omni/app/nginx.
+  repository: "nvcr.io/nim/nvidia/nemotron-3.5-lightning-30b-a3b"
+  tag: "2.0.9-variant"
+  pullPolicy: IfNotPresent
+
+# Parakeet 1.1B RNNT Multilingual ASR (multilingual-assistant default ASR).
+parakeetImage:
+  name: "parakeet-1-1b-rnnt-multilingual"
+  tag: "1.5.0"
+  pullPolicy: IfNotPresent
+
+# Nemotron Omni multimodal LLM served via vLLM (omni-assistant + subagents).
+# Pre-baked, OpenShift-hardened image (docker/Dockerfile.omni): vllm[audio] baked
+# in, caches in writable/traversable paths, non-root. Built from the mirrored
+# upstream docker.io/vllm/vllm-openai:v0.20.0-cu130.
+omniImage:
+  repository: "nvcr.io/0491162300748285/vllm-omni"
+  tag: "v0.20.0-cu130-r2"
+  pullPolicy: IfNotPresent
+
+# Chatterbox TTS Multilingual NIM (a second, swappable voice in the builder).
+# Pulled from the public NGC NIM catalog path (nvcr.io/nim/...), so it uses a
+# full `repository` like omniImage rather than the org-path image helper. The
+# NGC pull secret must have catalog read access to nvcr.io/nim.
+chatterboxImage:
+  repository: "nvcr.io/nim/nvidia/chatterbox-tts-multilingual"
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+# =============================================================================
+# App — runtime configuration
+# =============================================================================
+app:
+  replicas: 5   # Replica-safe topology: Redis shares live session/media state and
+                # SeaweedFS shares capture artifacts. The NVCF-incompatible router
+                # stays disabled; ordinary Service load balancing can target any pod.
+
+  # Deployment platform → which section of services.local.yaml the app reads.
+  # "workstation" points LLM/ASR/TTS at the in-cluster NIM Services deployed by
+  # this chart (nvidia-llm:8000, tts-service:50051, nemotron-asr-streaming-english:50052).
+  platform: workstation
+
+  # Which example pipeline to expose.
+  # Options: all | generic-frontend-backend-agent | generic-assistant |
+  #          multilingual-assistant | omni-assistant | omni-assistant-subagents |
+  #          frontend-backend-agent
+  # "all" exposes the UI example selector; each example only becomes selectable
+  # when the services its defaults point to are reachable (see the llm/tts/asr/
+  # llmSuper/omni/asrParakeet/booking blocks below). 7-GPU full-coverage config.
+  example: all
+
+  # Omni-only: blank each example's cloud service catalog so the app NEVER falls
+  # back to a hosted LLM (integrate.api.nvidia.com / inference-api.nvidia.com).
+  # Only the in-cluster self-hosted Omni is used; examples whose LLM isn't
+  # self-hosted (generic/multilingual/frontend-backend) become unreachable and
+  # drop out of the selector, leaving the Omni examples.
+  disableCloudServices: true
+  cloudCatalogDirs:
+    - generic
+    - multilingual
+    - omni_assistant
+    - omni_assistant_subagents
+    - frontend_backend_agent
+
+  # Transport to expose. "websocket" is the working NVCF transport: the nvcf-ui
+  # proxy routes /api/ws to the grpc.nvcf.nvidia.com streaming gateway (the
+  # per-function invocation URL strips WebSocket upgrades). WebRTC media ports
+  # aren't reachable through NVCF, so don't use "webrtc"/"" for NVCF.
+  # Options: "" (all) | webrtc | websocket
+  transport: "websocket"
+
+  # Set false when TLS is terminated at the ingress/load-balancer.
+  tls: false
+
+  # HTTP port the FastAPI server listens on inside the container.
+  port: 7860
+
+  # Pre-existing K8s Secret holding NVIDIA_API_KEY (used by the app).
+  # On NVCF this is the pipeline-injected scoped key (image-pull only).
+  existingSecret: "nvidia-api-key"
+  existingSecretKey: "NVIDIA_API_KEY"
+
+  # --------------------------------------------------------------------------
+  # Optional pipeline tuning (leave empty to use in-code defaults)
+  # --------------------------------------------------------------------------
+  idleTimeoutSecs: ""
+  prewarmTimeoutSecs: ""
+  uvicornWorkers: ""
+  chatHistoryRecentTurns: ""
+  # Speak the trusted, Python-grounded response_text directly and suppress a
+  # second Talker inference. This keeps every successful backend result to one
+  # spoken completion and prevents repeated delegation after an async result.
+  frontendBackendDirectToolResponse: true
+  # Built-in reviewed pronunciation registry. The app extracts IPA for Magpie
+  # requests and suppresses the dictionary for unsupported models such as
+  # Chatterbox. The file is packaged under src/ in the immutable app image.
+  ttsPronunciationPath: "src/examples/shared/pronunciation_registry.yaml"
+
+  # Omni Thinker subagent output-token cap. Code default (16384) equals the omni
+  # model's served context (omni.maxModelLen), leaving no room for the prompt →
+  # vLLM 400 "maximum context length ... you requested N output tokens". Cap it so
+  # output + prompt fits: 8192 leaves ~8k tokens (~32k chars) of input headroom.
+  thinkerMaxTokens: "8192"
+  audioOut10msChunks: ""
+  useSileroVadTurnDetection: ""
+  sileroVadStopSecs: ""
+
+  # --------------------------------------------------------------------------
+  # OpenTelemetry tracing (requires tracing.enabled=true for Phoenix sidecar)
+  # --------------------------------------------------------------------------
+  otel:
+    enabled: false  # NVCF: no Phoenix collector deployed, so don't export (avoids errors)
+    endpoint: "phoenix:4317"
+    consoleExport: false
+
+  service:
+    type: ClusterIP
+    port: 7860
+    nodePort: ""
+
+  resources: {}
+  # limits:
+  #   cpu: "4"
+  #   memory: 8Gi
+  # requests:
+  #   cpu: "2"
+  #   memory: 4Gi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# NIM shared — API key secret for model-weight download (NGC_API_KEY).
+#
+# On NVCF the app's NVIDIA_API_KEY is pipeline-injected and image-pull scoped
+# only. NIMs need a broader key that has NGC model-download permissions.
+# Create a separate secret and point nim.existingSecret at it:
+#
+#   kubectl create secret generic nim-ngc-key \
+#     --from-literal=NGC_API_KEY=nvapi-...
+#
+# For on-prem deployments where one key covers everything, leave these
+# pointing at the same secret as app.existingSecret.
+# =============================================================================
+nim:
+  existingSecret: "nvidia-api-key"
+  existingSecretKey: "NGC_API_KEY"
+
+# =============================================================================
+# LLM NIM — Nemotron-3-Nano runtime configuration
+# =============================================================================
+llm:
+  enabled: false   # nano off for staging: generic offers Lightning + Super (llmLightning/llmSuper)
+
+  # NIM model selection tag. Use "precision=fp8,tp=2" for dual-GPU.
+  nimTagsSelector: "precision=fp8,tp=1"
+  nimKvCachePercent: "0.6"
+  nimMaxModelLen: "32768"
+  nimMaxNumSeqs: "256"
+
+  # GPU device index(es) visible to this container.
+  gpuDevices: "0"
+
+  # /dev/shm size for shared memory between CPU and GPU workers.
+  shmSize: 16Gi
+
+  # Model weights cache at /opt/nim/.cache.
+  cache:
+    nvcf: true    # true = emptyDir (no PVC); false = PersistentVolumeClaim
+    size: 200Gi   # emptyDir sizeLimit / PVC request (fp8 checkpoints)
+
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+  # requests:
+  #   nvidia.com/gpu: 1
+  #   cpu: "8"
+  #   memory: 64Gi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# TTS NIM — Magpie TTS Multilingual runtime configuration
+# =============================================================================
+tts:
+  enabled: true
+
+  # NIM model selection tag. Use batch_size=64 for high-throughput profiles.
+  nimTagsSelector: "name=magpie-tts-multilingual,batch_size=8"
+
+  gpuDevices: "0"
+  shmSize: 16Gi
+
+  cache:
+    nvcf: true    # 0.1.77: emptyDir (was oci-bv PVC). The RWO block PVC is zone/node-
+                   # locked, so on a fresh node it hangs the pod in ContainerCreating
+                   # (cross-AZ attach) -> deploy stuck DEPLOYING forever. nimReadyImmediate
+                   # already relaxed the deadline these PVCs were meant to beat, so redownload.
+    size: 50Gi
+    storageClass: oci-bv
+
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+  # requests:
+  #   nvidia.com/gpu: 1
+  #   cpu: "4"
+  #   memory: 32Gi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# Chatterbox TTS NIM — a second, swappable voice for the pipeline builder.
+# Service name fixed to "chatterbox-tts-service" (matches the catalog entry
+# chatterbox-tts under workstation.tts in services.local.yaml). 1 GPU.
+# Assumes the NIM exposes the Riva TTS gRPC API on 50051 (like Magpie), so it
+# drops in as another NvidiaTTSService endpoint with no pipeline code change.
+# =============================================================================
+chatterboxTts:
+  enabled: true     # Production full-model topology: Magpie + Chatterbox are both
+                    # deployed and selectable in Generic and Omni.
+  # NIM profile selector. Leave "" if the Chatterbox NIM has a single profile;
+  # set once the correct tag string is confirmed against the NIM's model manifest.
+  nimTagsSelector: ""
+  gpuDevices: "0"
+  shmSize: 16Gi
+  cache:
+    nvcf: true    # 0.1.77: emptyDir (was oci-bv PVC). The RWO block PVC is zone/node-
+                   # locked, so on a fresh node it hangs the pod in ContainerCreating
+                   # (cross-AZ attach) -> deploy stuck DEPLOYING forever. nimReadyImmediate
+                   # already relaxed the deadline these PVCs were meant to beat, so redownload.
+    size: 50Gi
+    storageClass: oci-bv
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# ASR NIM — Nemotron ASR Streaming runtime configuration
+# =============================================================================
+asr:
+  enabled: true    # all-local demo: streaming EN ASR for generic-assistant
+
+  # NIM model selection tag.
+  # English:      "type=en-US,mode=str"
+  # Multilingual: "type=multi,mode=str"
+  nimTagsSelector: "type=en-US,mode=str"
+
+  gpuDevices: "0"
+  shmSize: 8Gi
+
+  cache:
+    nvcf: true    # 0.1.77: emptyDir (was oci-bv PVC). The RWO block PVC is zone/node-
+                   # locked, so on a fresh node it hangs the pod in ContainerCreating
+                   # (cross-AZ attach) -> deploy stuck DEPLOYING forever. nimReadyImmediate
+                   # already relaxed the deadline these PVCs were meant to beat, so redownload.
+    size: 50Gi
+    storageClass: oci-bv
+
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+  # requests:
+  #   nvidia.com/gpu: 1
+  #   cpu: "4"
+  #   memory: 16Gi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# Super LLM NIM — Nemotron-3-Super 120B A12B (multilingual-assistant default)
+# Service name fixed to "nemotron-3-super" (matches services.local.yaml). 2 GPUs.
+# =============================================================================
+llmSuper:
+  enabled: true    # Production full-model topology: Super uses 2 GPUs; combined with
+                   # Lightning, Omni, ASR, Magpie, and Chatterbox this requests 7 of 8 H100s.
+  nimTagsSelector: "precision=fp8,tp=2"
+  # Viking-proven tunings — chart default 32768/256 KV-cache-OOM crash-loops on H100.
+  nimKvCachePercent: "0.85"
+  nimMaxModelLen: "8192"
+  nimMaxNumSeqs: "128"
+  # Two GPUs for tp=2. Container-local indices.
+  gpuDevices: "0,1"
+  shmSize: 16Gi
+  cache:
+    nvcf: true
+    size: 300Gi
+  resources:
+    limits:
+      nvidia.com/gpu: 2
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# Lightning LLM NIM — Nemotron 3.5 Lightning 30B-A3B. Service "nemotron-lightning".
+# The generic-assistant LLM (replaces Super) — one GPU (tp=1), stronger tool-calling.
+# =============================================================================
+llmLightning:
+  enabled: true    # staging: Lightning is the generic default LLM (verified deployable, 1 GPU)
+  nimTagsSelector: "precision=fp8,tp=1"   # 30B-A3B → single GPU
+  nimKvCachePercent: "0.85"
+  nimMaxModelLen: "8192"
+  nimMaxNumSeqs: "128"
+  gpuDevices: "0"
+  # 0.1.78: do NOT hardcode NVIDIA_VISIBLE_DEVICES on NVCF multi-GPU nodes — let the
+  # device plugin inject the pod's ALLOCATED gpu. Hardcoding "0" is suspected in the
+  # Lightning crash-loop (points the container at the wrong physical GPU). Super uses the
+  # identical template but the healthy NIMs tolerate "0"; Lightning is the crash-looper,
+  # so eliminate this variable. Set true only to restore the old pin behavior.
+  pinVisibleDevices: false
+  # 0.1.79: run Lightning as a VANILLA NIM — no NIM_PASSTHROUGH_ARGS / NIM_TAGS_SELECTOR /
+  # KV / model-len overrides (let the container use its own defaults), and use REAL
+  # /v1/health/ready startup+readiness+liveness probes (so NVCF only reports ACTIVE when
+  # Lightning is genuinely serving — no more nimReadyImmediate masking the crash-loop).
+  vanilla: true
+  shmSize: 16Gi
+  cache:
+    nvcf: true    # 0.1.77: emptyDir (was oci-bv PVC). The RWO block PVC is zone/node-
+                   # locked, so on a fresh node it hangs the pod in ContainerCreating
+                   # (cross-AZ attach) -> deploy stuck DEPLOYING forever. nimReadyImmediate
+                   # already relaxed the deadline these PVCs were meant to beat, so redownload.
+    size: 200Gi
+    storageClass: oci-bv
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# Omni LLM (vLLM) — Nemotron-3-Nano-Omni 30B (omni-assistant + subagents)
+# Service name fixed to "nvidia-llm-vllm-omni" on port 8002. 1 GPU.
+# Served by `vllm serve` (not a NIM). Weights pull from HF at startup.
+# =============================================================================
+omni:
+  enabled: true
+  # Repository/checkpoint used to load the model weights.
+  model: "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4"
+  # Stable OpenAI API model ID advertised by vLLM. Keep this aligned with the
+  # self-hosted Omni service catalogs; clients send this value in requests.
+  servedModelName: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+  port: 8002
+  vllmVersion: "0.20.0"
+  # Dedicated H100 (80GB) on NVCF — 0.3 (~24GB) OOMs a 30B model + 32k KV.
+  # The compose default was 0.3 only because it shared a GPU.
+  gpuMemoryUtilization: "0.85"
+  maxModelLen: "16384"
+  maxNumSeqs: "4"
+  # Skip CUDA graph capture — it allocates a large block AFTER weight load and
+  # is the most common cause of a vLLM crash at the end of init. Eager is a bit
+  # slower but starts reliably; flip false once the deployment is stable.
+  enforceEager: true
+  gpuDevices: "0"
+  shmSize: 16Gi
+  cache:
+    nvcf: true
+    size: 200Gi
+  resources:
+    # Loading a 30B checkpoint spikes host RAM; without a floor the pod can be
+    # OOMKilled mid-load (SIGKILL, no traceback). Request enough and cap high.
+    requests:
+      cpu: "4"
+      memory: 48Gi
+    limits:
+      nvidia.com/gpu: 1
+      memory: 160Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# Parakeet RNNT Multilingual ASR NIM (multilingual-assistant default ASR)
+# Service name fixed to "parakeet-rnnt-asr" (grpc 50052). 1 GPU.
+# =============================================================================
+asrParakeet:
+  enabled: false   # staging GPU budget: English ASR (riva) only; Parakeet off to fit 7/8 H100
+  nimTagsSelector: "mode=str,vad=silero"
+  gpuDevices: "0"
+  shmSize: 8Gi
+  cache:
+    nvcf: true
+    size: 50Gi
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# Booking server — airline backend for frontend-backend-agent (CPU only).
+# Runs the app image with a different command. Service "booking-server":8001.
+# =============================================================================
+booking:
+  enabled: false   # omni-only config: frontend-backend-agent (needs nano) disabled
+  # SQLite-backed booking DB path inside the container.
+  dbPath: "/app/data/bookings.db"
+  # Persistent data volume (emptyDir on NVCF, PVC otherwise via cache.nvcf).
+  cache:
+    nvcf: true
+    size: 1Gi
+  resources:
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# TURN server — coturn (optional, only needed for WebRTC through NAT/firewall)
+# Disable when using WebSocket transport.
+# =============================================================================
+turn:
+  enabled: false
+  image:
+    repository: instrumentisto/coturn
+    tag: "4"
+    pullPolicy: IfNotPresent
+  username: admin
+  password: admin
+  minPort: 49160
+  maxPort: 49200
+  service:
+    type: NodePort
+    signalingPort: 3478
+
+# =============================================================================
+# Phoenix — OpenTelemetry trace collector (optional)
+# =============================================================================
+# =============================================================================
+# Prewarmer — a tiny pod that warms every enabled NIM DIRECTLY (LLM generate path via
+# HTTP; ASR + TTS via Riva gRPC through the app's bundled client) before the first real
+# user connects, then keep-alives them. It NEVER calls the app: the previous version
+# POSTed /api/session-config in a loop and starved the app's single uvicorn worker on
+# NVCF. Chart-only (no app source changes); reuses the app image. See
+# templates/deployment-prewarmer.yaml.
+# =============================================================================
+prewarm:
+  enabled: true
+  retrySecs: 15            # while a NIM is still warming its warm call fails — retry
+  keepAliveSecs: 300       # re-warm every 5 min so nothing re-cold-starts
+  nodeSelector: {}
+  tolerations: []
+
+  # --- LLM generate-path warming (DIRECT to each LLM NIM) ------------------
+  # One tiny /v1/chat/completions to each enabled LLM pays vLLM's one-time
+  # first-token cost (CUDA-graph capture / lazy compile). Measured cold ~36s (Nano)
+  # / ~50s (Omni) TTFB — which otherwise makes the FIRST user's welcome hang. The
+  # keep-alive loop keeps the graphs hot. Each target is warmed ONLY when its NIM
+  # (llm / llmLightning / llmSuper / omni) is enabled. Endpoints are the standard in-cluster
+  # service names/ports; no auth is required in-cluster (verified).
+  llm:
+    enabled: true
+    warmPrompt: "Hello."
+    maxTokens: 8
+    requestTimeoutSecs: 120   # a cold first token can take ~40-50s (Super / Omni)
+    nano:
+      baseUrl: http://nvidia-llm:8000/v1
+      model: nvidia/nemotron-3-nano
+    lightning:
+      baseUrl: http://nemotron-lightning:8000/v1
+      model: nvidia/nemotron-3.5-lightning
+    super:
+      baseUrl: http://nemotron-3-super:8000/v1
+      model: nvidia/nemotron-3-super-120b-a12b
+    omni:
+      baseUrl: http://nvidia-llm-vllm-omni:8002/v1
+      # Omni's Speaker generates with response_format={"type":"json_object"} (guided/
+      # constrained decoding — see speaker/agent.py). vLLM compiles the JSON grammar/FSM on
+      # FIRST use, a one-time multi-second cost the plain-text warm never triggers — which is
+      # why the first omni WELCOME cold-started ~25s even with the prewarmer. Warm omni with
+      # the SAME json_object mode so that grammar is compiled up front, and a few more tokens
+      # so the decode path is exercised too.
+      jsonMode: true
+      warmPrompt: Reply with a small JSON object that has a turn_action field and a response field.
+      maxTokens: 48
+
+  # --- Riva gRPC NIM warming (DIRECT, via the app's bundled client) --------
+  # ASR + both TTS speak Riva gRPC (not curl-able), so the prewarmer runs the app's
+  # own warm helpers (examples.shared.prewarm) against each NIM server directly. This
+  # is the key fix: the old prewarmer POSTed /api/session-config to warm TTS, which on
+  # NVCF starved the single uvicorn worker. Warming the NIMs directly never touches the
+  # app. Each target is warmed ONLY when its NIM (asr / tts / chatterboxTts) is enabled.
+  grpc:
+    enabled: true
+    asr:
+      server: nemotron-asr-streaming-english:50052
+      model: cache-aware-parakeet-rnnt-multi-asr-streaming-sortformer
+    magpie:
+      server: tts-service:50051
+      voice: Magpie-Multilingual.EN-US.Aria
+      model: magpie-tts-multilingual
+    chatterbox:
+      server: chatterbox-tts-service:50051
+      voice: Chatterbox-Multilingual.en-US.Male
+      model: chatterbox-tts-multilingual
+
+# =============================================================================
+# Session capture — per-session log + ASR/TTS audio + transcript -> tarball -> NGC.
+# Capture + upload run IN THE APP PROCESS (see _run_session_capture in server.py), NOT
+# sidecars: NVCF doesn't mount the ServiceAccount token and its sidecar containers are
+# opaque, so the app — which already shares the PVC — assembles the tarball on session
+# end (POST /api/session-capture) and uploads it via the ngc CLI baked into the image.
+# `session-data` is a persistent oci-bv PVC (survives pod restarts); set
+# persistence.enabled=false to fall back to an ephemeral emptyDir. See
+# pvc-session-capture.yaml. OPT-IN (default off).
+# =============================================================================
+sessionCapture:
+  enabled: true
+  # Persistent storage for captured tarballs. enabled=true -> a PVC (survives pod
+  # restarts; needed on NVCF where the old emptyDir was stripped). storageClass oci-bv is
+  # OCI Block Volume (RWO — fine, the app + sidecars share it in one pod).
+  persistence:
+    enabled: false  # 0.1.77: emptyDir, NOT the kept oci-bv PVC. A kept RWO block PVC is
+                    # zone-locked; on a fresh-AZ node the APP pod hangs in ContainerCreating
+                    # waiting to attach it -> deploy stuck DEPLOYING forever. Capture upload
+                    # is in-process on session-end (ngc CLI), so PVC persistence isn't required.
+    size: 10Gi
+    storageClass: "oci-bv"  # "" -> cluster default class
+  emptyDirSizeLimit: 5Gi  # only used when persistence.enabled=false; freed on pod restart
+  requireConsent: true    # true = store only sessions the user consented to (consent
+                          # arrives via the app's /api/session-capture, works on NVCF too);
+                          # false = store every session regardless of consent
+  uploadIntervalSecs: 60
+  # NEVER hardcode an org here — supply both via a values override / --set at deploy
+  # time (e.g. --set sessionCapture.ngcOrg=<org>). Either blank -> upload disabled
+  # (session_capture still writes consent/transcript/log locally; see
+  # src/session_capture/settings.py, which reads SESSION_CAPTURE_NGC = "<org>/<resource>").
+  ngcOrg: ""
+  ngcResource: session-captures
+  # Off-NVCF the uploader reads the NGC key from this k8s secret; on NVCF (.Values.nvcf)
+  # it reads it from /var/secrets/secrets.json instead.
+  ngcSecret: ""           # "" -> falls back to nim.existingSecret
+  ngcSecretKey: ""        # "" -> falls back to nim.existingSecretKey
+  # Set to have the uploader stage the ngc CLI into the emptyDir on startup (required for
+  # upload; re-staged each pod start since emptyDir is ephemeral). Empty -> uploader waits.
+  ngcCliUrl: "https://ngc.nvidia.com/downloads/ngccli_linux.zip"
+
+# =============================================================================
+# Redis session bus (src/session_bus/) — shared webcam/attachment/session-config state
+# across app replicas, so any pod can serve any session's media instead of requiring
+# session-affinity routing or a co-mounted PVC (neither works reliably on NVCF: the
+# session-affinity router requires a StatefulSet, which NVCF rejects; a shared PVC needs
+# an RWX/co-mountable volume, and NVCF's oci-bv is zone-locked RWO). Plain Deployment +
+# ClusterIP Service, ephemeral in-memory only (no PVC, no GPU) — sessions are short-lived,
+# so nothing needs durable storage. Disabled by default: the app falls back to its
+# pre-existing in-memory, single-worker behavior when redis.enabled is false.
+# =============================================================================
+redis:
+  enabled: true
+  # This is a Bitnami redis image (non-root uid 1001, custom /opt/bitnami/scripts
+  # entrypoint) -- NOT the plain Docker Hub image docker-compose uses. Configure it via
+  # its own env vars (below), never a command/args override (bypasses the entrypoint
+  # that sets up bitnami's runtime dirs -- verified: overriding command breaks startup).
+  image: "nvcr.io/0491162300748285/redis:7.2.4-debian-12-r12"
+  pullPolicy: IfNotPresent
+  client:
+    # XREAD blocks for blockMilliseconds. The socket timeout must remain
+    # comfortably larger so normal idle listeners do not look disconnected.
+    socketTimeoutSeconds: 15
+    blockMilliseconds: 5000
+    ttlSeconds: 3600
+  maxmemory: "256mb"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 320Mi
+
+# =============================================================================
+# session_store (src/session_store/) — shared object storage for session-capture
+# artifacts (log, ASR/TTS audio, transcript) across app replicas. This is the piece
+# that makes sessionCapture actually replica-safe: the pipeline pod and the pod that
+# receives the browser's consent POST can be different pods (see
+# docs/current-deployed-pipeline-architecture.md section 14) -- coordination crosses pods
+# via Redis, but without a SHARED store the finalizing pod can only see artifacts on
+# its OWN disk and silently archives an incomplete (or empty) session while reporting
+# success. Disabled by default: sessionCapture still works at replicas=1 (or with a
+# shared filesystem) using LocalBackend, unchanged from before this existed.
+#
+# SeaweedFS runs as a plain Deployment + ClusterIP Service with emptyDir by default.
+# It does not use a kept PVC by default: a kept RWO oci-bv PVC is
+# zone-locked, and sessionCapture.persistence's own history (0.1.77) shows exactly what
+# that causes here -- a fresh-AZ node hangs the pod in ContainerCreating waiting to
+# attach it, and the whole deploy gets stuck DEPLOYING forever. NGC is the durable
+# archive; this store is only a staging area between session-end and upload, so losing
+# it on a restart costs only in-flight sessions, not archived data.
+# =============================================================================
+sessionStore:
+  enabled: true
+  # Mirrored to nvcr.io -- NVCF/most clusters here cannot pull from Docker Hub (same
+  # requirement as redis.image above). Pin a specific tag; verified working: 4.41.
+  #   docker pull chrislusf/seaweedfs:4.41
+  #   docker tag  chrislusf/seaweedfs:4.41 nvcr.io/<org>/seaweedfs:4.41
+  #   docker push nvcr.io/<org>/seaweedfs:4.41
+  image: "nvcr.io/0491162300748285/seaweedfs:4.41"
+  pullPolicy: IfNotPresent
+  bucket: "nva-session-capture"
+  persistence:
+    enabled: false  # emptyDir by default -- see the block comment above.
+    size: 20Gi
+    storageClass: "oci-bv"  # "" -> cluster default class
+  emptyDirSizeLimit: 20Gi  # only used when persistence.enabled=false; freed on pod restart
+  auth:
+    # "" -> unauthenticated (ClusterIP-only, never exposed outside the cluster network --
+    # same posture as redis.enabled's ALLOW_EMPTY_PASSWORD above). Set to require SigV4
+    # auth; the secret must have keys accessKeyKey/secretKeyKey.
+    existingSecret: ""
+    accessKeyKey: "access-key"
+    secretKeyKey: "secret-key"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+# =============================================================================
+# Web search tool (Perplexity Sonar via the NVIDIA inference gateway), exposed to
+# generic-assistant as the `web_search` tool. The sk-* key is passed to the app as the
+# PERPLEXITY_API_KEY env from a k8s secret — same pattern as the NGC/NVIDIA key.
+# =============================================================================
+webSearch:
+  # k8s secret holding the sk-* key. Empty -> the web_search tool reports "not configured"
+  # (the tool is still advertised; calls just return that error).
+  #   kubectl -n <ns> create secret generic perplexity-api --from-literal=PERPLEXITY_API_KEY=sk-...
+  apiKeySecret: ""
+  apiKeySecretKey: "PERPLEXITY_API_KEY"
+  baseUrl: "https://inference-api.nvidia.com/v1"
+  model: "perplexity/perplexity/sonar"
+
+# =============================================================================
+# get_weather tool — LIVE weather via WeatherAPI (api.weatherapi.com). The key is
+# WEATHERAPI_KEY. On NVCF it's an `--secret WEATHERAPI_KEY:<key>` (arrives in
+# secrets.json, exported by the app entrypoint). Off-NVCF, set apiKeySecret to a k8s
+# secret. Empty everywhere -> get_weather returns a speak-safe "unavailable" (no mock).
+# =============================================================================
+weatherApi:
+  apiKeySecret: ""              # off-NVCF k8s secret holding WEATHERAPI_KEY
+  apiKeySecretKey: "WEATHERAPI_KEY"
+  baseUrl: "https://api.weatherapi.com/v1"
+
+# =============================================================================
+# get_stock_price tool — LIVE quotes via Finnhub (finnhub.io). The key is
+# FINNHUB_API_KEY. On NVCF it's an `--secret FINNHUB_API_KEY:<key>` (arrives in
+# secrets.json, exported by the app entrypoint). Off-NVCF, set apiKeySecret to a k8s
+# secret. Empty everywhere -> get_stock_price returns a speak-safe "unavailable" (no mock).
+# =============================================================================
+stockApi:
+  apiKeySecret: ""              # off-NVCF k8s secret holding FINNHUB_API_KEY
+  apiKeySecretKey: "FINNHUB_API_KEY"
+  baseUrl: "https://finnhub.io/api/v1"
+
+tracing:
+  enabled: false  # NVCF: Phoenix has a 600s default progressDeadline and trips
+                  # ProgressDeadlineExceeded under the 8-NIM weight-pull IO contention
+                  # (all NIMs use 7200s). Non-essential dev observability — off for the demo.
+  image:
+    # Mirrored into the NGC org so it pulls with the org-scoped secret on NVCF
+    # (upstream is docker.io/arizephoenix/phoenix).
+    repository: nvcr.io/0491162300748285/phoenix
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    uiPort: 6006
+    otlpPort: 4317
+
+# =============================================================================
+# Ingress — expose the app WebSocket endpoint externally
+# =============================================================================
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations: {}
+  # nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+  # nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  host: voice-agent.example.com
+  tls: []
+  # - secretName: voice-agent-tls
+  #   hosts:
+  #     - voice-agent.example.com

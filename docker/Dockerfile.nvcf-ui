@@ -1,0 +1,58 @@
+# Builds the React UI from source and serves it via nginx, proxying all
+# /api/* and WebSocket traffic to an NVCF deployment. Self-contained: uses
+# only public base images (no private nvcr.io app image needed), so it builds
+# in CI without registry credentials.
+#
+# Runs non-root on port 7860 so it deploys unchanged on OpenShift/Astra
+# (runAsNonRoot + arbitrary-UID: files are group-0 writable).
+#
+# Build (must be linux/amd64 for Astra's OpenShift nodes):
+#   docker build --platform linux/amd64 -f docker/Dockerfile.nvcf-ui -t nemotron-voice-agent-ui .
+#
+# Run:
+#   docker run --rm -p 7860:7860 \
+#     -e NVCF_HOST=<id>.invocation.api.nvcf.nvidia.com \
+#     -e NVIDIA_API_KEY=nvapi-... \
+#     nemotron-voice-agent-ui
+
+# Stage 1: build the React client bundle from source (astra_client/dist).
+# astra_client is the Astra/NVCF demo UI — the develop client + our demo layer.
+# (The pristine develop UI stays untouched in client/.)
+FROM node:20-alpine AS client-builder
+ARG UI_BUILD_TIMESTAMP=unknown
+ENV UI_BUILD_TIMESTAMP=${UI_BUILD_TIMESTAMP}
+WORKDIR /client
+COPY astra_client/package.json astra_client/package-lock.json ./
+RUN npm ci
+COPY astra_client/ ./
+RUN npm run build
+
+# Stage 2: serve the bundle via non-root nginx and proxy to NVCF.
+# nginx-unprivileged runs as a non-root user by default and keeps its pid in
+# /tmp, satisfying OpenShift's runAsNonRoot admission out of the box.
+FROM nginxinc/nginx-unprivileged:alpine
+
+ARG UI_BUILD_TIMESTAMP=unknown
+ENV UI_BUILD_TIMESTAMP=${UI_BUILD_TIMESTAMP}
+
+USER root
+
+RUN apk add --no-cache gettext
+
+COPY --from=client-builder /client/dist /usr/share/nginx/html
+COPY docker/nginx-nvcf.conf.template /etc/nginx/nginx-nvcf.conf.template
+COPY docker/nginx-local.conf.template /etc/nginx/nginx-local.conf.template
+COPY docker/nvcf-ui-entrypoint.sh /entrypoint.sh
+
+# OpenShift runs the container as an arbitrary UID with GID 0. Make everything
+# the entrypoint writes (rendered conf) and nginx serves group-0 writable so it
+# works regardless of the assigned UID.
+RUN chmod +x /entrypoint.sh \
+    && chgrp -R 0 /etc/nginx /usr/share/nginx/html \
+    && chmod -R g=u /etc/nginx /usr/share/nginx/html
+
+USER 1000
+
+EXPOSE 7860
+
+ENTRYPOINT ["/entrypoint.sh"]
