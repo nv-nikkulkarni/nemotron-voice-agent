@@ -1,0 +1,33 @@
+{
+  "output": "/home/nikkulkarni/workspace/gitlab/nemotron-voice-agent/docs/Nemotron_Voice_Agent_Current_Architecture_Manual.docx",
+  "ssot_sha256": "40923ce9bb445fa12afd22d77de4a6f473d5ddc9a9ba8be85d6656176421ee77",
+  "figures": 9,
+  "checks": {
+    "docx_exists_nonempty": true,
+    "zip_integrity": true,
+    "embedded_media_nonempty": true,
+    "no_credential_shaped_values": true,
+    "has_toc_field": true,
+    "has_page_field": true,
+    "has_alt_text": true,
+    "all_diagrams_valid_2800x1575": true
+  },
+  "limitations": [
+    "LibreOffice/soffice is not installed; no PDF preview or renderer-exact page count was produced. Word will update the TOC and pagination fields when opened."
+  ],
+  "docx_bytes": 1316558,
+  "diagram_bytes": {
+    "01_end_to_end_overview.png": 188643,
+    "02_trust_and_routing.png": 187168,
+    "03_session_request_sequence.png": 99018,
+    "04_generic_pipeline.png": 126857,
+    "05_omni_workers.png": 182609,
+    "06_multi_replica_sharing.png": 164164,
+    "07_session_capture_flow.png": 184974,
+    "08_deployment_promotion.png": 133319,
+    "09_failure_isolation.png": 110597
+  },
+  "embedded_media_count": 10,
+  "minimum_manual_page_count": 27,
+  "all_required_checks_passed": true
+}

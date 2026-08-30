@@ -1,0 +1,89 @@
+# PoC: direct-to-NIM warmup pod. Reuses the app image (bundled curl + Riva client
+# + venv python). Warms each NIM's own server DIRECTLY and NEVER calls the app,
+# so it cannot starve the app's single uvicorn worker (the NVCF failure mode).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nim-warmup-script
+  namespace: voice-agent
+data:
+  warm.sh: |
+    #!/bin/sh
+    set -u
+    KEEPALIVE="${KEEPALIVE:-300}"
+
+    warm_llm() {   # $1=name $2=baseUrl $3=model
+      if curl -sf -m 120 -X POST "$2/chat/completions" \
+        -H 'Content-Type: application/json' \
+        -d "{\"model\":\"$3\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello.\"}],\"max_tokens\":8,\"stream\":false}" \
+        -o /dev/null; then echo "warmup: LLM $1 hot"; else echo "warmup: LLM $1 not ready"; fi
+    }
+
+    warm_all() {
+      warm_llm nano  http://nvidia-llm:8000/v1           nvidia/nemotron-3-nano
+      warm_llm super http://nemotron-3-super:8000/v1     nvidia/nemotron-3-super-120b-a12b
+      warm_llm omni  http://nvidia-llm-vllm-omni:8002/v1 nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4
+      # ASR + TTS are Riva gRPC (not curl-able) — warm via the app's bundled client.
+      cd /app && PYTHONPATH=/app/src /app/.venv/bin/python /scripts/warm_grpc.py
+    }
+
+    echo "nim-warmup: initial pass (direct to each NIM server) ..."
+    warm_all
+    echo "nim-warmup: initial pass done; keep-alive every ${KEEPALIVE}s"
+    while true; do sleep "$KEEPALIVE"; warm_all; done
+  warm_grpc.py: |
+    # Warm the Riva gRPC NIMs (ASR + both TTS) directly, via the app's own client.
+    from examples.shared.prewarm import warmup_tts_synthesis, prewarm_asr
+
+    def one(name, fn):
+        try:
+            print(f"warmup: {name} {'hot' if fn() else 'not ready'}", flush=True)
+        except Exception as e:  # noqa: BLE001
+            print(f"warmup: {name} error {e}", flush=True)
+
+    one("TTS chatterbox", lambda: warmup_tts_synthesis(
+        "chatterbox-tts-service:50051", "Chatterbox-Multilingual.en-US.Male",
+        model="chatterbox-tts-multilingual"))
+    one("TTS magpie", lambda: warmup_tts_synthesis(
+        "tts-service:50051", "Magpie-Multilingual.EN-US.Aria",
+        model="magpie-tts-multilingual"))
+    _a = prewarm_asr("nemotron-asr-streaming-english:50052",
+                     model="cache-aware-parakeet-rnnt-multi-asr-streaming-sortformer")
+    print(f"warmup: ASR {'hot' if not _a.get('error') else 'error ' + _a['error']}", flush=True)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nim-warmup
+  namespace: voice-agent
+  labels: { app.kubernetes.io/component: nim-warmup }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/component: nim-warmup }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: nim-warmup }
+    spec:
+      imagePullSecrets:
+        - name: ngc-secret
+      containers:
+        - name: nim-warmup
+          image: nvcr.io/nim/nvidia/nemotron-voice-agent:demo7
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "/scripts/warm.sh"]
+          env:
+            - name: KEEPALIVE
+              value: "300"
+            - name: NVIDIA_API_KEY
+              valueFrom:
+                secretKeyRef: { name: ngc-api, key: NVIDIA_API_KEY }
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+          resources:
+            requests: { cpu: 10m, memory: 128Mi }
+            limits: { cpu: 250m, memory: 512Mi }
+      volumes:
+        - name: script
+          configMap: { name: nim-warmup-script }

@@ -35,6 +35,9 @@ deployment profiles when changing shared behavior.
   profiles use `<example>`; local profiles use `<example>/<hardware>`.
   Observability profiles such as `tracing` and `turn` are overlays.
 - Load `skills/deploy/SKILL.md` for deployment or startup troubleshooting.
+- Load `skills/operate-nemotron-voice-agent/SKILL.md` for the custom Viking,
+  NVCF, Astra, SQA, Redis, SeaweedFS, session-capture, promotion, rollback,
+  incident, or deployed-project workflow.
 - Load `skills/configure-pipeline/SKILL.md` for changes to `.env`,
   `examples_registry.yaml`, prompts, service catalogs, transports, tracing, or
   audio settings.
