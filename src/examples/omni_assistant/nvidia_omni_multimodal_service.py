@@ -87,6 +87,12 @@ _RESPONSE_OPEN = "<response>"
 _RESPONSE_CLOSE = "</response>"
 
 
+# Smart Turn can occasionally split one sentence at a natural pause. Keep a
+# small, bounded window in which a second speech start can reclaim the unheard
+# first segment before the model emits any user-visible output.
+_AUDIO_CONTINUATION_WINDOW_SECS = 2.0
+
+
 @dataclass
 class NvidiaOmniSettings(NvidiaLLMSettings):
     """Settings for NvidiaOmniLLMService.
@@ -247,6 +253,11 @@ class NvidiaOmniLLMService(NvidiaLLMService):
         self._pending_request: asyncio.Task[None] | None = None
         self._pending_request_is_audio = False
         self._last_user_eou_at: float | None = None
+        self._pending_audio_payload: bytes | None = None
+        self._pending_audio_format: tuple[int, int] | None = None
+        self._pending_audio_eou_at: float | None = None
+        self._pending_audio_output_started = False
+        self._continuation_audio_prefix: tuple[bytes, int, int, float] | None = None
 
         self._active_turn_parts: list[OpenAIContentPart] | None = None
         self._transcript_extractor: _TranscriptResponseExtractor | None = None
@@ -347,14 +358,22 @@ class NvidiaOmniLLMService(NvidiaLLMService):
         await LLMService.process_frame(self, frame, direction)
 
         if isinstance(frame, InterruptionFrame):
+            continuation = None
+            if self._pending_request_is_audio and not self._bot_responding:
+                continuation = self._continuation_prefix_for_new_speech()
+                if continuation is not None:
+                    logger.info(f"{self}: audio_continuation outcome=preserved_on_interruption")
             await self.stop_all_metrics()
             await self._cancel_pending_request()
+            if continuation is not None:
+                self._continuation_audio_prefix = continuation
             self._bot_responding = False
             if not self._user_speaking:
                 self._audio_buffer = []
                 self._pre_speech_buffer = []
         elif isinstance(frame, BotStartedSpeakingFrame):
             self._bot_responding = True
+            self._pending_audio_output_started = True
         elif isinstance(frame, BotStoppedSpeakingFrame):
             self._bot_responding = False
         elif isinstance(frame, LLMContextFrame):
@@ -503,11 +522,14 @@ class NvidiaOmniLLMService(NvidiaLLMService):
         """
         extractor = self._transcript_extractor
         if extractor is None:
+            if text:
+                self._pending_audio_output_started = True
             await super()._push_llm_text(text)
             return
         response_text = extractor.feed(text)
         await self._maybe_emit_transcript(extractor)
         if response_text:
+            self._pending_audio_output_started = True
             await super()._push_llm_text(response_text)
 
     async def _finalize_reasoning_state(self, *, flush_buffered_text: bool) -> None:
@@ -538,13 +560,48 @@ class NvidiaOmniLLMService(NvidiaLLMService):
         """
         if self._user_speaking or not self._modality_enabled("audio"):
             return
+        self._drop_stale_continuation_prefix()
         if self._bot_responding:
             logger.debug(f"{self}: barge-in detected, dropping the turn being generated")
             await self._cancel_pending_request()
             self._bot_responding = False
+        elif self._pending_request_is_audio and self._pending_request and not self._pending_request.done():
+            continuation = self._continuation_prefix_for_new_speech()
+            if continuation is not None:
+                logger.info(
+                    f"{self}: audio_continuation outcome=merge_pending "
+                    f"prefix_secs={len(continuation[0]) / max(continuation[1] * continuation[2] * 2, 1):.2f}"
+                )
+            else:
+                logger.info(f"{self}: audio_continuation outcome=preempt_new_turn")
+            await self.stop_all_metrics()
+            await self._cancel_pending_request()
+            self._continuation_audio_prefix = continuation
         self._user_speaking = True
         self._audio_buffer = list(self._pre_speech_buffer)
         self._pre_speech_buffer = []
+
+    def _continuation_prefix_for_new_speech(self) -> tuple[bytes, int, int, float] | None:
+        """Return unheard in-flight audio when new speech is a likely continuation."""
+        if self._pending_audio_output_started or not self._pending_audio_payload:
+            return None
+        if self._pending_audio_format is None or self._pending_audio_eou_at is None:
+            return None
+        gap_secs = max(time.time() - self._pending_audio_eou_at, 0.0)
+        if gap_secs > _AUDIO_CONTINUATION_WINDOW_SECS:
+            return None
+        sample_rate, channels = self._pending_audio_format
+        return self._pending_audio_payload, sample_rate, channels, self._pending_audio_eou_at
+
+    def _drop_stale_continuation_prefix(self) -> None:
+        """Discard preserved audio if no new speech followed its interruption."""
+        continuation = self._continuation_audio_prefix
+        if continuation is None:
+            return
+        if time.time() - continuation[3] <= _AUDIO_CONTINUATION_WINDOW_SECS:
+            return
+        logger.info(f"{self}: audio_continuation outcome=dropped_stale_prefix")
+        self._continuation_audio_prefix = None
 
     async def _handle_user_stopped(self) -> None:
         """Close the utterance at the end-of-turn boundary and answer it."""
@@ -584,7 +641,24 @@ class NvidiaOmniLLMService(NvidiaLLMService):
         self._audio_buffer = []
         self._pre_speech_buffer = []
         if not audio_payload:
+            self._continuation_audio_prefix = None
             return
+
+        continuation = self._continuation_audio_prefix
+        self._continuation_audio_prefix = None
+        if continuation is not None:
+            prefix, sample_rate, channels, _ = continuation
+            if (sample_rate, channels) == (self._sample_rate, self._channels):
+                audio_payload = prefix + audio_payload
+                logger.info(
+                    f"{self}: audio_continuation outcome=merged "
+                    f"total_secs={len(audio_payload) / max(self._sample_rate * self._channels * 2, 1):.2f}"
+                )
+            else:
+                logger.warning(
+                    f"{self}: audio_continuation outcome=dropped_format_change "
+                    f"from={sample_rate}x{channels} to={self._sample_rate}x{self._channels}"
+                )
 
         bytes_per_second = max(self._sample_rate * self._channels * 2, 1)
         min_secs = float(self._settings.min_user_audio_secs)
@@ -620,13 +694,21 @@ class NvidiaOmniLLMService(NvidiaLLMService):
         )
 
         async def run() -> None:
-            await self._run_turn(
-                context,
-                turn_parts=turn_parts,
-                expect_transcript=expect_transcript,
-                metrics_start_time=eou_at,
-            )
+            try:
+                await self._run_turn(
+                    context,
+                    turn_parts=turn_parts,
+                    expect_transcript=expect_transcript,
+                    metrics_start_time=eou_at,
+                )
+            finally:
+                if self._pending_request is asyncio.current_task():
+                    self._clear_pending_audio_state()
 
+        self._pending_audio_payload = audio_payload
+        self._pending_audio_format = (self._sample_rate, self._channels)
+        self._pending_audio_eou_at = eou_at
+        self._pending_audio_output_started = False
         self._pending_request = self.create_task(run(), name="nvidia-omni-audio-turn")
         self._pending_request_is_audio = True
 
@@ -771,6 +853,7 @@ class NvidiaOmniLLMService(NvidiaLLMService):
         the conversation twice.
         """
         self._answered_transcript = transcript
+        self._pending_audio_output_started = True
         await self.push_frame(
             TranscriptionFrame(
                 text=transcript,
@@ -799,6 +882,43 @@ class NvidiaOmniLLMService(NvidiaLLMService):
         """
         with self._without_active_turn():
             return await super().run_inference(context, max_tokens, system_instruction)
+
+    async def retry_active_audio_inference(
+        self,
+        context: LLMContext,
+        *,
+        correction_instruction: str,
+        max_tokens: int | None = None,
+    ) -> str | None:
+        """Replay the in-flight audio once with an internal correction.
+
+        The same audio and response contract remain attached; the correction only
+        tells the model that its first transcript was empty. This method does not
+        inspect intent, select an action, or mutate conversation history.
+        """
+        if not self.current_turn_has_user_audio():
+            raise ValueError("active audio is required for an audio-turn retry")
+
+        active = self._active_turn_parts
+        self._active_turn_parts = [*(active or ()), text_message_part(correction_instruction)]
+        try:
+            invocation_params = self.get_llm_adapter().get_llm_invocation_params(
+                context,
+                system_instruction=assert_given(self._settings.system_instruction),
+                convert_developer_to_user=not self.supports_developer_role,
+            )
+            request_kwargs = self.build_chat_completion_params(invocation_params)
+            if max_tokens is not None:
+                request_kwargs.pop("max_completion_tokens", None)
+                request_kwargs["max_tokens"] = max_tokens
+            request_kwargs["stream"] = False
+            request_kwargs.pop("stream_options", None)
+            completion = await self._client.chat.completions.create(**request_kwargs)
+            choice = completion.choices[0] if completion.choices else None
+            message = choice.message if choice else None
+            return _extract_text_content(getattr(message, "content", "")).strip() or None
+        finally:
+            self._active_turn_parts = active
 
     def current_turn_has_user_audio(self) -> bool:
         """Whether the request being generated carries the user's speech.
@@ -848,6 +968,15 @@ class NvidiaOmniLLMService(NvidiaLLMService):
         self._bot_responding = False
         self._pending_request_is_audio = False
         self._last_user_eou_at = None
+        self._clear_pending_audio_state()
+        self._continuation_audio_prefix = None
+
+    def _clear_pending_audio_state(self) -> None:
+        """Clear metadata retained only while an audio completion is in flight."""
+        self._pending_audio_payload = None
+        self._pending_audio_format = None
+        self._pending_audio_eou_at = None
+        self._pending_audio_output_started = False
 
     async def _cancel_pending_request(self) -> None:
         """Cancel the turn being generated, if any, and wait for it to unwind."""
@@ -857,6 +986,7 @@ class NvidiaOmniLLMService(NvidiaLLMService):
                 await self._pending_request
         self._pending_request = None
         self._pending_request_is_audio = False
+        self._clear_pending_audio_state()
 
     @staticmethod
     def _validate_settings(settings: Settings) -> None:

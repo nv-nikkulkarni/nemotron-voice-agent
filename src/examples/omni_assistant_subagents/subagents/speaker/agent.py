@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import Any
 
@@ -42,6 +43,21 @@ from utils import parse_env_float, parse_env_int
 
 _CAPTURE_ESCALATION_COOLDOWN = 3
 _ACTION_CORRECTION_MAX_TOKENS = 2048
+_PENDING_ATTACHMENT_CORRECTION_REASON = (
+    "a pending uploaded attachment request cannot use a non-media action; "
+    "re-evaluate the current transcript against the pending upload"
+)
+_EMPTY_AUDIO_TRANSCRIPT_CORRECTION_REASON = "the attached user audio produced an empty transcript"
+_EMPTY_AUDIO_TRANSCRIPT_CORRECTION = (
+    "The previous attempt left transcript empty even though user audio is attached. Listen to the same audio "
+    "again and return one complete JSON action envelope. Transcribe only what the user said, choose the action "
+    "yourself under the existing rules, and do not answer from webcam state or earlier conversation instead."
+)
+_EMPTY_AUDIO_TRANSCRIPT_FALLBACK = "I didn't catch that clearly. Please say it again."
+_ATTACHMENT_REQUEST_WORDS = frozenset({"analyse", "analyze", "describe", "identify", "look", "read", "tell", "what"})
+_ATTACHMENT_REFERENCE_WORDS = frozenset(
+    {"file", "image", "it", "media", "photo", "picture", "sent", "shared", "this", "upload"}
+)
 
 
 class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
@@ -112,6 +128,11 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
             "(your eyes) under the webcam entry, and any uploaded file under the media analyzer entry. "
             "Read them there for this turn and keep the two sources separate."
         )
+        if self._attachment_is_pending():
+            pointer += (
+                " A freshly uploaded file is PENDING analysis. A request to describe, read, identify, look at, "
+                "or analyze it must use turn_action analyze_attachment; never respond, think, or clarify."
+            )
         if not live_view:
             return pointer
         return f"Live view right now: {live_view}.\n\n{pointer}"
@@ -125,6 +146,16 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
         except Exception as exc:
             logger.debug(f"Speaker Omni live view unavailable: {exc}")
             return ""
+
+    def _attachment_is_pending(self) -> bool:
+        """Whether a newly uploaded attachment still needs media analysis."""
+        pending = getattr(self, "_attachment_pending", None)
+        if pending is None:
+            return False
+        try:
+            return bool(pending())
+        except Exception:
+            return True
 
     def _routing_enabled(self) -> bool:
         """Whether this turn offers the media-routing fields (only while an upload is pending).
@@ -210,9 +241,18 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
 
             response_delta = response_field.feed(content)
             if response_delta and not gated and not spoke:
-                gated = normalize_turn_action(action_text) not in TURN_ACTIONS
+                action = normalize_turn_action(action_text)
+                gated = action not in TURN_ACTIONS
                 if gated:
                     logger.info("Speaker Omni withheld streamed text: turn ownership was not declared first")
+                elif self.current_turn_has_user_audio() and transcript_field.done and not transcript_text.strip():
+                    gated = True
+                    logger.warning("Speaker Omni empty_audio_transcript outcome=withheld")
+                elif self._pending_attachment_action_requires_correction(transcript_text.strip(), action):
+                    gated = True
+                    logger.info(
+                        "Speaker Omni withheld streamed text: pending attachment request used a non-media action"
+                    )
             if gated:
                 spoken = ""
             elif stream_released:
@@ -332,6 +372,15 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
             )
         if recovery:
             payload["_action_recovery"] = recovery
+        if self.current_turn_has_user_audio() and not transcript:
+            payload["_action_fallback"] = True
+            payload["_action_recovery"] = _EMPTY_AUDIO_TRANSCRIPT_CORRECTION_REASON
+            response = ""
+        action = normalize_turn_action(payload.get("turn_action"))
+        if self._pending_attachment_action_requires_correction(transcript, action):
+            payload["_action_fallback"] = True
+            payload["_action_recovery"] = _PENDING_ATTACHMENT_CORRECTION_REASON
+            response = ""
         if payload.get("_action_fallback"):
             response = ""
         payload["response"] = response
@@ -341,6 +390,13 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
             raw_content=raw_content,
             payload=payload,
         )
+
+    def _pending_attachment_action_requires_correction(self, transcript: str, action: str) -> bool:
+        """Reject a non-media action for an explicit request about a pending upload."""
+        if action == "analyze_attachment" or not self._attachment_is_pending():
+            return False
+        words = set(re.findall(r"[a-z]+", transcript.lower()))
+        return bool(words & _ATTACHMENT_REQUEST_WORDS) and bool(words & _ATTACHMENT_REFERENCE_WORDS)
 
     def _is_missing_uploaded_attachment_route(self, selected_input_source: str, media_action: str) -> bool:
         if selected_input_source == "live_webcam":
@@ -360,14 +416,57 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
         if not result.payload.get("_action_fallback"):
             await self._handle_turn_result(result)
             return result
-        corrected = await self._attempt_action_correction(result)
+        recovery_reason = str(result.payload.get("_action_recovery", "invalid envelope"))
+        if recovery_reason == _EMPTY_AUDIO_TRANSCRIPT_CORRECTION_REASON:
+            corrected = await self._attempt_empty_audio_transcript_retry(result)
+        else:
+            corrected = await self._attempt_action_correction(result)
         if corrected is not None:
             await self._handle_turn_result(corrected, track_response=True)
             return corrected
-        logger.warning(
-            f"Speaker Omni action correction failed; falling back to Thinker: "
-            f"reason={result.payload.get('_action_recovery', 'invalid envelope')!r}"
-        )
+        if recovery_reason == _EMPTY_AUDIO_TRANSCRIPT_CORRECTION_REASON:
+            logger.warning("Speaker Omni empty_audio_transcript outcome=terminal_fallback")
+            response = _EMPTY_AUDIO_TRANSCRIPT_FALLBACK
+            fallback_payload = dict(result.payload)
+            fallback_payload.update(
+                turn_action="clarify",
+                response=response,
+                selected_input_source="none",
+                media_analysis_action="none",
+                media_analysis_prompt="",
+                highres_query="",
+                _action_fallback=False,
+            )
+            fallback = SpeakerTurnResult(
+                transcript="",
+                response=response,
+                raw_content=result.raw_content,
+                payload=fallback_payload,
+            )
+            await self._handle_turn_result(fallback, track_response=False)
+            return fallback
+        if recovery_reason == _PENDING_ATTACHMENT_CORRECTION_REASON:
+            logger.warning("Speaker Omni pending-attachment correction failed closed without Thinker escalation")
+            response = "I could not start the uploaded-file analysis. Please ask me to analyze that file again."
+            fallback_payload = dict(result.payload)
+            fallback_payload.update(
+                turn_action="clarify",
+                response=response,
+                selected_input_source="none",
+                media_analysis_action="none",
+                media_analysis_prompt="",
+                highres_query="",
+                _action_fallback=False,
+            )
+            fallback = SpeakerTurnResult(
+                transcript=result.transcript,
+                response=response,
+                raw_content=result.raw_content,
+                payload=fallback_payload,
+            )
+            await self._handle_turn_result(fallback, track_response=False)
+            return fallback
+        logger.warning(f"Speaker Omni action correction failed; falling back to Thinker: reason={recovery_reason!r}")
         fallback_payload = dict(result.payload)
         fallback_payload["_action_fallback"] = False
         fallback_payload["response"] = ACTION_FALLBACK_RESPONSE
@@ -379,6 +478,38 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
         )
         await self._handle_turn_result(fallback, track_response=False)
         return fallback
+
+    async def _attempt_empty_audio_transcript_retry(self, result: SpeakerTurnResult) -> SpeakerTurnResult | None:
+        """Replay the same audio once when Omni returned no user transcript."""
+        if self._context is None:
+            logger.warning("Speaker Omni empty_audio_transcript outcome=retry_unavailable_no_context")
+            return None
+        logger.warning("Speaker Omni empty_audio_transcript outcome=retry")
+        try:
+            raw_correction = await self.retry_active_audio_inference(
+                self._context,
+                correction_instruction=_EMPTY_AUDIO_TRANSCRIPT_CORRECTION,
+                max_tokens=_ACTION_CORRECTION_MAX_TOKENS,
+            )
+        except Exception as exc:
+            logger.warning(f"Speaker Omni empty_audio_transcript outcome=retry_error error={exc}")
+            return None
+        if not raw_correction:
+            logger.warning("Speaker Omni empty_audio_transcript outcome=retry_empty")
+            return None
+        corrected = self._parse_turn_result(raw_correction)
+        if (
+            not corrected.transcript
+            or corrected.payload.get("_action_fallback")
+            or corrected.payload.get("_action_recovery")
+        ):
+            logger.warning("Speaker Omni empty_audio_transcript outcome=retry_rejected")
+            return None
+        logger.info(
+            "Speaker Omni empty_audio_transcript outcome=recovered "
+            f"action={normalize_turn_action(corrected.payload.get('turn_action'))}"
+        )
+        return corrected
 
     async def _attempt_action_correction(self, result: SpeakerTurnResult) -> SpeakerTurnResult | None:
         """Run exactly one Speaker regeneration for a structurally unsafe envelope."""
