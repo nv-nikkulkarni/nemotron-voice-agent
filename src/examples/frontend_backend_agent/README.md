@@ -282,6 +282,10 @@ The pipeline enforces the following boundaries:
 - A barge-in with a substantive replacement stays in direct-answer or delegation mode. It does not discard the replacement as a cancellation.
 - The generic Talker refuses unsupported side effects, such as sending email, instead of treating them as cancellation.
 - The generic Talker delegates live requests with missing parameters. The backend asks for a location or other required detail instead of guessing.
+- The generic Talker speaks a backend clarification directly. It does not expose private planning, tool names, or missing-parameter narration.
+- A challenge that says an answer is old or not current triggers a new grounded lookup for the retained subject. The Talker does not defend or replay the earlier value.
+- If a request combines prompt injection or secret extraction with a safe supported lookup, the Talker and Thinker ignore the hostile portion and perform only the safe lookup.
+- The Talker answers simple, stable arithmetic directly. It does not invent an unavailable calculator capability or fabricate a result when values are missing.
 - When the country is unknown, direct crisis guidance remains location-neutral and omits country-specific numbers. Dangerous misinformation receives a concise, evidence-based correction.
 - Airline planning and overall backend execution have bounded deadlines. A superseded airline generation cannot deliver a late result.
 - Live-data tools read credentials from the process environment. Credentials never enter the Thinker request or tool parameters.
