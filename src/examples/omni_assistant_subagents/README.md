@@ -80,6 +80,7 @@ The example declares `capabilities: [attachments, webcam]` in `examples_registry
 ## Tips & best practices
 
 - **Keep the voice loop responsive.** Media, webcam, and reasoning analysis run as separate worker agents so the transport and speaker agents never block on vision or reasoning work. Preserve that split when adding new capabilities.
+- **Fail audibly on transient Omni capacity errors.** If the hosted endpoint returns a rate, capacity, timeout, connection, or server error before any model content, the Speaker retries once after a bounded delay. A second transient failure speaks one deterministic unavailable response. Once any raw model content has arrived, the runtime never retries the turn, preventing duplicate transcripts or speech.
 - **Preserve natural speech continuations.** If Smart Turn splits speech at a pause, the Speaker merges the unheard segment with speech that resumes within 2 seconds. After output starts, new speech remains a normal barge-in and cancels the obsolete response.
 - **Ground pending uploads.** A request to describe, read, identify, or analyze a pending upload must use the media analyzer. The Speaker withholds an invalid direct response or clarification, retries its action envelope once, and fails closed without sending visual work to the Thinker.
 - **Reuse the deferred-dispatch pattern.** `media_dispatch_processor.py` holds analyzer dispatch until the current spoken turn finishes, which avoids cutting the user off. Reuse it for any new asynchronous worker.

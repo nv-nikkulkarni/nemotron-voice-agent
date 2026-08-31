@@ -24,7 +24,10 @@ from examples.omni_assistant_subagents.subagents.speaker.action_envelope import 
     lean_contract,
     normalize_action_envelope,
 )
-from examples.omni_assistant_subagents.subagents.speaker.agent import SubagentsSpeakerOmniService
+from examples.omni_assistant_subagents.subagents.speaker.agent import (
+    _OMNI_TRANSIENT_FALLBACK,
+    SubagentsSpeakerOmniService,
+)
 from examples.omni_assistant_subagents.subagents.speaker.repeat_guard import BRIDGE_FILLERS, RepeatGuard
 from examples.omni_assistant_subagents.subagents.thinker.agent import ThinkerWorker
 
@@ -173,6 +176,10 @@ class PromptAndStreamingContractTests(unittest.TestCase):
         system = _expand_fragments(self.catalog["generic_omni_assistant"]["content"], self.catalog)
         self.assertIn("ten-sentence story", system)
         self.assertIn("one, two, three, four, five", system)
+        self.assertIn("Name one primary color", system)
+        self.assertIn("Never ask which color", system)
+        self.assertIn("Give one focus tip", system)
+        self.assertIn("Never ask what kind of tip", system)
         self.assertIn("silently calculate and verify", system)
         self.assertIn("Three hundred ninety-one", system)
         self.assertIn("What would you like help with?", system)
@@ -280,6 +287,88 @@ class EnvelopeStreamingTests(unittest.IsolatedAsyncioTestCase):
         async for chunk in service._stream_action_envelope(stream()):
             visible += chunk.choices[0].delta.content or ""
         return visible
+
+    async def _drain_liveness(self, service: SubagentsSpeakerOmniService) -> str:
+        stream = await service.get_chat_completions(LLMContext([]))
+        visible = ""
+        async for chunk in stream:
+            if chunk.choices:
+                visible += chunk.choices[0].delta.content or ""
+        return visible
+
+    async def test_transient_endpoint_failure_retries_once_before_raw_content(self) -> None:
+        service = self._service()
+
+        async def failed_stream():
+            raise RuntimeError("ResourceExhausted: Worker local total request limit reached (16/16)")
+            yield
+
+        async def recovered_stream():
+            envelope = {
+                "transcript": "Hello",
+                "turn_action": "respond",
+                "response": "Hello there.",
+            }
+            for piece in self._chunks(envelope):
+                yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=piece))])
+
+        service._start_omni_completion_stream = AsyncMock(side_effect=[failed_stream(), recovered_stream()])
+        with patch(
+            "examples.omni_assistant_subagents.subagents.speaker.agent.asyncio.sleep",
+            new_callable=AsyncMock,
+        ) as sleep:
+            visible = await self._drain_liveness(service)
+
+        self.assertEqual(visible, "Hello there.")
+        self.assertEqual(service._start_omni_completion_stream.await_count, 2)
+        sleep.assert_awaited_once()
+        self.assertEqual(self.spoken, [])
+
+    async def test_two_transient_failures_speak_one_deterministic_fallback(self) -> None:
+        service = self._service()
+
+        async def failed_stream():
+            raise RuntimeError("ResourceExhausted: Worker local total request limit reached (16/16)")
+            yield
+
+        service._start_omni_completion_stream = AsyncMock(side_effect=[failed_stream(), failed_stream()])
+        with patch(
+            "examples.omni_assistant_subagents.subagents.speaker.agent.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            visible = await self._drain_liveness(service)
+
+        self.assertEqual(visible, "")
+        self.assertEqual(service._start_omni_completion_stream.await_count, 2)
+        self.assertEqual(self.spoken, [_OMNI_TRANSIENT_FALLBACK])
+
+    async def test_non_transient_endpoint_error_is_not_retried_or_masked(self) -> None:
+        service = self._service()
+
+        async def failed_stream():
+            raise ValueError("invalid action request")
+            yield
+
+        service._start_omni_completion_stream = AsyncMock(return_value=failed_stream())
+        with self.assertRaisesRegex(ValueError, "invalid action request"):
+            await self._drain_liveness(service)
+
+        self.assertEqual(service._start_omni_completion_stream.await_count, 1)
+        self.assertEqual(self.spoken, [])
+
+    async def test_transient_failure_after_raw_content_is_not_retried(self) -> None:
+        service = self._service()
+
+        async def partial_stream():
+            yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content='{"transcript":"Hello"'))])
+            raise RuntimeError("ResourceExhausted: Worker local total request limit reached (16/16)")
+
+        service._start_omni_completion_stream = AsyncMock(return_value=partial_stream())
+        with self.assertRaisesRegex(RuntimeError, "ResourceExhausted"):
+            await self._drain_liveness(service)
+
+        self.assertEqual(service._start_omni_completion_stream.await_count, 1)
+        self.assertEqual(self.spoken, [])
 
     async def test_response_field_streams_and_transcript_is_emitted(self) -> None:
         service = self._service()
