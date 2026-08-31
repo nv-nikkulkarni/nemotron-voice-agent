@@ -322,11 +322,14 @@ export async function captureBot(page, name, {
   settleFromMessageCount = null,
   stableMs = 2800,
   allowTranscriptOnlyStop = true,
+  nonTerminalBotTexts = [],
 } = {}) {
   const out = `${OUT}/${name}.wav`;
   const rec = execFile("ffmpeg", ["-y", "-f", "pulse", "-i", monitor, "-ac", "1", "-ar", "16000", out]);
   const t0 = Date.now(); let lastLoud = Date.now(), sawOnset = false, onsetAt = null;
-  let transcriptSignature = "", transcriptStableSince = t0, sawNewBotMessage = false;
+  let transcriptSignature = "", transcriptStableSince = t0;
+  let sawNewBotMessage = false, sawTerminalBotMessage = false;
+  const ignoredBotTexts = new Set(nonTerminalBotTexts.map((text) => text.trim().toLowerCase().replace(/\s+/g, " ")));
   while (Date.now() - t0 < maxMs) {
     await sleep(200);
     const b = await page.evaluate(() => window.__bot).catch(() => null);
@@ -344,15 +347,21 @@ export async function captureBot(page, name, {
         return {
           activeTool: document.querySelectorAll(".conv-tool__name").length > 0,
           hasBot: bot.some((el) => (el.textContent || "").trim()),
+          botTexts: bot.map((el) => (
+            el.querySelector(".message-content span:last-child")?.textContent || el.textContent || ""
+          ).trim()),
           signature,
         };
-      }, settleFromMessageCount).catch(() => ({ activeTool: true, hasBot: false, signature: "" }));
+      }, settleFromMessageCount).catch(() => ({ activeTool: true, hasBot: false, botTexts: [], signature: "" }));
       sawNewBotMessage ||= state.hasBot;
+      sawTerminalBotMessage ||= state.botTexts.some((text) => (
+        text && !ignoredBotTexts.has(text.toLowerCase().replace(/\s+/g, " "))
+      ));
       if (state.signature !== transcriptSignature) {
         transcriptSignature = state.signature;
         transcriptStableSince = Date.now();
       }
-      transcriptSettled = sawNewBotMessage && !state.activeTool
+      transcriptSettled = sawNewBotMessage && sawTerminalBotMessage && !state.activeTool
         && Date.now() - transcriptStableSince >= stableMs;
     }
     if (sawOnset && Date.now() - lastLoud > quietMs) {
@@ -390,7 +399,7 @@ export async function captureBot(page, name, {
 // One full spoken turn: wait to be listening, speak, capture the bot, ASR it, read DOM.
 export async function turn(page, text, name, {
   voice, transcribeBot = true, echoToSpk = false, micDevice, spkDevice, monitor, settle = false, settleStableMs = 4500,
-  speechEngine, speechInstructions,
+  speechEngine, speechInstructions, nonTerminalBotTexts,
 } = {}) {
   await waitListening(page);
   await page.evaluate(() => window.__botReset());
@@ -402,7 +411,7 @@ export async function turn(page, text, name, {
   const captureOptions = monitor ? { monitor } : {};
   if (settle) Object.assign(captureOptions, {
     maxMs: 75000, quietMs: 2000, requireListening: true,
-    settleFromMessageCount: before, stableMs: settleStableMs,
+    settleFromMessageCount: before, stableMs: settleStableMs, nonTerminalBotTexts,
   });
   // Arm the recorder before playing the user WAV. Fast model/TTS responses can
   // otherwise begin before FFmpeg opens the per-browser speaker monitor.
@@ -419,12 +428,16 @@ export async function turn(page, text, name, {
     await sleep(300);
   }
   const wallMs = Date.now() - t0;
-  const botAsr = cap.sawOnset && transcribeBot ? await transcribe(cap.out).catch((e) => `ASR-error:${e.message}`) : "";
+  let botAsr = "", botAsrError = "";
+  if (cap.sawOnset && transcribeBot) {
+    try { botAsr = await transcribe(cap.out); }
+    catch (e) { botAsrError = String(e?.message || e); }
+  }
   const msgs = await readMessages(page);
   const newMsgs = msgs.slice(before);
   const domBot = [...newMsgs].reverse().find((m) => m.role === "bot")?.text || "";
   const domUser = newMsgs.find((m) => m.role === "user")?.text || "";
-  return { user: text, botSpoke: cap.sawOnset, botAsr, domUser, domBot, newMessages: newMsgs, responseMs: cap.responseMs,
+  return { user: text, botSpoke: cap.sawOnset, botAsr, botAsrError, domUser, domBot, newMessages: newMsgs, responseMs: cap.responseMs,
            wallMs, latencyS: parseLatencyS(await latencyText(page)), wav: cap.out };
 }
 

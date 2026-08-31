@@ -66,6 +66,14 @@ const CHAT_TURNS = [
   { text: "Thanks so much. Goodbye!", want: /bye|welcome|glad|help|day|care/i },
 ];
 const ALL_TOOL_LABELS = TOOL_TURNS.map((t) => t.label); // enable every tool in the popup
+const GENERIC_PROGRESS_TEXTS = [
+  "Let me work that out.",
+  "Let me check those details.",
+  "Let me check the latest weather.",
+  "Let me look up the latest price.",
+  "Let me look that up.",
+  "Let me check that.",
+];
 
 async function phaseA() {
   const sig = H.newSignals(), hangs = [], guard = makeGuard(hangs);
@@ -102,7 +110,10 @@ async function phaseA() {
       const mark = await H.toolWatchMark(page);
       const before = (await H.readMessages(page)).length;
       const r = await guard(`turnA${i + 1}`, 75000, () => H.turn(
-        page, t.text, `A_t${i + 1}`, { settle: true },
+        page, t.text, `A_t${i + 1}`, {
+          settle: true,
+          nonTerminalBotTexts: t.tool ? GENERIC_PROGRESS_TEXTS : undefined,
+        },
       )) || { botSpoke: false };
       const fired = await H.toolWatchSince(page, mark);
       const settledMessages = (await H.readMessages(page)).slice(before);
@@ -190,12 +201,16 @@ async function phaseB() {
     // 13 voice-only turns.
     for (let i = 0; i < OMNI_VOICE.length; i++) {
       const spec = OMNI_VOICE[i];
-      const r = await guard(`turnB${i + 1}`, 85000, () => H.turn(page, spec.text, `B_v${i + 1}`, { settle: true, settleStableMs: 20000 })) || { botSpoke: false };
+      // A settled turn can spend up to 75s in acoustic capture, followed by
+      // independent bot-ASR. Keep the outer guard above that combined budget so
+      // a spoken endpoint fallback is adjudicated instead of mislabeled silent.
+      const r = await guard(`turnB${i + 1}`, 110000, () => H.turn(page, spec.text, `B_v${i + 1}`, { settle: true, settleStableMs: 20000 })) || { botSpoke: false };
       const answer = (r.domBot || r.botAsr || "").trim();
       const answered = !!r.botSpoke && spec.want.test(answer) && !(spec.notWant?.test(answer));
-      rep.turns.push({ i: i + 1, kind: "voice", text: spec.text, botSpoke: !!r.botSpoke, answered, answer: answer.slice(0, 120), latencyS: r.latencyS ?? null });
+      rep.turns.push({ i: i + 1, kind: "voice", text: spec.text, botSpoke: !!r.botSpoke, answered, answer: answer.slice(0, 120), botAsrError: r.botAsrError || "", latencyS: r.latencyS ?? null });
       if (!r.botSpoke) rep.hardFails.push(`voice turn ${i + 1}: bot silent`);
       if (!answered) rep.hardFails.push(`voice turn ${i + 1}: response did not satisfy the answer oracle`);
+      if (r.botAsrError) rep.warns.push(`voice turn ${i + 1}: independent bot ASR failed (${r.botAsrError.slice(0, 100)})`);
       console.log(`  B voice ${i + 1}/${OMNI_VOICE.length} spoke=${r.botSpoke ? "y" : "SILENT"} answered=${answered ? "y" : "NO"} | "${answer.slice(0, 50)}"`);
     }
 
@@ -229,7 +244,7 @@ async function phaseB() {
     if (!frame || frame.status >= 300 || frame.status === 0) rep.warns.push(`webcam frame POST HTTP ${frame?.status} (endpoint: /api/sessions/{sid}/webcam/frames)`);
     await H.sleep(6000); // let the ambient summary loop encode + describe the stream
     const beforeCam = (await H.readMessages(page)).length;
-    const rCam = await guard("webcamAsk", 30000, () => H.turn(page, "What do you see on my camera right now?", "B_cam")) || { botSpoke: false };
+    const rCam = await guard("webcamAsk", 50000, () => H.turn(page, "What do you see on my camera right now?", "B_cam")) || { botSpoke: false };
     const ackCam = (rCam.domBot || rCam.botAsr || "").trim();
     const descCam = await guard("webcamDesc", 50000, () => waitDescription(page, ackCam, beforeCam));
     const camOk = !!rCam.botSpoke && !!descCam && IMG_HINT.test(descCam);
