@@ -76,6 +76,7 @@ from session_capture import install_log_sink as install_capture_log_sink
 from session_capture import reaper as capture_reaper
 from session_capture import register_routes as register_capture_routes
 from session_capture import settings as capture_settings
+from session_capture.capture import required_upload_configuration_errors
 from utils import (
     PROJECT_ROOT,
     build_services_api_response,
@@ -751,7 +752,6 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
     async def lifespan(app: FastAPI):
         session_bus.init_from_env()  # no-op unless REDIS_URL is set
         session_store.init_from_env()  # local filesystem unless SESSION_STORE_BACKEND=s3
-        capture_reaper.start()  # no-op unless session capture is enabled
         # session-capture needs TWO independent things to be shared for >1 replica:
         # coordination state (Redis; see session_capture/state.py) and the
         # artifacts themselves (session_store). Missing either one breaks a
@@ -764,6 +764,7 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
         # hard-fails both combinations at template time (P5.6); this is a
         # backstop for anyone running the app outside that chart.
         app_replicas = parse_env_int("APP_REPLICAS", 1, min_value=1)
+        capture_startup_errors = required_upload_configuration_errors()
         if capture_settings.enabled() and app_replicas > 1:
             if not session_bus.is_enabled():
                 logger.error(
@@ -772,6 +773,8 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
                     "state is per-process, so sessions whose two signals land on different pods "
                     "will never finalize. Set REDIS_URL to a shared Redis, or run a single replica."
                 )
+                if capture_settings.upload_required():
+                    capture_startup_errors.append("shared Redis coordination is not active")
             if not session_store.is_s3():
                 logger.error(
                     f"session-capture is enabled with APP_REPLICAS={app_replicas} but session_store "
@@ -779,6 +782,10 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
                     "POST lands on a different pod than its pipeline WILL be silently lost. Set "
                     "SESSION_STORE_BACKEND=s3 with a shared endpoint, or run a single replica."
                 )
+        if capture_startup_errors:
+            joined = "; ".join(dict.fromkeys(capture_startup_errors))
+            raise RuntimeError(f"Required session-capture upload path is not ready: {joined}")
+        capture_reaper.start()  # no-op unless session capture is enabled
         yield
         capture_reaper.stop()
         await handler.close()

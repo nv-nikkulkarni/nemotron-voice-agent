@@ -22,9 +22,14 @@ def _bool(name: str, default: str) -> bool:
 
 
 ENABLED = _bool("SESSION_CAPTURE_ENABLED", "false")
+# Release deployments can require successful NGC publication instead of
+# accepting the development-only local archive mode.  This is deliberately a
+# separate switch from ENABLED so local contributors can still exercise capture
+# without an NGC destination, while Helm-qualified environments fail closed.
+UPLOAD_REQUIRED = _bool("SESSION_CAPTURE_UPLOAD_REQUIRED", "false")
 
-# "<org>/<resource>", e.g. "0491162300748285/session-captures". Empty -> upload disabled
-# even if ENABLED is true (capture still writes consent/transcript/log locally).
+# "<org>/<resource>", e.g. "example-org/session-captures". Empty is allowed only
+# in development local-archive mode; UPLOAD_REQUIRED makes it a startup error.
 NGC_RESOURCE = os.environ.get("SESSION_CAPTURE_NGC", "").strip()
 NGC_CLI_BIN = os.environ.get("NGC_CLI_BIN", "/app/ngc-cli/ngc")
 REQUIRE_CONSENT = _bool("SESSION_CAPTURE_REQUIRE_CONSENT", "true")
@@ -80,3 +85,8 @@ def ngc_org() -> str:
 def enabled() -> bool:
     """Return whether the session-capture feature is enabled at all."""
     return ENABLED
+
+
+def upload_required() -> bool:
+    """Return whether capture must be publishable to NGC at runtime."""
+    return ENABLED and UPLOAD_REQUIRED

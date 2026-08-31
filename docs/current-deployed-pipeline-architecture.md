@@ -1125,7 +1125,19 @@ The subprocess timeout is 300 seconds. A dedicated thread pool of four workers p
 - lock TTL: 900 s;
 - maximum finalize attempts: 5.
 
-NGC timeouts, upload failures, missing CLI, and missing key retain both coordination state and source objects after retry exhaustion for operator review. They are not destructively discarded because NGC may have accepted a timed-out upload or the configuration may be repairable.
+NGC timeouts, upload failures, a missing destination, a missing CLI, and a missing key retain both coordination state and source objects after retry exhaustion for operator review. They are not destructively discarded because NGC may have accepted a timed-out upload or the configuration may be repairable.
+
+The release chart sets `sessionCapture.uploadRequired=true`. The application
+therefore refuses to start unless all of these conditions are true:
+
+- `SESSION_CAPTURE_NGC` identifies the NGC organization and resource;
+- `NGC_API_KEY` provides a dedicated registry credential;
+- the NGC CLI exists at the configured path; and
+- the shared S3-compatible session store is active.
+
+For more than one application replica, shared Redis coordination must also be
+active. This startup boundary prevents a deployment from reporting readiness
+while capture silently falls back to local storage or skips NGC publication.
 
 Other repeated failures can eventually discard after the attempt budget, but state remains if discard itself fails.
 
@@ -1135,7 +1147,7 @@ Every app replica starts a reaper, but the shared owner-token lock makes work id
 
 - ready-but-unfinalized state is retried;
 - one-signal state older than the orphan threshold is deleted and cleared;
-- finalized local-only archives are not scanned/deleted because their Redis state is already gone.
+- development deployments can set `sessionCapture.uploadRequired=false` to use local-only archives; these archives are not scanned or deleted because their Redis state is already gone.
 
 ### 14.9 Current live status
 
@@ -1225,6 +1237,12 @@ Historical rationale: an older prewarmer repeatedly called `/api/session-config`
 | `SESSION_CAPTURE_NGC` | capture module | `<org>/<resource>` destination |
 
 Every new function version must receive the full set again. NVCF does not inherit them from an older version.
+
+The NVCF application entrypoint exports `SESSION_CAPTURE_NGC` from
+`secrets.json` only when that value is nonempty. An absent function secret does
+not overwrite a destination supplied through Helm. If neither source supplies
+the destination, required-upload startup validation fails without printing any
+credential value.
 
 ### 16.2 NVCF injection path
 

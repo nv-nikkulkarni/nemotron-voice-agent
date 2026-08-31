@@ -639,6 +639,11 @@ prewarm:
 # =============================================================================
 sessionCapture:
   enabled: true
+  # Production qualification requires capture to reach NGC. When true, the
+  # application refuses to start if the destination, dedicated registry key,
+  # NGC CLI, or shared S3 store is unavailable. Set false only for deliberate
+  # development-only local archive mode.
+  uploadRequired: true
   # Persistent storage for captured tarballs. enabled=true -> a PVC (survives pod
   # restarts; needed on NVCF where the old emptyDir was stripped). storageClass oci-bv is
   # OCI Block Volume (RWO — fine, the app + sidecars share it in one pod).
@@ -655,9 +660,9 @@ sessionCapture:
                           # false = store every session regardless of consent
   uploadIntervalSecs: 60
   # NEVER hardcode an org here — supply both via a values override / --set at deploy
-  # time (e.g. --set sessionCapture.ngcOrg=<org>). Either blank -> upload disabled
-  # (session_capture still writes consent/transcript/log locally; see
-  # src/session_capture/settings.py, which reads SESSION_CAPTURE_NGC = "<org>/<resource>").
+  # time (e.g. --set sessionCapture.ngcOrg=<org>). With uploadRequired=true,
+  # the destination may instead arrive through NVCF secrets.json; if neither
+  # source supplies it, application startup fails closed.
   ngcOrg: ""
   ngcResource: session-captures
   # Off-NVCF the uploader reads the NGC key from this k8s secret; on NVCF (.Values.nvcf)

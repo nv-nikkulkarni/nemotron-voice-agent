@@ -56,6 +56,7 @@ class ReaperSweepTests(unittest.IsolatedAsyncioTestCase):
             patch.object(ssc, "_backend", self.backend),
             patch.object(ssc, "_is_s3", False),
             patch.object(settings, "ENABLED", True),
+            patch.object(settings, "UPLOAD_REQUIRED", False),
             patch.object(settings, "NGC_RESOURCE", ""),
             patch.object(settings, "MAX_FINALIZE_ATTEMPTS", 5),
             # Same RATIO as the shipped defaults (900 < 3600), scaled down so
