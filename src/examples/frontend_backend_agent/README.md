@@ -34,17 +34,21 @@ interrupted bot speech.
 
 When direct tool speech is enabled, the structured function result is the single retained copy of the deterministic backend response; the separately emitted TTS frame is not appended again as an assistant message. The Talker remembers a bounded normalized signature outside the prompt context. If a later completion substantially replays that cached result without a native tool call, the runtime withholds it and retries once with an internal contract correction. It never selects a domain tool or constructs a function call. A second invalid replay fails closed with deterministic speech.
 
-The runtime also retains bounded subject arguments when the latest generic tool
-result succeeds. A newer non-successful or subjectless result clears that
-baseline instead of leaving an older subject active. When the user explicitly
-says repeat, refresh, recheck, again, check again, or one more time, the runtime
-validates the Talker-authored `call_backend` query against every retained
-subject value.
-If Lightning changes the subject, the runtime withholds the native call, retries
-Lightning once with an internal correction, and then fails closed if the retry
-still drifts. It does not apply this check to direct answers or ordinary new and
-follow-up requests, and it does not infer intent, select a domain tool, or write
-the corrected tool call in Python.
+The runtime retains bounded successful subject arguments by capability. A
+non-successful or subjectless result clears only that capability's baseline,
+so a failed stock lookup cannot erase an unrelated weather subject. For an
+explicit stock repeat, a company literally named in the current user turn is
+the trusted validation subject. For an implicit repeat, the runtime selects the
+latest retained subject for the named capability instead of an unrelated newer
+tool result.
+
+When the user explicitly says repeat, refresh, recheck, again, check again, or
+one more time, the runtime validates the Talker-authored `call_backend` query
+against every resolved subject value. If Lightning changes the subject, the
+runtime withholds the native call, retries Lightning once with an internal
+correction, and then fails closed if the retry still drifts. Capability matching
+is validation-only: it never infers user intent, selects a domain tool, or writes
+a corrected tool call in Python.
 
 The NVCF Helm chart enables direct tool speech by default with `app.frontendBackendDirectToolResponse: true`. Disable it only when you explicitly want a second Talker inference after a tool result.
 
@@ -178,6 +182,11 @@ text.
 
 The `generic-frontend-backend-agent` registry entry enables all 5 built-in generic tools. To expose a subset, create or edit a trusted registry entry. Client session data and Talker prompt metadata do not widen that set.
 
+
+Finnhub quote requests retry once after a short bounded backoff only for
+transport errors, HTTP 429, or HTTP 5xx responses. Authentication failures and
+malformed data fail closed without retry, and a second transient failure returns
+the existing grounded unavailable response.
 For model and catalog settings, refer to [Configure LLM](../../../docs/how-to/configure-llm.md) and [Configure Services](../../../docs/how-to/configure-services.md). For prompt behavior, tool subsets, and domain extension, refer to [Configure Frontend/Backend Agent Domains](../../../docs/how-to/configure-frontend-backend-domains.md).
 
 The built-in generic profile keeps Nemotron 3 Super reasoning enabled for the

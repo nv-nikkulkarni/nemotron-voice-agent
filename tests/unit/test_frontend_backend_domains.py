@@ -15,7 +15,7 @@ import re
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import yaml
 from pipecat.frames.frames import LLMTextFrame
@@ -834,6 +834,45 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(weather["error_code"], "invalid_response")
         self.assertEqual(stock["status"], "unavailable")
         self.assertEqual(stock["error_code"], "invalid_response")
+
+    async def test_stock_retries_one_transient_503_then_returns_grounded_quote(self) -> None:
+        class FakeResponse:
+            def __init__(self, status_code: int, payload: dict) -> None:
+                self.status_code = status_code
+                self.payload = payload
+
+            def json(self):
+                return self.payload
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.responses = [
+                    FakeResponse(503, {}),
+                    FakeResponse(200, {"c": 123.45, "pc": 120.0, "h": 124.0, "l": 119.0}),
+                ]
+                self.calls = 0
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> None:
+                return None
+
+            async def get(self, *args, **kwargs):
+                self.calls += 1
+                return self.responses.pop(0)
+
+        client = FakeClient()
+        with (
+            patch.dict(os.environ, {"FINNHUB_API_KEY": "configured"}),
+            patch.object(services.httpx, "AsyncClient", return_value=client),
+            patch.object(services.asyncio, "sleep", new_callable=AsyncMock) as sleep,
+        ):
+            stock = await services.get_stock_price({"company_name": "NVIDIA"})
+
+        self.assertEqual((stock["status"], stock["symbol"], stock["price"]), ("success", "NVDA", 123.45))
+        self.assertEqual(client.calls, 2)
+        sleep.assert_awaited_once()
 
     async def test_grounded_formatter_preserves_exact_stock_values(self) -> None:
         payload = format_tool_result(

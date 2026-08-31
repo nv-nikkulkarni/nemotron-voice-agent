@@ -372,6 +372,103 @@ class ReliableTalkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(talker.contexts), 1)
         self.assertEqual(talker.fallbacks, [])
 
+    async def test_explicit_stock_subject_survives_failed_quote_and_newer_weather(self) -> None:
+        talker = _ScriptedTalker(
+            [
+                [_tool_chunk("Get the current stock price for NVIDIA again.")],
+                [_tool_chunk("Get the current stock price for NVIDIA again.")],
+            ]
+        )
+        talker.remember_backend_result(
+            {
+                "type": "tool_result",
+                "tool": "get_stock_price",
+                "status": "unavailable",
+                "data": {"arguments": {"company_name": "NVIDIA"}},
+                "response_text": "I wasn't able to get the stock price right now.",
+            }
+        )
+        talker.remember_backend_result(
+            {
+                "type": "tool_result",
+                "tool": "get_weather",
+                "status": "success",
+                "data": {"arguments": {"city": "London", "units": "celsius"}},
+                "response_text": "In London, it is 20 degrees C.",
+            }
+        )
+
+        chunks = await _collect(
+            talker,
+            LLMContext([{"role": "user", "content": "Repeat the NVIDIA stock price now."}]),
+        )
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(len(talker.contexts), 1)
+        self.assertEqual(talker.fallbacks, [])
+
+    async def test_implicit_stock_repeat_uses_latest_stock_not_newer_weather(self) -> None:
+        talker = _ScriptedTalker([[_tool_chunk("Get the current stock price for NVIDIA again.")]])
+        talker.remember_backend_result(
+            {
+                "type": "tool_result",
+                "tool": "get_stock_price",
+                "status": "success",
+                "data": {"arguments": {"company_name": "NVIDIA"}},
+                "response_text": "NVIDIA is trading at 180 dollars.",
+            }
+        )
+        talker.remember_backend_result(
+            {
+                "type": "tool_result",
+                "tool": "get_weather",
+                "status": "success",
+                "data": {"arguments": {"city": "London", "units": "celsius"}},
+                "response_text": "In London, it is 20 degrees C.",
+            }
+        )
+
+        chunks = await _collect(
+            talker,
+            LLMContext([{"role": "user", "content": "Repeat that stock price again."}]),
+        )
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(len(talker.contexts), 1)
+        self.assertEqual(talker.fallbacks, [])
+
+    async def test_failed_stock_result_does_not_clear_weather_repeat_history(self) -> None:
+        talker = _ScriptedTalker(
+            [
+                [_tool_chunk("Get the current weather in Pune again.")],
+                [_tool_chunk("Get the current weather in Toronto again.")],
+            ]
+        )
+        talker.remember_backend_result(
+            {
+                "type": "tool_result",
+                "tool": "get_weather",
+                "status": "success",
+                "data": {"arguments": {"city": "Toronto", "units": "celsius"}},
+                "response_text": "In Toronto, it is 24 degrees C.",
+            }
+        )
+        talker.remember_backend_result(
+            {
+                "type": "tool_result",
+                "tool": "get_stock_price",
+                "status": "unavailable",
+                "data": {"arguments": {"company_name": "NVIDIA"}},
+                "response_text": "I wasn't able to get the stock price right now.",
+            }
+        )
+
+        chunks = await _collect(talker, LLMContext([{"role": "user", "content": "Repeat that weather."}]))
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(len(talker.contexts), 2)
+        self.assertEqual(talker.fallbacks, [])
+
     async def test_multi_argument_repeat_requires_every_prior_value(self) -> None:
         talker = _ScriptedTalker(
             [
