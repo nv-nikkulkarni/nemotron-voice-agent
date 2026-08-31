@@ -14,7 +14,7 @@ async function main() {
   const browser = await H.launchBrowser({ headless: false });
   const { page } = await H.newPage(browser, sig);
   await page.goto(H.BASE, { waitUntil: "domcontentloaded" }); await H.sleep(1400);
-  await H.selectExample(page, { example: "generic", model: "super" });
+  await H.selectExample(page, { example: "generic", model: "lightning" });
   await H.startConversation(page); await H.sleep(1800);
   const sessionId = await H.sessionId(page);
   const turns = [];

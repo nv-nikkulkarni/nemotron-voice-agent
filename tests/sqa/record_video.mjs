@@ -31,7 +31,7 @@ async function main() {
   const { page } = await H.newPage(browser, sig, { viewport: { width: 1280, height: 800 } });
   await page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 30000 });
   await H.sleep(1500);
-  await H.selectExample(page, { example: "generic", model: "super" });
+  await H.selectExample(page, { example: "generic", model: "lightning" });
   const conn = await H.startConversation(page);
   if (!conn.connected) { console.error("did not connect"); await browser.close(); process.exit(1); }
   await H.sleep(1200);

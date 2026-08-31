@@ -5,7 +5,7 @@ const OUT = process.env.SQA_OUT || "/sqa/artifacts/tts-pronunciation";
 const TERMS = {
   NVIDIA: { match: /nvidia|n video/i, arpabet: "EH0 N V IH1 D IY0 AH0", ipa: "ɛnˈvɪdiə" },
   Nemotron: { match: /nemotron|nemo tron|nema tron/i, arpabet: "N EH1 M AH0 T R AA2 N", ipa: "ˈnɛmətrɑn" },
-  NVCF: { match: /n\s*v\s*c\s*f|nvcf/i, arpabet: "EH1 N V IY1 S IY1 EH1 F", ipa: "ɛn viː siː ɛf" },
+  NVCF: { match: /n\s*[.]?\s*v\s*[.]?\s*c\s*[.]?\s*f|nvcf/i, arpabet: "EH1 N V IY1 S IY1 EH1 F", ipa: "ɛn viː siː ɛf" },
   Astra: { match: /astra/i, arpabet: "AE1 S T R AH0", ipa: "ˈæstrə" },
   Pipecat: { match: /pipe\s*cat|pipecat/i, arpabet: "P AY1 P K AE2 T", ipa: "ˈpaɪpˌkæt" },
   Redis: { match: /redis|red\s*iss/i, arpabet: "R EH1 D IH0 S", ipa: "ˈrɛdɪs" },
@@ -15,14 +15,14 @@ const TERMS = {
   Perplexity: { match: /perplexity/i, arpabet: "P ER0 P L EH1 K S AH0 T IY0", ipa: "pərˈplɛksəti" },
   Finnhub: { match: /finn?\s*hub|finnhub/i, arpabet: "F IH1 N HH AH2 B", ipa: "ˈfɪnˌhʌb" },
   WeatherAPI: { match: /weather\s*(?:a\s*p\s*i|api)/i, arpabet: "W EH1 DH ER0 EY1 P IY1 AY1", ipa: "ˈwɛðər eɪ piː aɪ" },
-  NGC: { match: /n\s*g\s*c|ngc/i, arpabet: "EH1 N JH IY1 S IY1", ipa: "ɛn dʒiː siː" },
+  NGC: { match: /n\s*[.]?\s*g\s*[.]?\s*c|ngc/i, arpabet: "EH1 N JH IY1 S IY1", ipa: "ɛn dʒiː siː" },
   Kubernetes: { match: /kubernetes/i, arpabet: "K UW2 B ER0 N EH1 T IY0 Z", ipa: "ˌkuːbərˈnɛtiːz" },
   Helm: { match: /helm/i, arpabet: "HH EH1 L M", ipa: "hɛlm" },
-  vLLM: { match: /v\s*l\s*l\s*m|vllm/i, arpabet: "V IY1 EH1 L EH1 L EH1 M", ipa: "viː ɛl ɛl ɛm" },
+  vLLM: { match: /v\s*[.]?\s*l\s*[.]?\s*l\s*[.]?\s*m|vllm/i, arpabet: "V IY1 EH1 L EH1 L EH1 M", ipa: "viː ɛl ɛl ɛm" },
   Riva: { match: /riva|reeva/i, arpabet: "R IY1 V AH0", ipa: "ˈriːvə" },
   H100: { match: /h\s*(?:one hundred|100)/i, arpabet: "EY1 CH W AH1 N HH AH1 N D R AH0 D", ipa: "eɪtʃ wʌn ˈhʌndrəd" },
   ARPAbet: { match: /arpa\s*bet|arpabet/i, arpabet: "AA1 R P AH0 B EH2 T", ipa: "ˈɑrpəˌbɛt" },
-  "24/7": { match: /twenty four (?:slash )?seven|24\s*7/i, arpabet: "T W EH1 N T IY0 F AO1 R S EH1 V AH0 N", ipa: "ˌtwɛnti ˈfɔr ˈsɛvən", normalization: "twenty four seven" },
+  "24/7": { match: /twenty four (?:slash )?seven|24\s*[/]?\s*7/i, arpabet: "T W EH1 N T IY0 F AO1 R S EH1 V AH0 N", ipa: "ˌtwɛnti ˈfɔr ˈsɛvən", normalization: "twenty four seven" },
 };
 
 const PROBES = [
@@ -39,14 +39,29 @@ function clean(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+async function gotoWithRetry(page, attempts = 2) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 45000 });
+      if (await H.waitForDeploymentReady(page)) return attempt;
+      lastError = new Error("deployment options did not become ready");
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < attempts) await H.sleep(750);
+  }
+  throw lastError;
+}
+
 async function runVoice(tts) {
   const signals = H.newSignals();
-  const browser = await H.launchBrowser({ headless: false });
+  const slot = await H.createAudioSlot(tts === "magpie" ? 91 : 92);
+  const browser = await H.launchBrowser({ headless: false, env: slot.env });
   const result = { tts, turns: [], consoleErrors: signals.consoleErrors, badResponses: signals.badResponses };
   try {
     const { page } = await H.newPage(browser, signals);
-    await page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 45000 });
-    await H.sleep(1500);
+    result.navigationAttempts = await gotoWithRetry(page);
     await H.selectExample(page, { example: "generic", model: "lightning", tts, consent: true });
     result.connection = await H.startConversation(page, { timeoutMs: 45000 });
     result.sessionId = await H.sessionId(page);
@@ -55,7 +70,9 @@ async function runVoice(tts) {
     for (let index = 0; index < PROBES.length; index++) {
       const probe = PROBES[index];
       const prompt = `Repeat ${probe.spoken}`;
-      const turn = await H.turn(page, prompt, `${tts}_pron_${index + 1}`, { settle: true });
+      const turn = await H.turn(page, prompt, `${tts}_pron_${index + 1}`, {
+        micDevice: slot.micSink, spkDevice: slot.spkSink, monitor: slot.spkMonitor, settle: true,
+      });
       const botAsr = clean(turn.botAsr);
       const domBot = clean(turn.domBot);
       const assessment = {
@@ -89,7 +106,7 @@ async function runVoice(tts) {
   return result;
 }
 
-const report = { base: H.BASE, startedAt: new Date().toISOString(), voices: [] };
+const report = { runId: H.RUN_ID, base: H.BASE, startedAt: new Date().toISOString(), voices: [] };
 for (const tts of ["magpie", "chatterbox"]) report.voices.push(await runVoice(tts));
 report.finishedAt = new Date().toISOString();
 report.candidates = Object.fromEntries(Object.entries(TERMS).map(([term, value]) => [term, {

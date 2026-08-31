@@ -9,7 +9,7 @@ async function main() {
   const browser = await H.launchBrowser({ headless: false });
   const { page } = await H.newPage(browser, sig);
   await page.goto(H.BASE, { waitUntil: "domcontentloaded" }); await H.sleep(1400);
-  await H.selectExample(page, { example: "generic", model: "super" });
+  await H.selectExample(page, { example: "generic", model: "lightning" });
   await H.startConversation(page); await H.sleep(1500);
 
   const live = await snap(page);
@@ -29,7 +29,7 @@ async function main() {
   const idBefore = live?.lastTeardown || (await H.sessionId(page));
   await page.locator('.demo-modal-close, [aria-label="Close and return home"]').first().click().catch(() => {});
   await H.sleep(600);
-  await H.selectExample(page, { example: "generic", model: "super" });
+  await H.selectExample(page, { example: "generic", model: "lightning" });
   const conn2 = await H.startConversation(page);
   const id2 = await H.sessionId(page);
 

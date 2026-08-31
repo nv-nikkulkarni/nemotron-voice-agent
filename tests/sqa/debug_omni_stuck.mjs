@@ -18,7 +18,7 @@ async function main() {
   await page.goto(H.BASE, { waitUntil: "domcontentloaded" }); await H.sleep(1400);
 
   // 1. generic session
-  await H.selectExample(page, { example: "generic", model: "super" });
+  await H.selectExample(page, { example: "generic", model: "lightning" });
   const c1 = await H.startConversation(page);
   console.log(`[1] generic connected=${c1.connected} (${c1.connectMs}ms) sid=${await H.sessionId(page)}`);
   await H.sleep(1500);

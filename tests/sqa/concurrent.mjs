@@ -19,7 +19,7 @@ async function oneUser(browser, i) {
     const { page } = await H.newPage(browser, sig, { viewport: { width: 900, height: 700 } });
     await page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 40000 });
     await H.sleep(800 + i * 150);
-    await H.selectExample(page, { example: "generic", model: i % 2 ? "nano" : "super" });
+    await H.selectExample(page, { example: "generic", model: "lightning" });
     const conn = await H.startConversation(page, { timeoutMs: 40000 });
     r.connected = conn.connected; r.connectMs = conn.connectMs;
     // wait for the greeting to actually produce audio (per-page tap)

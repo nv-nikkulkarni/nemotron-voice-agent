@@ -78,7 +78,8 @@ const GENERIC_PROGRESS_TEXTS = [
 async function phaseA() {
   const sig = H.newSignals(), hangs = [], guard = makeGuard(hangs);
   const rep = { phase: "A", name: "Generic (Lightning) — tool exercise", turns: [], toolTable: {}, hangs, hardFails: [], warns: [] };
-  const browser = await H.launchBrowser({ headless: false });
+  const slot = await H.createAudioSlot(71);
+  const browser = await H.launchBrowser({ headless: false, env: slot.env });
   try {
     const { page } = await H.newPage(browser, sig);
     await guard("goto", 40000, () => page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 30000 }));
@@ -111,6 +112,9 @@ async function phaseA() {
       const before = (await H.readMessages(page)).length;
       const r = await guard(`turnA${i + 1}`, 75000, () => H.turn(
         page, t.text, `A_t${i + 1}`, {
+          micDevice: slot.micSink,
+          spkDevice: slot.spkSink,
+          monitor: slot.spkMonitor,
           settle: true,
           nonTerminalBotTexts: t.tool ? GENERIC_PROGRESS_TEXTS : undefined,
         },
@@ -123,6 +127,7 @@ async function phaseA() {
       const called = t.tool ? fired.includes(t.tool) : fired.length === 0;
       const answered = !!r.botSpoke && (t.want ? t.want.test(answer) : true)
         && !(t.notWant?.test(answer));
+      if (!r.inputReceived) rep.hardFails.push(`turn ${i + 1}: no application user transcript within 8 seconds`);
       const tr = { i: i + 1, text: t.text, tool: t.tool || null, fired, botSpoke: !!r.botSpoke, answer: answer.slice(0, 140), called, answered, latencyS: r.latencyS ?? null };
       rep.turns.push(tr);
       if (!r.botSpoke) rep.hardFails.push(`turn ${i + 1}: bot silent`);
@@ -514,7 +519,7 @@ function writeReport(out) {
 (async () => {
   const which = (process.argv[2] || "all").toUpperCase();
   const run = (p) => which === "ALL" || which === p;
-  const out = { base: H.BASE, startedAt: new Date().toISOString(), phases: [] };
+  const out = { runId: H.RUN_ID, phaseSelection: which, base: H.BASE, startedAt: new Date().toISOString(), phases: [] };
   console.log(`\n##### COMPREHENSIVE SQA vs ${H.BASE} (phases: ${which}) #####`);
 
   if (run("A")) { console.log(`\n===== PHASE A: Generic (Lightning) tool exercise =====`); out.phases.push(await phaseA()); }
