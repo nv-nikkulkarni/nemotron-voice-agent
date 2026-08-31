@@ -238,6 +238,8 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
         talker = catalog["llm"]["nemotron-lightning-talker"]
         thinker = catalog["thinker-llm"]["nemotron-super-reasoning"]
 
+        self.assertEqual(talker["model_id"], "nvidia/nemotron-3.5-lightning-30b-a3b")
+
         local_catalog = yaml.safe_load(Path("src/examples/frontend_backend_agent/services.local.yaml").read_text())[
             "server"
         ]

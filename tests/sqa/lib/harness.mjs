@@ -116,7 +116,9 @@ export async function newPage(browser, sig, { viewport = { width: 1280, height: 
 //   tts     : "magpie" | "chatterbox"          (optional; leaves the popup default if omitted)
 //   tools   : string[] of visible tool LABELS to ENABLE, e.g. ["Weather","BMI"];
 //             the enabled set is made to match this exactly (generic only). Omitted → defaults.
-//   reasoning: boolean (optional); explicitly set the popup model reasoning toggle.
+//   reasoning: boolean (optional); explicitly set the popup reasoning toggle.
+//              Generic has fixed model roles (Talker reasoning off, Thinker on),
+//              so `false` is valid even though that popup has no toggle.
 //   consent : check the "Store my audio…" toggle inside the popup.
 export async function selectExample(page, { example = "generic", model = "lightning", tts, tools, reasoning, consent } = {}) {
   const isOmni = /omni/i.test(example);
@@ -161,9 +163,13 @@ export async function selectExample(page, { example = "generic", model = "lightn
   }
 
   // 6. Optional explicit reasoning state, so SQA can qualify both paths.
-  if (typeof reasoning === "boolean") {
-    const cb = popup.locator(".reasoning-toggle input[type=checkbox]");
-    if (await cb.count() !== 1) throw new Error("reasoning toggle not found");
+  const reasoningToggle = popup.locator(".reasoning-toggle input[type=checkbox]");
+  const reasoningToggleCount = typeof reasoning === "boolean" ? await reasoningToggle.count() : 0;
+  if (typeof reasoning === "boolean" && reasoningToggleCount === 0) {
+    if (isOmni || reasoning) throw new Error("reasoning toggle not found");
+  } else if (typeof reasoning === "boolean") {
+    const cb = reasoningToggle;
+    if (reasoningToggleCount !== 1) throw new Error("reasoning toggle is ambiguous");
     for (let attempt = 0; attempt < 3; attempt++) {
       if (await cb.isChecked() === reasoning) break;
       await cb.evaluate((el) => el.click());
@@ -184,8 +190,8 @@ export async function selectExample(page, { example = "generic", model = "lightn
     }
   }
   await sleep(750);
-  if (typeof reasoning === "boolean") {
-    const cb = popup.locator(".reasoning-toggle input[type=checkbox]");
+  if (typeof reasoning === "boolean" && reasoningToggleCount === 1) {
+    const cb = reasoningToggle;
     if (await cb.isChecked() !== reasoning) {
       await cb.evaluate((el) => el.click());
       await sleep(150);
