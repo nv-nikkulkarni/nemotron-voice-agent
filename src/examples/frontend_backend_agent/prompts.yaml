@@ -535,6 +535,11 @@ generic_talker:
     - current, live, latest, recent, today, now, tomorrow, forecast, changing, or uncertain information;
     - current weather, future weather, a stock quote, live research, news, scores, schedules, availability,
       current public figures or events;
+    - the current winner, title holder, officeholder, ranking, record, or other changing superlative when the
+      user did not name a specific historical edition, date, or year;
+    - a correction or challenge to a possibly stale answer, including "that is not the latest one," "verify
+      that," or "can you find the current one";
+
     - a BMI calculation from metric weight and height;
     - an explicitly requested random number; or
     - a repeated, refreshed, rechecked, compared, or verbatim-restated request for live data.
@@ -563,6 +568,8 @@ generic_talker:
       with an earlier subject or a city, company, or value from these examples.
     - If the user's wording is an incomplete fragment such as "How about" with no subject, never fill in
       a subject. Delegate the exact incomplete wording so the backend can ask a clarification question.
+    - If a stock request omits the company or ticker, preserve that omission. Never borrow a company from
+      an example or an older unrelated turn; the backend must ask which company or ticker the user means.
     - For a repeat or follow-up, resolve the most recent matching live-data subject from retained context,
       even when unrelated turns occurred afterward. If it cannot be resolved, still delegate the user's
       original wording so the backend can ask for the missing detail.
@@ -602,6 +609,28 @@ generic_talker:
 
     User: "What is NVIDIA trading at?"
     Correct action: call_backend with query "Get the current stock price for NVIDIA."
+
+    User: "What is the stock price of?"
+    Correct action: call_backend with query "What is the stock price of?"
+    Never add NVIDIA, NVDA, Tesla, or any other company or ticker; the backend must ask for the subject.
+
+    User: "Who is the winner of the World Cup?"
+    Correct action: call_backend with query "Search for the latest FIFA World Cup winner and clarify the
+    competition if the user's wording is ambiguous."
+    A recurring competition's current winner is changing information, even when the user omits "latest."
+
+    User: "This is the latest one."
+    Context: The conversation is about the current FIFA World Cup winner.
+    Correct action: call_backend with query "Verify the latest FIFA World Cup winner."
+
+    User: "Okay. Looks like this is not the latest one."
+    Context: The conversation is about the current FIFA World Cup winner.
+    Correct action: call_backend with query "Recheck the latest FIFA World Cup winner because the prior answer
+    may be stale."
+
+    User: "Can you find it? Looks like this is not the latest one."
+    Context: The conversation is about the current FIFA World Cup winner.
+    Correct action: call_backend with query "Search for and verify the latest FIFA World Cup winner."
 
     User: "Repeat that weather."
     Context: The previous result reported the current weather in Pune.
@@ -706,6 +735,8 @@ generic_thinker:
 
     Missing-information rule:
     - Never invent required parameters.
+    - Preserve the user's literal company name or ticker for get_stock_price. If no company or ticker appears
+      in the request, return params_missing for company_name; never copy NVIDIA or another example value.
     - Return response_hint with reason params_missing, action req_params, context set to the intended tool,
       and params_needed containing only missing schema field names.
     - response_text must be one brief question and contain no factual answer.
@@ -730,6 +761,12 @@ generic_thinker:
     "Current weather in the fictional city Atlantis" -> {"tool":"get_weather","params":{"city":"Atlantis","units":"celsius"}}
     "Will it rain in Pune tomorrow" -> {"tool":"web_search","params":{"query":"Will it rain in Pune tomorrow? Provide the forecast date and conditions."}}
     "What is NVIDIA trading at" -> {"tool":"get_stock_price","params":{"company_name":"NVIDIA"}}
+    "What is the stock price of" -> {"tool":"response_hint","reason":"params_missing","action":"req_params","context":"get_stock_price","params_needed":["company_name"],"response_text":"Which company name or stock ticker do you mean?"}
+    "Who is the winner of the World Cup" -> {"tool":"web_search","params":{"query":"latest FIFA World Cup winner"}}
+    "Verify the latest FIFA World Cup winner" -> {"tool":"web_search","params":{"query":"verify the latest FIFA World Cup winner"}}
+    "Recheck the latest FIFA World Cup winner because the prior answer may be stale" -> {"tool":"web_search","params":{"query":"verify the latest FIFA World Cup winner"}}
+    "Search for and verify the latest FIFA World Cup winner" -> {"tool":"web_search","params":{"query":"verify the latest FIFA World Cup winner"}}
+
     "Latest Formula One result" -> {"tool":"web_search","params":{"query":"What happened in the latest Formula One race?"}}
     "I weigh 70 kilograms. What's my BMI" -> {"tool":"response_hint","reason":"params_missing","action":"req_params","context":"calculate_bmi","params_needed":["height_m"],"response_text":"What is your height in metres?"}
     "BMI for 70 kilograms and 1.75 metres" -> {"tool":"calculate_bmi","params":{"weight_kg":70,"height_m":1.75}}

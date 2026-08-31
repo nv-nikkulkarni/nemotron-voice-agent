@@ -64,6 +64,19 @@ class _BlockingPlanner:
         return {"tool": "generate_random_number", "params": {"min": 5, "max": 5}}
 
 
+class _TransientPlanner:
+    def __init__(self, failures: int) -> None:
+        self.failures = failures
+        self.calls = 0
+
+    async def plan(self, *, query: str, state: dict) -> dict:
+        del query, state
+        self.calls += 1
+        if self.calls <= self.failures:
+            raise TimeoutError
+        return {"tool": "generate_random_number", "params": {"min": 5, "max": 5}}
+
+
 class _CapturingLLM:
     def __init__(self) -> None:
         self.frames = []
@@ -393,6 +406,16 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
         self.assertIn("Never call call_backend or cancel_backend again", talker)
         self.assertIn("latest NVIDIA artificial intelligence news", thinker)
         self.assertIn('"tool":"web_search"', thinker)
+        self.assertIn('User: "What is the stock price of?"', talker)
+        self.assertIn("Never add NVIDIA, NVDA, Tesla", talker)
+        self.assertIn('User: "Who is the winner of the World Cup?"', talker)
+        self.assertIn('User: "This is the latest one."', talker)
+        self.assertIn('User: "Okay. Looks like this is not the latest one."', talker)
+        self.assertIn('User: "Can you find it? Looks like this is not the latest one."', talker)
+        self.assertIn("return params_missing for company_name", thinker)
+        self.assertIn('"Who is the winner of the World Cup" -> {"tool":"web_search"', thinker)
+        self.assertIn("Recheck the latest FIFA World Cup winner", thinker)
+        self.assertIn("Search for and verify the latest FIFA World Cup winner", thinker)
 
     def test_session_capabilities_are_server_owned_and_immutable(self) -> None:
         config = server._sanitize_session_config(
@@ -511,6 +534,80 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls, 0)
         self.assertEqual(payload["params_needed"], ["height_m"])
 
+    async def test_planner_cannot_invent_stock_subject_absent_from_source_query(self) -> None:
+        calls = 0
+
+        async def should_not_run(arguments):
+            nonlocal calls
+            calls += 1
+            return {"status": "success"}
+
+        tools = _tool_registry(get_stock_price=should_not_run)
+        payload = await dispatcher.dispatch_plan(
+            {"tool": "get_stock_price", "params": {"company_name": "NVIDIA"}},
+            tools,
+            ("get_stock_price",),
+            source_query="What is the stock price of?",
+        )
+
+        self.assertEqual(calls, 0)
+        self.assertEqual(payload["reason"], "params_missing")
+        self.assertEqual(payload["params_needed"], ["company_name"])
+
+    async def test_stock_subject_grounding_accepts_literal_company_or_ticker(self) -> None:
+        calls: list[str] = []
+
+        async def fixed_stock(arguments):
+            calls.append(arguments["company_name"])
+            return {
+                "status": "success",
+                "company": arguments["company_name"],
+                "symbol": arguments["company_name"],
+                "price": 100,
+                "currency": "USD",
+            }
+
+        tools = _tool_registry(get_stock_price=fixed_stock)
+        for company, query in (
+            ("NVIDIA", "Get NVIDIA's stock price."),
+            ("NVDA", "What is NVDA trading at?"),
+            ("A", "What is A trading at?"),
+        ):
+            payload = await dispatcher.dispatch_plan(
+                {"tool": "get_stock_price", "params": {"company_name": company}},
+                tools,
+                ("get_stock_price",),
+                source_query=query,
+            )
+            self.assertEqual(payload["status"], "success")
+
+        self.assertEqual(calls, ["NVIDIA", "NVDA", "A"])
+
+    async def test_ungrounded_stock_member_rejects_multi_tool_plan_before_execution(self) -> None:
+        calls = 0
+
+        async def should_not_run(arguments):
+            nonlocal calls
+            calls += 1
+            return {"status": "success"}
+
+        tools = _tool_registry(get_weather=should_not_run, get_stock_price=should_not_run)
+        payload = await dispatcher.dispatch_plan(
+            {
+                "tool_calls": [
+                    {"tool": "get_weather", "params": {"city": "Pune"}},
+                    {"tool": "get_stock_price", "params": {"company_name": "NVIDIA"}},
+                ]
+            },
+            tools,
+            ("get_weather", "get_stock_price"),
+            source_query="Check Pune weather and the stock price of?",
+        )
+
+        self.assertEqual(calls, 0)
+        self.assertEqual(payload["reason"], "params_missing")
+        self.assertEqual(payload["params_needed"], ["company_name"])
+
     def test_more_than_three_calls_is_rejected(self) -> None:
         plan = {
             "tool_calls": [
@@ -599,6 +696,48 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(second["status"], "success")
         self.assertIn("5", second["response_text"])
+
+    async def test_transient_planner_failure_retries_once_and_succeeds(self) -> None:
+        planner = _TransientPlanner(failures=1)
+
+        async def fixed_random(arguments):
+            return {"status": "success", "result": 5, "min": 5, "max": 5}
+
+        backend = GenericThinkerBackend(
+            planner=planner,
+            tools=_tool_registry(generate_random_number=fixed_random),
+            enabled_tools=("generate_random_number",),
+            overall_timeout_seconds=3,
+            planner_timeout_seconds=1,
+        )
+        with patch("examples.frontend_backend_agent.generic.backend._PLANNER_RETRY_BACKOFF_SECONDS", 0):
+            payload = await backend.call("Generate a random number.")
+
+        self.assertEqual(planner.calls, 2)
+        self.assertEqual(payload["status"], "success")
+
+    async def test_exhausted_planner_retry_returns_safe_timeout(self) -> None:
+        planner = _TransientPlanner(failures=2)
+        service_calls = 0
+
+        async def should_not_run(arguments):
+            nonlocal service_calls
+            service_calls += 1
+            return {"status": "success"}
+
+        backend = GenericThinkerBackend(
+            planner=planner,
+            tools=_tool_registry(generate_random_number=should_not_run),
+            enabled_tools=("generate_random_number",),
+            overall_timeout_seconds=3,
+            planner_timeout_seconds=1,
+        )
+        with patch("examples.frontend_backend_agent.generic.backend._PLANNER_RETRY_BACKOFF_SECONDS", 0):
+            payload = await backend.call("Generate a random number.")
+
+        self.assertEqual(planner.calls, 2)
+        self.assertEqual(service_calls, 0)
+        self.assertEqual(payload["reason"], "timeout")
 
     async def test_generic_filler_is_runtime_owned_and_model_filler_is_ignored(self) -> None:
         handler = build_handlers(
