@@ -218,7 +218,9 @@ The active isolated staging environment remains on rejected candidate
 Chart `0.1.120` with app/UI `2.0.49` passed its strict repeated-tool matrix and
 automated exact-pronunciation probe. Chart `0.1.122` with app/UI `2.0.51` was
 built and pushed, but it was not deployed or qualified. Chart `0.1.123` keeps
-app/UI `2.0.51` and updates the two TTS NIMs. It is not built or qualified.
+app/UI `2.0.51` and updates the two TTS NIMs. It is locally packaged,
+secret-scanned, and published to the NGC Helm chart registry with
+`UPLOAD_COMPLETE`. It has not been deployed or qualified on Viking.
 The active isolated
 `-2` environment remains on rejected candidate `0.1.115`, and no candidate has
 staging or production approval.
@@ -1672,11 +1674,34 @@ Magpie now resolves directly from the public NIM repository instead of assuming 
 tag exists in the organization mirror. The existing NGC image pull secret remains the
 authentication boundary for both public repositories.
 
-This is an unbuilt and unqualified source candidate. It does not prove image access,
-model readiness, voice compatibility, custom pronunciation behavior, streaming latency,
-or concurrency. Qualify those boundaries in Viking before staging. The `0.1.122`
-artifact identities above remain historical evidence and are not identities for this
-candidate.
+The locally packaged candidate record is:
+
+| Artifact or Gate | Identity or Status |
+|---|---|
+| Package source | `eb59ac2b28549db90361bc99c8b14a5c19c70249` |
+| Reused app image | `nvcr.io/0491162300748285/nemotron-voice-agent:2.0.51` (`sha256:fe57f3e9a44b66cc19ee8c3ae48e3bf3542a636461cd152a54ecf69df6e397b5`) |
+| Reused UI image | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.51-541af46e` (`sha256:b370d8e50c41a4eb2197c2c95a51a13bdc824cce3f63706451d57d662cd651a8`) |
+| Local chart package | `nemotron-voice-agent-0.1.123.tgz` (`sha256:0b362cf0a0311a1367fab47ebccc6ce72e5de58cd20670f9fe24ea4a25205e90`) |
+| Package checks | Locally packaged and secret-scanned |
+| NGC Helm chart | `0491162300748285/nemotron-voice-agent:0.1.123`, pushed with `ngc registry chart push` |
+| NGC upload status | `UPLOAD_COMPLETE`; `createdDate=2026-08-30T19:15:58.797Z`; 1 file; 33,435 bytes |
+| Published-copy verification | `ngc registry chart pull` returned an archive matching `sha256:0b362cf0a0311a1367fab47ebccc6ce72e5de58cd20670f9fe24ea4a25205e90` exactly |
+| Initial registry authentication | The active key was initially scoped only to `nv-cloud-functions`; registry-capable authentication resolved this separate access issue |
+| Redundant generic resource | The old private resource was absent, then mistakenly recreated and uploaded by following an incorrect historical resource path; not used by NVCF; retained pending explicit deletion authorization |
+| Viking | Not deployed and not qualified |
+
+This candidate does not prove image access, model readiness, voice compatibility, custom
+pronunciation behavior, streaming latency, or concurrency. Qualify those boundaries in
+Viking before staging. The reused app and UI digests are historical `0.1.122` artifacts;
+they were not rebuilt from the `0.1.123` package source. The initial key-scope issue
+blocked chart-registry access but was separate from the artifact-type error. After
+registry-capable authentication, `ngc registry chart push` published the authoritative
+Helm chart, and `ngc registry chart pull` verified its checksum.
+
+The generic NGC resource was mistakenly recreated and uploaded because an incorrect
+historical resource path was followed. It is redundant, is not consumed by NVCF
+deployment, and remains retained until deletion is explicitly authorized. Neither chart
+publication nor checksum verification qualifies the chart on Viking.
 
 ### 19.4 True Astra production promotion
 
