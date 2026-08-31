@@ -559,6 +559,13 @@ When `/api/ws?session_id=...` lands elsewhere, the target pod checks its local d
 
 Attachment and webcam endpoints resolve the session config and inspect the selected example’s declared capabilities. A Generic session receives `403` for Omni-only media operations. Unknown sessions receive `404`. Upload bodies are bounded at 50 MiB; webcam frames have an additional 5,000,000-byte bound. Uploaded images must pass extension and JPEG/PNG magic-byte checks.
 
+Sanitization also canonicalizes `pipeline_mode` and persists a server-owned
+`_session_capabilities` snapshot with the Redis session config. Capability
+endpoints prefer this snapshot, which prevents another replica from widening
+access by reinterpreting client fields. Older stored sessions fall back to
+registry resolution. An empty or missing cross-replica config returns `404`
+instead of the misleading capability `403`.
+
 ---
 
 ## 8. Example and service selection
@@ -706,6 +713,10 @@ paths:
 
 1. The public user-speaking callback calls
    `DailyMediaManager.userStartedSpeaking()` and clears buffered browser audio.
+   `TurnAwareDailyMediaManager` sends Pulse-code modulation (PCM) through one
+   stable `bot-turn-N` ID per bot turn, then advances the ID after interruption.
+   This preserves late-frame rejection without blacklisting every later response
+   through the transport's `"default"` ID.
 2. The raw protobuf interruption frame remains a compatibility no-op because
    the generated client schema does not expose that field.
 3. A transparent server `BargeInTracker` records whether the user started while
@@ -908,6 +919,13 @@ Capacity must therefore be established by SQA/concurrency tests, not inferred fr
 ### 11.4 Rollout behavior
 
 With the router disabled, the app `Deployment` uses `strategy: Recreate` because WebSocket sessions are stateful per process. A same-version in-place chart rollout can interrupt active calls. The safer managed pattern is a new immutable NVCF function version, qualify it, then cut over/remove the old deployment.
+
+Do not leave two function versions serving one stateful Astra endpoint after
+cutover. Each version owns a separate Redis and SeaweedFS deployment, so
+`/api/session-config` and later attachment, webcam, or capture requests can
+reach different state stores. Keep the old version available while the new
+version starts and warms, perform a controlled cutover, and retire the old
+version before stateful qualification.
 
 ---
 
@@ -1298,6 +1316,8 @@ Production chart versions `0.1.91`–`0.1.103` added webcam and capture teardown
 | `/api/ws` returns `200` instead of `101` or browser gets `1006` | WS sent to invocation URL, missing function-id, or stale NVCF cookie | separate streaming-gateway location; strip cookies both ways | inspect rendered nginx config/env names and gateway route |
 | App pods stuck before Python | Redis or SeaweedFS unavailable | hard startup gates | inspect those deployments/services first |
 | Session starts with wrong/default example | config POST and WS hit different pods without Redis/config expired | Redis `sb:cfg` | verify Redis connected, key TTL, session ID propagation |
+| Bot speaks, then later browser turns remain silent after barge-in | interrupted `"default"` player track remains blacklisted | turn-scoped `bot-turn-N` playback IDs | rebuild the UI and rerun real-audio Phase D with acoustic output checks |
+| One Omni session alternates attachment or webcam `200` and `403` | multiple active function versions route requests into isolated Redis stores | server-owned capability snapshot and truthful missing-session `404` | verify active versions; after an authorized cutover, retire the stale version before stateful SQA |
 | Attachment upload succeeds but voice worker never notices | Redis stream/listener failure | XREAD from `0`, timeout/error retry | inspect Redis health, listener warnings, `sb:att:<sid>` |
 | Webcam says camera off despite `200` uploads | control-state/listener/session mismatch or stale voice worker state | fresh-frame upload can infer camera enabled; shared Redis stream | verify same session ID, webcam-state RTVI event, stream entries, current board state |
 | Media bytes cause Redis eviction | 256 MiB `allkeys-lru`, large/concurrent uploads | stream length + TTL | reduce payload/ring/concurrency or increase Redis memory; watch config/capture eviction risk |

@@ -392,6 +392,38 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
         self.assertIn("latest NVIDIA artificial intelligence news", thinker)
         self.assertIn('"tool":"web_search"', thinker)
 
+    def test_session_capabilities_are_server_owned_and_immutable(self) -> None:
+        config = server._sanitize_session_config(
+            {
+                "pipeline_mode": "omni-assistant-subagents",
+                "_session_capabilities": ["forged"],
+            }
+        )
+
+        self.assertEqual(config["pipeline_mode"], "omni-assistant-subagents")
+        self.assertEqual(config["_session_capabilities"], ["attachments", "webcam"])
+
+    def test_session_capability_validation_uses_the_stored_snapshot(self) -> None:
+        session_id = "capability01"
+        config = server._sanitize_session_config({"pipeline_mode": "omni-assistant-subagents"})
+        with (
+            patch.object(server, "_load_session", return_value=config),
+            patch.object(server.examples_registry, "find", side_effect=AssertionError("registry re-resolved")),
+        ):
+            self.assertIsNone(server._session_capability_error(session_id, "attachments"))
+            response = server._session_capability_error(session_id, "unsupported")
+        self.assertEqual(response.status_code, 403)
+
+    def test_missing_cross_replica_session_returns_not_found(self) -> None:
+        session_id = "missingcfg01"
+        server._session_configs.pop(session_id, None)
+        server._active_session_configs.pop(session_id, None)
+
+        with patch.object(server, "_load_session", return_value={}):
+            response = server._session_capability_error(session_id, "attachments")
+
+        self.assertEqual(response.status_code, 404)
+
 
 class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_planner_delimits_request_and_enabled_tools(self) -> None:
