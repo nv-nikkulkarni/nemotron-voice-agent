@@ -25,6 +25,7 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 | `converse.mjs` | Real multi-turn **spoken** conversations (generic + omni); verifies each turn via ASR + DOM, tools, latency, dialogue context. |
 | `concurrent.mjs` | N isolated sessions at once; distinct session IDs, all connect + hear greeting, 0 errors. |
 | `comprehensive.mjs` | Full Generic tool, Omni media/webcam, UI lifecycle, and mixed eight-session qualification. |
+| `captured_session_regressions.mjs` | Real-audio replays of captured NVCF/Astra sessions `52f301234e8c` and `499162cb3960`, covering private narration and stale dynamic answers. |
 | `repeated_expect_tool_matrix.mjs` | Repeated live-data delegation with independent bot ASR, grounded-result waits, silence checks, and cross-session leakage checks. |
 | `prod_remediation_corner_cases.mjs` | API failures, cancellation, bounded multi-tool speech, and isolated safety/grounding probes. |
 | `robustness.mjs` | Barge-in, graceful End, forced WebSocket close, Reconnect, and unique replacement-session checks. |
@@ -41,6 +42,7 @@ export SQA_KEY=sk-...                 # inference-hub key
 export SQA_BASE=http://localhost:7862 # default
 ./sqa.sh functional
 ./sqa.sh converse both     # or: generic | omni
+./sqa.sh captured-sessions
 ./sqa.sh concurrent 4
 ./sqa.sh video
 ./sqa.sh shell             # interactive debug
@@ -49,3 +51,23 @@ The container needs `--network host` (handled by `sqa.sh`) to reach the local UI
 Generated reports and screenshots land in ignored local output directories.
 Versioned qualification summaries live in `reports/`; older completed runs live in
 `reports/archive/`.
+
+## Captured Session Regressions
+
+The `captured-sessions` suite reconstructs two observed NVCF/Astra failures with
+deterministic `espeak-ng` query audio. It still sends the audio through the virtual
+microphone, application ASR, agent pipeline, application TTS, and browser speaker.
+
+- Session `52f301234e8c` passes when the application hears the incomplete stock-price
+  request, the agent asks for the ticker or company, the bot speaks, and neither private
+  narration nor serialized internal calls appear in the answer.
+- Session `499162cb3960` passes when every prompt retains its required meaning in
+  application ASR, every turn produces bot audio, all 3 latest-answer challenge turns use
+  a web or search tool, no answer presents 2022 as the latest result, and the final
+  verification does not contradict a newer grounded year.
+
+The suite also requires zero unexpected browser console errors and WebSocket closures. It
+writes `artifacts/captured-session-regressions/captured_session_regressions_report.json`.
+Raw audio and generated reports remain ignored. Passing this focused suite does not replace
+the comprehensive, concurrency, guardrail, webcam, capture, reconnect, or pronunciation
+release gates.
