@@ -65,7 +65,7 @@ const CHAT_TURNS = [
   { text: "Repeat the NVIDIA stock price now.", want: /\d|price|dollar|nvidia/i, notWant: /\btokyo\b|\blondon\b|\bweather\b|\bdegrees?\b/i, tool: "get_stock_price", label: "Stock price" },
   { text: "Thanks so much. Goodbye!", want: /bye|welcome|glad|help|day|care/i },
 ];
-const ALL_TOOL_LABELS = TOOL_TURNS.map((t) => t.label); // enable every tool in the popup
+const ALL_TOOL_NAMES = TOOL_TURNS.map((t) => t.tool);
 const GENERIC_PROGRESS_TEXTS = [
   "Let me work that out.",
   "Let me check those details.",
@@ -84,7 +84,12 @@ async function phaseA() {
     const { page } = await H.newPage(browser, sig);
     await guard("goto", 40000, () => page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 30000 }));
     await H.sleep(1500);
-    await guard("selectExample", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie", tools: ALL_TOOL_LABELS }));
+    rep.serverOwnedTools = await guard(
+      "server-owned tool catalog",
+      20000,
+      () => H.assertServerOwnedTools(page, { expected: ALL_TOOL_NAMES }),
+    );
+    await guard("selectExample", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie" }));
     const conn = await guard("connect", 45000, () => H.startConversation(page, { timeoutMs: 40000 }));
     rep.connected = conn?.connected ?? false; rep.connectMs = conn?.connectMs ?? null;
     rep.sessionId = await H.sessionId(page);
@@ -291,7 +296,7 @@ async function phaseC() {
     await H.sleep(1500);
 
     // C1. Start generic, one turn.
-    await guard("C1.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie", tools: ["Weather"] }));
+    await guard("C1.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie" }));
     const c1 = await guard("C1.connect", 45000, () => H.startConversation(page, { timeoutMs: 40000 }));
     add("generic connects", !!c1?.connected);
     if (!(await guard("C1.welcome", 50000, () => H.waitForSettledWelcome(page)))) {
@@ -332,7 +337,7 @@ async function phaseC() {
     await guard("C3.closeSettings", 8000, () => H.closeOverlay(page));
 
     // C4. Restart the pipeline (generic) → the prompt override should take effect.
-    await guard("C4.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie", tools: ["Weather"] }));
+    await guard("C4.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie" }));
     const c4 = await guard("C4.connect", 45000, () => H.startConversation(page, { timeoutMs: 40000 }));
     add("restart after prompt edit connects", !!c4?.connected);
     const promptSubmission = submittedConfigs[submittedConfigs.length - 1] || {};
@@ -355,7 +360,7 @@ async function phaseC() {
     // C6. NGC session-capture status (this session consented at C1? no — start a consented one).
     await guard("C6.end", 20000, () => H.endConversation(page));
     await guard("C6.dismiss", 8000, () => H.dismissFeedback(page));
-    await guard("C6.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie", tools: ["Weather"], consent: true }));
+    await guard("C6.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie", consent: true }));
     const c6 = await guard("C6.connect", 45000, () => H.startConversation(page, { timeoutMs: 40000 }));
     const capSid = await H.sessionId(page);
     rep.captureSessionId = capSid; // status() no longer exposes per-session file listings to correlate against; kept for manual cross-reference against server logs
@@ -411,7 +416,7 @@ async function oneStream(i) {
     const { page } = await H.newPage(browser, sig, { viewport: { width: 900, height: 700 } });
     await guard("goto", 50000, () => page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 45000 }));
     await H.sleep(600 + i * 150);
-    await guard("select", 15000, () => H.selectExample(page, isOmni ? { example: "omni" } : { example: "generic", model: "lightning", tools: ["Weather"] }));
+    await guard("select", 15000, () => H.selectExample(page, isOmni ? { example: "omni" } : { example: "generic", model: "lightning" }));
     const conn = await guard("connect", 50000, () => H.startConversation(page, { timeoutMs: 45000 }));
     r.connected = !!conn?.connected;
     if (!r.connected) throw new Error("no connect");

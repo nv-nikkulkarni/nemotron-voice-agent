@@ -54,6 +54,12 @@ because the replacement is a version of the same function ID.
   request survived application ASR, selected the expected live lookup path,
   produced bot audio, and was independently transcribed. Browser console errors
   and failed requests were both zero.
+- Tuned Astra comprehensive Suite A: PASS. The harness first verifies the exact
+  five-tool server-owned `generic_talker` catalog instead of requesting obsolete
+  UI checkboxes. All 15 real-audio turns produced speech; Weather was called 3/3,
+  Stock Price 2/2, Web Search 1/1, BMI 1/1, and Random Number 1/1. There were no
+  hard failures, warnings, hangs, browser-console errors, bad HTTP responses, or
+  WebSocket closures. Run ID: `20260901T051000Z-comprehensive-A-tuned`.
 - Capture status through Astra reported upload required, upload ready, target
   configured, NGC CLI/key present, S3 storage, and zero pending or failed
   sessions.

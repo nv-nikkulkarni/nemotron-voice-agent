@@ -172,11 +172,11 @@ async function prepareSession(clientIndex) {
   const { ctx, page } = await H.newPage(browser, signals, { viewport: { width: 900, height: 700 } });
   try {
     await page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await H.assertServerOwnedTools(page);
     await H.selectExample(page, {
       example: "generic",
       model: "lightning",
       tts: TTS,
-      tools: ["Weather"],
       consent: false,
     });
     const connection = await H.startConversation(page, { timeoutMs: 60000 });

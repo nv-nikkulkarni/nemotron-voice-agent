@@ -53,7 +53,6 @@ async function openSession(browser, { consent, socketCapture = false }) {
     example: "generic",
     model: "lightning",
     tts: "magpie",
-    tools: [],
     consent,
   });
   const connection = await H.startConversation(page, { timeoutMs: 60000 });

@@ -15,6 +15,13 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const BASE = process.env.SQA_BASE || "http://localhost:7862";
 export const OUT = process.env.SQA_OUT || "/sqa/out";
 export const RUN_ID = process.env.SQA_RUN_ID || "unversioned-run";
+export const GENERIC_SERVER_TOOL_NAMES = Object.freeze([
+  "get_weather",
+  "get_stock_price",
+  "web_search",
+  "calculate_bmi",
+  "generate_random_number",
+]);
 mkdirSync(OUT, { recursive: true });
 
 // WebAudio tap: records when bot audio starts + a level trace, resettable per turn.
@@ -116,8 +123,10 @@ export async function newPage(browser, sig, { viewport = { width: 1280, height: 
 //   model   : "lightning" only. Generic model roles are fixed; any other value
 //             is rejected so a test cannot silently claim it selected Super/Nano.
 //   tts     : "magpie" | "chatterbox"          (optional; leaves the popup default if omitted)
-//   tools   : string[] of visible tool LABELS to ENABLE, e.g. ["Weather","BMI"];
-//             the enabled set is made to match this exactly (generic only). Omitted → defaults.
+//   tools   : string[] of visible tool LABELS to ENABLE on a UI that actually
+//             renders tool checkboxes. The Generic Frontend/Backend example owns
+//             its fixed allowlist server-side, so callers must use
+//             assertServerOwnedTools() and omit this option for that example.
 //   reasoning: boolean (optional); explicitly set the popup reasoning toggle.
 //              Generic has fixed model roles (Talker reasoning off, Thinker on),
 //              so `false` is valid even though that popup has no toggle.
@@ -130,6 +139,40 @@ export async function waitForDeploymentReady(page, { timeoutMs = 30000 } = {}) {
     await sleep(250);
   }
   return false;
+}
+
+export async function assertServerOwnedTools(page, {
+  pipelineMode = "generic-frontend-backend-agent",
+  promptKey = "generic_talker",
+  expected = GENERIC_SERVER_TOOL_NAMES,
+} = {}) {
+  if (!Array.isArray(expected) || expected.length === 0) {
+    throw new Error("server-owned tool assertion requires a nonempty expected tool list");
+  }
+  const endpoint = new URL("/api/prompts", BASE);
+  endpoint.searchParams.set("pipeline_mode", pipelineMode);
+  const response = await page.request.get(endpoint.toString(), { timeout: 15000 });
+  if (!response.ok()) {
+    throw new Error(`server-owned tool catalog request failed: HTTP ${response.status()}`);
+  }
+  const prompts = await response.json();
+  if (!Array.isArray(prompts)) throw new Error("server-owned tool catalog response is not an array");
+  const prompt = prompts.find((item) => item?.key === promptKey);
+  if (!prompt) throw new Error(`server-owned tool prompt not found: ${promptKey}`);
+  const actual = Array.isArray(prompt.tools)
+    ? [...new Set(prompt.tools.filter((tool) => typeof tool === "string" && tool.trim()).map((tool) => tool.trim()))]
+    : [];
+  const wanted = [...new Set(expected.map((tool) => String(tool).trim()).filter(Boolean))];
+  const actualSet = new Set(actual);
+  const wantedSet = new Set(wanted);
+  const missing = wanted.filter((tool) => !actualSet.has(tool));
+  const unexpected = actual.filter((tool) => !wantedSet.has(tool));
+  if (missing.length || unexpected.length) {
+    throw new Error(
+      `server-owned tool catalog mismatch: missing=[${missing.join(", ")}] unexpected=[${unexpected.join(", ")}]`,
+    );
+  }
+  return actual.sort();
 }
 
 export async function selectExample(page, { example = "generic", model = "lightning", tts, tools, reasoning, consent } = {}) {
@@ -166,7 +209,7 @@ export async function selectExample(page, { example = "generic", model = "lightn
     await opt.locator("input").evaluate((el) => el.click());
   }
 
-  // 5. Tools multi-select (generic only): make the enabled set exactly match `tools`.
+  // 5. Visible tools multi-select, only for surfaces that explicitly render it.
   if (!isOmni && Array.isArray(tools)) {
     const want = new Set(tools.map((t) => t.trim().toLowerCase()));
     const labels = popup.locator("label.ex-tool");
