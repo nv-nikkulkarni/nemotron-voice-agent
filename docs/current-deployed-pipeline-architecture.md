@@ -173,22 +173,32 @@ flowchart TB
 ### 2.2 Isolated Staging Candidate
 
 The following environment is isolated from the retained live UI and production
-function. Candidate `0.1.115` is **rejected** and must not be promoted.
+function. Chart `0.1.130` and app/UI `2.0.58` were deployed after an explicit
+owner override of a known SQA-oracle failure. This environment is available for
+staging evaluation, but it has not passed the complete qualification matrix and
+must not be promoted to production yet.
 
 | Item | Candidate value | Evidence class |
 |---|---|---|
 | NVCF function name | `nemotron-voice-agent-2` | Live-verified |
 | NVCF function ID | `7886e141-cf95-4de5-9707-84cdfe048ddf` | Live-verified |
-| Function version | `f9c31ddc-dabd-42b4-b4b6-7c9bcf52e38d` | Live-verified |
+| Function version | `1cc3541f-87c1-4a1c-b531-8c9984d4b419` | Live-verified |
 | NVCF state | `ACTIVE` | Live-verified |
 | NVCF backend | `nvcf-dgxc-k8s-oci-nrt-prd9-1` | Live-verified |
-| NVCF deployment ID | `388ede61-5e92-4b76-bab1-b51bad1d82ff` | Live-verified |
-| Helm chart / app | `0.1.115` / `2.0.44` | Live-verified |
-| Candidate source | `74dc76e1` | Rendered from active chart |
+| NVCF deployment ID | `7e8e6b24-7a54-4455-9e06-3c01b5d745ee` | Live-verified |
+| Helm chart / app | `0.1.130` / `2.0.58` | Live-verified |
+| Candidate source | `76ebbbd4416efa20265dd409f3869840c5b2a724` | Built artifact source |
 | Astra app | `nemotron-voice-agent-2-deploy` | Live-verified |
 | Astra URL | `https://nemotron-voice-agent-2-deploy-backend.stg.astra.nvidia.com` | Live-verified |
-| Astra UI timestamp | `2026-08-26T07:10:38Z` | Live-verified from `/config.js` |
-| Candidate decision | **REJECTED** | Strict repeated-tool matrix failed |
+| Astra UI image | `nemotron-voice-agent-ui:2.0.58-76ebbbd4` | Live-verified from Fusion values |
+| Astra UI timestamp | `2026-08-31T22:03:25Z` | Live-verified from `/config.js` |
+| Astra revision | `5fa09559ae53` | Fusion Synced/Healthy |
+| Capture status | upload required and ready; S3 backend; zero pending/failed | Live-verified through Astra |
+| Candidate decision | **DEPLOYED, NOT FULLY QUALIFIED** | Owner overrode the known conversation-oracle failure |
+
+The former `0.1.129` deployment is inactive but its immutable function version
+remains available as rollback. The remainder of this subsection records the
+historical `0.1.115` rejection that preceded the current candidate.
 
 The complete real-audio browser suite passed before the blocking concurrency
 gate. Its Generic phase produced audio on 15 of 15 turns and selected every
@@ -213,17 +223,16 @@ The remediation keeps Lightning responsible for choosing direct speech,
 `call_backend`, or `cancel_backend`. It does not add an intent router. Promotion
 requires a fresh immutable candidate and a clean rerun of the blocking matrix.
 
-The active isolated staging environment remains on rejected candidate
-`0.1.115`. Candidate `0.1.116` ran only on Viking and was also rejected.
+Candidate `0.1.116` ran only on Viking and was rejected.
 Chart `0.1.120` with app/UI `2.0.49` passed its strict repeated-tool matrix and
 automated exact-pronunciation probe. Chart `0.1.122` with app/UI `2.0.51` was
 built and pushed, but it was not deployed or qualified. Chart `0.1.123` keeps
 app/UI `2.0.51` and updates the two TTS NIMs. It is locally packaged,
 secret-scanned, and published to the NGC Helm chart registry with
-`UPLOAD_COMPLETE`. It has not been deployed or qualified on Viking.
-The active isolated
-`-2` environment remains on rejected candidate `0.1.115`, and no candidate has
-staging or production approval.
+`UPLOAD_COMPLETE`. It was not deployed or qualified on Viking. The active
+isolated `-2` environment now runs `0.1.130`/`2.0.58` under an explicit owner
+override. Its deployment smoke passed, but its complete staging qualification
+and production approval remain pending.
 
 ### 2.3 Important Naming Truth: “Live/Prod” Versus Astra `prd`
 
@@ -1693,11 +1702,10 @@ The immutable candidate artifacts are:
 
 GitHub is pushed through
 `fdb70203d745d94eea44badaee1edbb303b43b57`, which points the isolated Astra
-values at the new UI tag. Viking has not deployed or qualified `0.1.122`. The
-isolated `nemotron-voice-agent-2` NVCF function and
-`nemotron-voice-agent-2-deploy` Astra app remain on rejected candidate
-`0.1.115`. The isolated rollout is waiting for Fusion reauthentication. Do not
-update that environment until the candidate passes the required Viking gates.
+values at the new UI tag. Viking did not deploy or qualify `0.1.122`. At the
+time this historical record was written, the isolated environment still ran
+rejected candidate `0.1.115` and was waiting for Fusion reauthentication. That
+state is superseded by the live `0.1.130` snapshot in section 2.2.
 
 ### 19.3 TTS NIM Upgrade Candidate 0.1.123
 
