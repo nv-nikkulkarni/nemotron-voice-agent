@@ -205,7 +205,12 @@ export async function selectExample(page, { example = "generic", model = "lightn
   if (tts) {
     const wanted = tts === "chatterbox" ? /chatterbox/i : /magpie/i;
     const opt = popup.locator('label.ex-opt', { has: page.locator('input[name="tts"]') }).filter({ hasText: wanted }).first();
-    if (!(await opt.count())) throw new Error(`requested TTS option not found: ${tts}`);
+    // The deployment catalog is loaded asynchronously after the modal opens.
+    // Keep the requested-option check strict, but allow the matching radio to
+    // arrive before treating a missing catalog entry as a hard failure.
+    await opt.waitFor({ state: "visible", timeout: 8000 }).catch(() => {
+      throw new Error(`requested TTS option not found: ${tts}`);
+    });
     await opt.locator("input").evaluate((el) => el.click());
   }
 
