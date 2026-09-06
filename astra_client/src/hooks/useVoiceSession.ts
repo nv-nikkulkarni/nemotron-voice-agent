@@ -179,13 +179,6 @@ export function useVoiceSession() {
           const demoPrompt = DEMO_PROMPT_OVERRIDES[example.key];
           if (demoPrompt) config.prompt_content = demoPrompt;
         }
-        // Editable model URL: sending model_id + base_url without llm_id bypasses
-        // built-in hydration so the pipeline uses the custom endpoint.
-        if (app.modelUrlOverride.trim() && llm) {
-          delete config.llm_id;
-          config.model_id = llm.modelId;
-          config.base_url = app.modelUrlOverride.trim();
-        }
       } else if (app.selectedPromptKey) {
         config.prompt_key = app.selectedPromptKey;
         if (app.selectedPrompt && !app.selectedPrompt.builtIn) config.prompt_content = app.selectedPrompt.content;

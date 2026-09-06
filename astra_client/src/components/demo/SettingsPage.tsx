@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2024–2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: BSD-2-Clause
 
-// Settings page (opened from the gear on the main page): Model URL, Tools,
-// Audio devices, and Prompt — everything that used to clutter the main view.
+// Settings page (opened from the gear on the main page): deployment model,
+// per-example tools, audio devices, and prompt.
 
 import { usePipecatClientMediaDevices } from "@pipecat-ai/client-react";
 import { useApp } from "../../context/useApp";
+import { ToolSelector } from "./ToolSelector";
 
 function DeviceSelect({
   label, devices, selectedId, onChange,
@@ -34,16 +35,18 @@ function Section({ icon, title, children }: Readonly<{ icon: string; title: stri
 
 export function SettingsPage({ onClose }: Readonly<{ onClose: () => void }>) {
   const {
-    selectedLLM,
-    modelUrlOverride, setModelUrlOverride,
+    selectedExample, selectedLLM,
     selectedPrompt, promptOverride, setPromptOverride,
     ttsServices, selectedTTSId, selectTTS,
+    tools, toolsLoading, selectedTools, toggleTool,
   } = useApp();
   const { availableMics, selectedMic, updateMic, availableSpeakers, selectedSpeaker, updateSpeaker } = usePipecatClientMediaDevices();
 
   const micId = "deviceId" in selectedMic ? selectedMic.deviceId : undefined;
   const spkId = "deviceId" in selectedSpeaker ? selectedSpeaker.deviceId : undefined;
   const basePrompt = selectedPrompt?.content ?? "";
+  const isGeneric = selectedExample?.domainProfile === "generic"
+    || selectedExample?.key === "generic-frontend-backend-agent";
 
   return (
     <div className="page-overlay" role="dialog" aria-modal="true" aria-label="Settings">
@@ -59,17 +62,20 @@ export function SettingsPage({ onClose }: Readonly<{ onClose: () => void }>) {
               <span className="set-field__label">Language model</span>
               <span className="set-value">{selectedLLM?.name ?? "Default"}</span>
             </label>
-            <label className="set-field">
-              <span className="set-field__label">Local model URL</span>
-              <input
-                className="set-input"
-                placeholder={selectedLLM?.baseUrl || "http://…/v1"}
-                value={modelUrlOverride}
-                onChange={(e) => setModelUrlOverride(e.target.value)}
-              />
-              <span className="set-hint">Leave blank to use the pipeline's built-in endpoint ({selectedLLM?.baseUrl || "default"}).</span>
-            </label>
+            <p className="set-hint">The endpoint is managed by this deployment and cannot be overridden from the browser.</p>
           </Section>
+
+          {isGeneric && (
+            <Section icon="🛠️" title="Tools">
+              <p className="set-hint">Choose which grounded capabilities are available in your next session.</p>
+              <ToolSelector
+                tools={tools}
+                selectedTools={selectedTools}
+                loading={toolsLoading}
+                onToggle={toggleTool}
+              />
+            </Section>
+          )}
 
           {ttsServices.length > 1 && (
             <Section icon="🔊" title="Voice (text-to-speech)">

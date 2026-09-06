@@ -1,6 +1,6 @@
 # Nemotron Voice Agent Client
 
-The Nemotron Voice Agent Client is the browser front end for the [Nemotron Voice Agent](../README.md) blueprint. It gives you a real-time, interruptible voice conversation with the agent, along with controls to switch models and prompts, preview TTS voices, watch live latency metrics, and follow the conversation transcript.
+The Nemotron Voice Agent Client is the browser front end for the [Nemotron Voice Agent](../README.md) blueprint. It gives you a real-time, interruptible voice conversation with the agent, along with controls to select an example, choose its supported tools and voice, adjust its prompt, watch live latency metrics, and follow the conversation transcript.
 
 It is a React and TypeScript single-page app built with [Vite](https://vite.dev/) and the [Pipecat Client SDK](https://docs.pipecat.ai/client/introduction). The client connects to the Python backend (`src/server.py`) over WebRTC or WebSocket and reads its `/api/*` endpoints for session, service, and voice configuration. In a deployed stack the backend serves this client's production build from `client/dist/`, so you normally reach the UI at `https://localhost:7860` rather than running it on its own.
 
@@ -17,6 +17,39 @@ It is a React and TypeScript single-page app built with [Vite](https://vite.dev/
 - **Webcam vision panel**: live webcam input for the multimodal Omni Subagents example.
 - **Safe session restart**: End and Start can create a new WebSocket session in
   the same tab, with a fresh session ID and audible welcome.
+- **Guided introduction**: a replayable animated overlay points to the main
+  controls and explains how to select, configure, start, and inspect an example.
+- **Streamlined example selection**: select an example without opening its
+  complete configuration popup, then configure it only when you need to change
+  its session options.
+- **Per-example tools**: enable or disable tools for the Generic
+  Frontend/Backend Agent from its configuration popup or from **Settings**.
+
+## Use the Curated Experience
+
+Select **Guided introduction** (`?`) in the header while no session is active.
+The six-step tour highlights the example cards, configuration and start
+controls, pipeline information, and settings. Use **Back** and **Next** to move
+through it, or select **Skip tour**. You can start the tour again from the
+header.
+
+To prepare a session, select the main area of an example card. This action only
+selects the example. Select **Configure** on the card or in the selected-example
+action row when you want to choose a text-to-speech engine, change capture
+preferences, or adjust other supported options. Select **Start conversation**
+in the action row to launch the selected example directly.
+
+The Generic Frontend/Backend Agent configuration includes its available tools.
+You can also change the same selection under **Settings**. The settings list
+and configuration popup share one checkbox state, so a change in either place
+appears in the other and applies to the next session. The server accepts only a
+subset of the tools allowed by the selected example; browser selection cannot
+add a tool that the deployment did not register. Examples that do not register
+tools do not show tool controls.
+
+Model endpoints come from the deployment's service catalog. **Settings** does
+not expose a local model URL override, which prevents a browser-only endpoint
+change from bypassing the deployment configuration.
 
 ## Session Restart Boundary
 
@@ -69,6 +102,7 @@ The client reads its configuration from the backend (`src/server.py`) and starts
 | --- | --- |
 | `/api/deployment` | Active example, available services, and UI capabilities |
 | `/api/session-config` | Prompts and default session settings |
+| `/api/tools` | Tool specifications allowed for the selected example |
 | `/api/tts-config` | Available TTS voices and languages |
 | `/api/ice-servers` | STUN/TURN configuration for WebRTC |
 | `/api/webcam-config` | Webcam capture defaults for multimodal examples |

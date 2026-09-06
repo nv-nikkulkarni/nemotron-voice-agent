@@ -21,6 +21,7 @@ import { PipelineInfo } from "./components/demo/PipelineInfo";
 import { SessionControls } from "./components/demo/SessionControls";
 import { SessionLifecycleProvider } from "./hooks/useSessionLifecycle";
 import { StoppingOverlayHost } from "./components/demo/StoppingOverlay";
+import { IntroductionTour } from "./components/demo/IntroductionTour";
 // Legacy full app (non-demo builds only).
 import { Header } from "./components/Header";
 import { StatusPanel } from "./components/status-panel";
@@ -41,6 +42,7 @@ function AppInner() {
   const recorderSampleRate = deployment?.audio?.input_sample_rate ?? DEFAULT_AUDIO_INPUT_SAMPLE_RATE;
   const playerSampleRate = deployment?.audio?.output_sample_rate ?? DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE;
   const [view, setView] = useState<View>("main");
+  const [tourOpen, setTourOpen] = useState(false);
 
   const client = useMemo(() => {
     if (selectedTransport === "websocket") {
@@ -108,7 +110,15 @@ function AppInner() {
     <PipecatClientProvider client={client as unknown as ProviderClient}>
       <SessionLifecycleProvider>
         <div className="clean-app">
-          <TopBar onHome={() => setView("main")} onSettings={() => setView("settings")} onPipeline={() => setView("pipeline")} />
+          <TopBar
+            onHome={() => setView("main")}
+            onSettings={() => setView("settings")}
+            onPipeline={() => setView("pipeline")}
+            onTour={() => {
+              setView("main");
+              setTourOpen(true);
+            }}
+          />
           <main className="clean-main">
             <ConversationStage />
           </main>
@@ -119,6 +129,7 @@ function AppInner() {
         <StoppingOverlayHost />
         {view === "settings" && <SettingsPage onClose={() => setView("main")} />}
         {view === "pipeline" && <PipelineInfo onClose={() => setView("main")} />}
+        {tourOpen && <IntroductionTour onClose={() => setTourOpen(false)} />}
       </SessionLifecycleProvider>
     </PipecatClientProvider>
   );

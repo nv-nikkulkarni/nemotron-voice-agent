@@ -4985,3 +4985,88 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
 .ex-config__error { color: #ff6b6b; font-size: var(--text-sm); margin: var(--space-2) 0; }
 .ex-config__actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-3); }
 @media (max-width: 480px) { .ex-config__opts { grid-template-columns: 1fr; } }
+// Selection, configuration, and launch are deliberately separate actions.
+.example-card { cursor: default; }
+.example-card__select {
+  all: unset;
+  display: flex; flex: 1; flex-direction: column; gap: var(--space-2);
+  color: inherit; text-align: left; cursor: pointer; border-radius: var(--radius-md);
+}
+.example-card__select:focus-visible {
+  outline: 2px solid var(--ex-accent); outline-offset: 6px;
+}
+.example-card__actions {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  margin-top: auto; padding-top: var(--space-2); border-top: 1px solid var(--border-subtle);
+}
+.example-card__cta { padding-top: 0; border-top: 0; }
+.example-card__configure { flex-shrink: 0; color: color-mix(in srgb, var(--ex-accent) 85%, #fff); }
+.example-card__configure:hover { color: #fff; }
+
+.startview__launch {
+  width: min(760px, 100%); display: flex; align-items: center; justify-content: flex-end;
+  gap: var(--space-3); padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--nvidia-green) 35%, var(--border-subtle));
+  border-radius: var(--radius-lg); background: color-mix(in srgb, var(--nvidia-green) 7%, var(--bg-card));
+  box-shadow: 0 12px 32px rgba(0,0,0,0.28); animation: rise-in 320ms var(--ease-out-soft) both;
+}
+.startview__selection { min-width: 0; margin-right: auto; display: grid; gap: 2px; text-align: left; }
+.startview__selection-label {
+  color: var(--text-muted); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.startview__selection strong { overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; }
+.tool-selector__status { margin: 0; color: var(--text-muted); font-size: var(--text-sm); }
+
+// Replayable guided introduction. The spotlight dims the page while the guide
+// owns interaction until the user completes or skips it.
+.tour-layer { position: fixed; inset: 0; z-index: 100; pointer-events: auto; }
+.tour-spotlight {
+  position: fixed; z-index: 101; border: 2px solid var(--nvidia-green);
+  border-radius: var(--radius-lg); pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.72), 0 0 0 6px rgba(118,185,0,0.13), 0 0 30px rgba(118,185,0,0.38);
+  transition: top 280ms var(--ease-out-soft), left 280ms var(--ease-out-soft),
+    width 280ms var(--ease-out-soft), height 280ms var(--ease-out-soft), opacity 160ms ease;
+}
+.tour-popover {
+  position: fixed; z-index: 102; width: min(360px, calc(100vw - 32px)); padding: var(--space-5);
+  color: var(--text-primary); background: color-mix(in srgb, var(--bg-elevated) 94%, #0d1605);
+  border: 1px solid color-mix(in srgb, var(--nvidia-green) 55%, transparent);
+  border-radius: var(--radius-xl); box-shadow: 0 24px 70px rgba(0,0,0,0.65);
+  pointer-events: auto; animation: tour-pop 240ms var(--ease-spring) both;
+}
+.tour-popover:focus { outline: none; }
+.tour-popover__arrow {
+  position: absolute; left: 50%; width: 16px; height: 16px;
+  background: color-mix(in srgb, var(--bg-elevated) 94%, #0d1605);
+  border-left: 1px solid color-mix(in srgb, var(--nvidia-green) 55%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--nvidia-green) 55%, transparent);
+}
+.tour-popover[data-placement="below"] .tour-popover__arrow { top: -9px; transform: translateX(-50%) rotate(45deg); }
+.tour-popover[data-placement="above"] .tour-popover__arrow { bottom: -9px; transform: translateX(-50%) rotate(225deg); }
+.tour-popover__progress { display: flex; gap: 5px; margin-bottom: var(--space-3); }
+.tour-popover__progress span {
+  width: 22px; height: 3px; border-radius: var(--radius-full); background: rgba(255,255,255,0.14);
+  transition: width 180ms ease, background 180ms ease;
+}
+.tour-popover__progress span.active { width: 42px; background: var(--nvidia-green); }
+.tour-popover__eyebrow {
+  margin: 0 0 5px; color: var(--nvidia-green); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+.tour-popover h2 { margin: 0; font-size: var(--text-xl); }
+.tour-popover > p:not(.tour-popover__eyebrow) {
+  margin: var(--space-2) 0 var(--space-4); color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.55;
+}
+.tour-popover__actions, .tour-popover__actions > div { display: flex; align-items: center; gap: var(--space-2); }
+.tour-popover__actions { justify-content: space-between; }
+@keyframes tour-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@media (max-width: 620px) {
+  .startview__launch { align-items: stretch; flex-direction: column; }
+  .startview__selection { margin-right: 0; }
+  .tour-popover__actions { align-items: stretch; flex-direction: column-reverse; }
+  .tour-popover__actions > div { width: 100%; }
+  .tour-popover__actions > div button { flex: 1; }
+}

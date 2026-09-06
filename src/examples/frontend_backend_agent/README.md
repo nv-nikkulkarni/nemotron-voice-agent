@@ -12,8 +12,8 @@ Each request follows the same path for every domain:
 
 1. The transport receives user audio, and automatic speech recognition (ASR) produces a transcript.
 2. The Talker answers stable conversational requests directly or calls `call_backend` with a self-contained request.
-3. The session-local backend asks the Thinker for a plan. The selected registry entry controls the hidden Thinker prompt and, for the generic domain, the enabled internal tools.
-4. The generic planner appends a generated tool-contract block for only those enabled tools. The airline domain keeps its existing prompt-owned contracts. Domain code validates each plan before dispatch.
+3. The session-local backend asks the Thinker for a plan. The selected registry entry controls the hidden Thinker prompt and the generic domain's maximum internal-tool allowlist. A browser session can narrow that tool set.
+4. The generic planner appends a generated tool-contract block for only the effective session tools. The airline domain keeps its existing prompt-owned contracts. Domain code validates each plan before dispatch.
 5. The backend runs the approved tools and returns a structured `response_hint` or `tool_result`. The generic domain also generates user-facing capability text from the enabled tool specifications.
 6. The runtime either speaks trusted `response_text` directly or asks the Talker for a concise reply. Text-to-speech (TTS) then produces audio.
 7. `cancel_backend` or a newer superseding request cancels pending work and prevents stale results from reaching the conversation.
@@ -63,7 +63,7 @@ The React client is only the user interface. The agent orchestration runs in the
 
 ## Built-In Domains
 
-Both built-ins point to `examples.frontend_backend_agent.pipeline:bot`. The selected example registry entry supplies the trusted domain and hidden Thinker prompt. The generic entry also supplies its enabled tool set.
+Both built-ins point to `examples.frontend_backend_agent.pipeline:bot`. The selected example registry entry supplies the trusted domain and hidden Thinker prompt. The generic entry also supplies its maximum allowed tool set.
 
 | Registry Example | Domain Profile | Talker Prompt | Thinker Prompt | Internal Tools | Extra Dependency |
 | --- | --- | --- | --- | --- | --- |
@@ -78,7 +78,7 @@ The NVCF chart loads the shared pronunciation registry for Magpie requests. It
 sends only International Phonetic Alphabet (IPA) mappings; Chatterbox receives
 no custom dictionary. Refer to [Configure TTS](../../../docs/how-to/configure-tts.md#pronunciation-ipa).
 
-`domain_profile`, `thinker_prompt`, and `tools` are registry-owned. The server binds these values from `examples_registry.yaml`; a client session cannot replace the hidden prompt or widen the enabled tool set. `tools_available` is not accepted as session configuration. The pipeline resolves `domain_profile` through the code allowlist in `src/domain.py`. It never imports a client-provided module or path.
+`domain_profile`, `thinker_prompt`, and `tools` are registry-owned. The server binds these values from `examples_registry.yaml`; a client session cannot replace the hidden prompt or widen the allowed tool set. For a domain-profile session, optional `tools_available` input can only select a subset of that registry list. Unknown names grant no capability, and `none` disables every optional tool. The pipeline resolves `domain_profile` through the code allowlist in `src/domain.py`. It never imports a client-provided module or path.
 
 The existing `frontend-backend-agent` identifier remains the airline example. Existing airline prompts, booking behavior, booking-server selection, pronunciation handling, and call/cancel contract remain compatible.
 
@@ -212,7 +212,7 @@ Python plan validation.
 | `tool_registry` | Publish the domain's code-owned `ToolSpec` allowlist for registry-selected capabilities |
 | `max_query_chars` | Maximum delegated query length |
 
-`build_backend` receives a `DomainBuildContext` with `thinker_llm`, the resolved `thinker_prompt`, `thinker_max_tokens`, registry-owned `tool_names`, `tool_delay_seconds`, `tool_delay_min_seconds`, and `load_service_entry`. The context does not expose the raw session body or prompt metadata to domain code.
+`build_backend` receives a `DomainBuildContext` with `thinker_llm`, the resolved `thinker_prompt`, `thinker_max_tokens`, server-approved `tool_names`, `tool_delay_seconds`, `tool_delay_min_seconds`, and `load_service_entry`. The context does not expose the raw session body or prompt metadata to domain code.
 
 The backend returned by `build_backend` implements 3 operations: `call`, `cancel_active`, and `cancel_pending_work`. The pipeline does not need to know the domain's state machine, external services, or result format.
 
@@ -222,7 +222,12 @@ The backend returned by `build_backend` implements 3 operations: `call`, `cancel
 
 The executable service function remains Python code. Configuration selects existing capabilities; it does not define network requests, authentication, retries, or response parsing. This boundary keeps executable behavior reviewable and prevents registry data from becoming a code-injection surface.
 
-At session startup, the generic planner renders an available-tool contract block from only the registry-enabled specifications. Its runtime `enabled_tools` list uses the same subset, and Python rejects plans outside that subset. Static output examples can still mention built-in names, but they do not enable those tools. The unsupported-request response also names only enabled capabilities.
+`GET /api/tools?pipeline_mode=<example-key>` renders the registry-allowed
+`ToolSpec` objects for the browser. Each response includes the tool description
+and JSON Schema parameters. The browser sends checked names through
+`tools_available`, and the server intersects them with the registry allowlist.
+
+At session startup, the generic planner renders an available-tool contract block from only the effective session specifications. Its runtime `enabled_tools` list uses the same subset, and Python rejects plans outside that subset. Static output examples can still mention built-in names, but they do not enable those tools. The unsupported-request response also names only enabled capabilities.
 
 ## Add a Read-Only Flavor
 
@@ -234,7 +239,7 @@ You do not need a new Python package when a flavor reuses the generic domain's e
 4. Hide internal prompts with `agent_prompt_keys`.
 5. Add tests that verify the registry selection, generated tool block, capability response, and disabled-tool behavior.
 
-The server treats the registry entry as trusted application configuration. Do not accept `domain_profile`, `thinker_prompt`, or `tools` from a client request.
+The server treats the registry entry as trusted application configuration. Do not accept `domain_profile`, `thinker_prompt`, or `tools` from a client request. Treat `tools_available` only as an untrusted request to narrow the trusted tool list.
 
 ## Add a Capability or Stateful Domain
 

@@ -23,8 +23,8 @@ function ToolCard({ tool, isActive }: Readonly<{ tool: Tool; isActive: boolean }
 }
 
 export function ToolsPanel() {
-  const { tools, toolsLoading, selectedPrompt } = useApp();
-  const enabled = useMemo(() => new Set(selectedPrompt?.tools ?? []), [selectedPrompt]);
+  const { tools, toolsLoading, selectedTools } = useApp();
+  const enabled = useMemo(() => new Set(selectedTools), [selectedTools]);
 
   if (toolsLoading) {
     return (
@@ -49,11 +49,7 @@ export function ToolsPanel() {
       <div className="services-header">
         <h3 className="metrics-title">Tools</h3>
       </div>
-      <p className="prompts-section-label">
-        {selectedPrompt
-          ? `Enabled tools highlighted for prompt: ${selectedPrompt.key}`
-          : "All tools available in this example"}
-      </p>
+      <p className="prompts-section-label">Tools enabled for the next session are highlighted.</p>
       <div className="prompts-list">
         {tools.map((t) => (
           <ToolCard key={t.name} tool={t} isActive={enabled.has(t.name)} />

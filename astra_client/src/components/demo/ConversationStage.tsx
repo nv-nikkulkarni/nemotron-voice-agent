@@ -5,7 +5,7 @@
 // live orb + transcript (connected). Nothing else — settings/pipeline-info live
 // on their own pages.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useConnectionState } from "../../hooks/useConnectionState";
 import { useSessionLifecycle } from "../../hooks/useSessionLifecycle";
 import { useApp } from "../../context/useApp";
@@ -55,83 +55,134 @@ const EXAMPLE_META: Record<string, ExampleMeta> = {
 const FALLBACK_META: ExampleMeta = { accent: "#76b900", blurb: "", tags: [] };
 
 function ExampleCard({
-  option, selected, onSelect,
-}: Readonly<{ option: DeploymentOption; selected: boolean; onSelect: () => void }>) {
+  option, selected, onSelect, onConfigure,
+}: Readonly<{
+  option: DeploymentOption;
+  selected: boolean;
+  onSelect: () => void;
+  onConfigure: () => void;
+}>) {
   const meta = EXAMPLE_META[option.key] ?? FALLBACK_META;
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <article
       className={`example-card ${selected ? "selected" : ""}`}
       style={{ ["--ex-accent" as string]: meta.accent }}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(); }
-      }}
-      aria-pressed={selected}
     >
-      {meta.beta && <span className="example-card__beta">Beta</span>}
-      <div className="example-card__header">
-        <img className="example-card__logo" src="/nvidia-nim-icon.png" alt="NVIDIA NIM" />
-        <h3 className="example-card__title">
-          {(meta.titleLines ?? [option.label]).map((line) => (
-            <span key={line}>{line}</span>
-          ))}
-        </h3>
-      </div>
-      <p className="example-card__blurb">{meta.blurb}</p>
-      <div className="example-card__tags">
-        {meta.tags.map((t) => (
-          <span key={t} className="ex-tag">{t}</span>
-        ))}
-      </div>
-
-      {meta.feature && <p className="example-card__feature">{meta.feature}</p>}
-
-      {meta.samples && meta.samples.length > 0 && (
-        <div className="example-card__samples">
-          <span className="ex-samples-label">Try saying</span>
-          <ul>
-            {meta.samples.map((s) => (
-              <li key={s}>“{s}”</li>
+      <button
+        type="button"
+        className="example-card__select"
+        onClick={onSelect}
+        aria-pressed={selected}
+        aria-label={`${selected ? "Selected" : "Select"} ${option.label}`}
+      >
+        {meta.beta && <span className="example-card__beta">Beta</span>}
+        <div className="example-card__header">
+          <img className="example-card__logo" src="/nvidia-nim-icon.png" alt="NVIDIA NIM" />
+          <h3 className="example-card__title">
+            {(meta.titleLines ?? [option.label]).map((line) => (
+              <span key={line}>{line}</span>
             ))}
-          </ul>
+          </h3>
         </div>
-      )}
+        <p className="example-card__blurb">{meta.blurb}</p>
+        <div className="example-card__tags">
+          {meta.tags.map((tag) => (
+            <span key={tag} className="ex-tag">{tag}</span>
+          ))}
+        </div>
 
-      <span className="example-card__cta">{selected ? "✓ Selected" : "Configure & start →"}</span>
-    </div>
+        {meta.feature && <p className="example-card__feature">{meta.feature}</p>}
+
+        {meta.samples && meta.samples.length > 0 && (
+          <div className="example-card__samples">
+            <span className="ex-samples-label">Try saying</span>
+            <ul>
+              {meta.samples.map((sample) => (
+                <li key={sample}>“{sample}”</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </button>
+      <div className="example-card__actions">
+        <span className="example-card__cta">{selected ? "✓ Selected" : "Select example"}</span>
+        <button type="button" className="btn-ghost example-card__configure" onClick={onConfigure}>
+          Configure
+        </button>
+      </div>
+    </article>
   );
 }
 
 function StartView({ connecting }: Readonly<{ connecting: boolean }>) {
-  const { deploymentOptions, selectedExample, selectExample } = useApp();
+  const {
+    deploymentOptions,
+    selectedExample,
+    selectExample,
+    llmsLoading,
+    asrLoading,
+    ttsLoading,
+    promptsLoading,
+    toolsLoading,
+  } = useApp();
   const { beginSession, connectionError } = useSessionLifecycle();
   const [configOpen, setConfigOpen] = useState(false);
+  const configurationLoading = llmsLoading || asrLoading || ttsLoading || promptsLoading || toolsLoading;
 
-  // Clicking a card selects the example and opens its configuration popup (LLM /
-  // TTS / tools). The popup is the launch surface — it starts the conversation.
-  const openConfig = (key: string) => { selectExample(key); setConfigOpen(true); };
-
-  // If a connection error surfaces while the popup is closed, reopen it so the user sees it.
-  useEffect(() => {
-    if (connectionError && selectedExample) setConfigOpen(true);
-  }, [connectionError, selectedExample]);
+  const openConfig = (key: string) => {
+    selectExample(key);
+    setConfigOpen(true);
+  };
 
   return (
     <div className="startview">
-      <div className="startview__hero">
+      <div className="startview__hero" data-tour="welcome">
         <p className="startview__eyebrow">NVIDIA</p>
         <h1 className="startview__title"><span className="wm-green">Nemotron</span> <span className="wm-flow">Voice Agent</span></h1>
         <p className="startview__subtitle">Pick an assistant, choose how it runs, and start a live voice conversation.</p>
       </div>
 
-      <div className="example-grid">
-        {deploymentOptions.map((o) => (
-          <ExampleCard key={o.key} option={o} selected={selectedExample?.key === o.key} onSelect={() => openConfig(o.key)} />
+      <div className="example-grid" data-tour="examples">
+        {deploymentOptions.map((option) => (
+          <ExampleCard
+            key={option.key}
+            option={option}
+            selected={selectedExample?.key === option.key}
+            onSelect={() => selectExample(option.key)}
+            onConfigure={() => openConfig(option.key)}
+          />
         ))}
       </div>
+
+      {selectedExample && (
+        <section className="startview__launch" aria-label="Selected example actions">
+          <div className="startview__selection">
+            <span className="startview__selection-label">Selected example</span>
+            <strong>{selectedExample.label}</strong>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary"
+            data-tour="configure"
+            onClick={() => openConfig(selectedExample.key)}
+            disabled={connecting}
+          >
+            Configure
+          </button>
+          <button
+            type="button"
+            className="btn-primary btn-bubbly"
+            data-tour="start"
+            onClick={() => void beginSession()}
+            disabled={connecting || configurationLoading}
+          >
+            {connecting ? "Connecting…" : configurationLoading ? "Preparing…" : "Start conversation"}
+          </button>
+        </section>
+      )}
+
+      {connectionError && !configOpen && <p className="startview__error" role="alert">{connectionError}</p>}
 
       {configOpen && selectedExample && (
         <ExampleConfigModal

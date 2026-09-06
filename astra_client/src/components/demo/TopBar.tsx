@@ -10,7 +10,17 @@ function deployedAtLabel(value: string): string {
   return `Last deployed ${deployedAt.toISOString().replace("T", " ").replace(/:\d{2}\.\d{3}Z$/, " UTC")}`;
 }
 
-export function TopBar({ onHome, onSettings, onPipeline }: Readonly<{ onHome: () => void; onSettings: () => void; onPipeline: () => void }>) {
+export function TopBar({
+  onHome,
+  onSettings,
+  onPipeline,
+  onTour,
+}: Readonly<{
+  onHome: () => void;
+  onSettings: () => void;
+  onPipeline: () => void;
+  onTour: () => void;
+}>) {
   const { phase, endSession } = useSessionLifecycle();
   const active = phase === "starting" || phase === "live" || phase === "stopping";
   const stopping = phase === "stopping";
@@ -29,8 +39,11 @@ export function TopBar({ onHome, onSettings, onPipeline }: Readonly<{ onHome: ()
         {deployedAtLabel(demoConfig.deployedAt)}
       </time>
       <div className="clean-topbar__actions">
-        <button className="icon-btn" onClick={onPipeline} title="Pipeline info" aria-label="Pipeline info">ⓘ</button>
-        <button className="icon-btn icon-btn--settings" onClick={onSettings} title="Settings" aria-label="Settings">⚙</button>
+        {!active && (
+          <button className="icon-btn icon-btn--tour" onClick={onTour} title="Guided introduction" aria-label="Open guided introduction">?</button>
+        )}
+        <button className="icon-btn" data-tour="pipeline" onClick={onPipeline} title="Pipeline info" aria-label="Pipeline info">ⓘ</button>
+        <button className="icon-btn icon-btn--settings" data-tour="settings" onClick={onSettings} title="Settings" aria-label="Settings">⚙</button>
         {active && (
           <button
             className="btn-secondary btn-bubbly clean-end"

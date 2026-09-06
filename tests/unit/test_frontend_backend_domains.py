@@ -327,7 +327,7 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
 
         self.assertEqual(generic["domain_profile"], "generic")
         self.assertEqual(generic["thinker_prompt"], "generic_thinker")
-        self.assertEqual(generic["tools"], list(TOOLS))
+        self.assertEqual(generic["tools"], ["web_search"])
         self.assertNotIn("tools_available", generic)
         self.assertEqual(airline["domain_profile"], "airline")
         self.assertEqual(airline["thinker_prompt"], "thinker")
@@ -341,6 +341,37 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
             }
         )
         self.assertEqual(legacy_generic["tools_available"], "get_weather,calculate_bmi")
+
+    def test_server_domain_tool_selection_only_narrows_the_registry_allowlist(self) -> None:
+        full = server._sanitize_session_config({"pipeline_mode": "generic-frontend-backend-agent"})
+        none = server._sanitize_session_config(
+            {"pipeline_mode": "generic-frontend-backend-agent", "tools_available": "none"}
+        )
+        subset = server._sanitize_session_config(
+            {
+                "pipeline_mode": "generic-frontend-backend-agent",
+                "tools": ["forged_tool"],
+                "tools_available": "forged_tool,calculate_bmi,get_weather,calculate_bmi",
+            }
+        )
+
+        self.assertEqual(full["tools"], list(TOOLS))
+        self.assertEqual(none["tools"], [])
+        self.assertEqual(subset["tools"], ["get_weather", "calculate_bmi"])
+
+    def test_server_exposes_registry_allowlisted_domain_tool_specs(self) -> None:
+        example = examples_registry.find("generic-frontend-backend-agent")
+        payload = server._domain_tools_payload(example)
+
+        self.assertEqual([entry["name"] for entry in payload], list(TOOLS))
+        weather = payload[0]
+        self.assertIn("CURRENT conditions", weather["description"])
+        self.assertEqual(weather["parameters"]["required"], ["city"])
+        self.assertEqual(
+            weather["parameters"]["properties"]["units"]["enum"],
+            ["celsius", "fahrenheit"],
+        )
+        self.assertFalse(weather["parameters"]["additionalProperties"])
 
     def test_unknown_domain_fails_closed(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unknown Frontend/Backend"):
