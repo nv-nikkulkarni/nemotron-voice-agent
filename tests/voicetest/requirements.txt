@@ -1,0 +1,8 @@
+# Headless voice-test harness dependencies.
+#   pip install -r tests/voicetest/requirements.txt
+websockets>=12       # WebSocket client transport
+numpy>=1.24          # audio buffers / resampling glue
+soxr>=0.3            # high-quality 22050 -> 16000 Hz resample for the test audio
+piper-tts>=1.3       # offline speech synthesis of the test utterances
+# NOTE: protobuf framing is hand-rolled in pcframes.py, so neither `pipecat-ai`
+# nor a protoc toolchain is required.

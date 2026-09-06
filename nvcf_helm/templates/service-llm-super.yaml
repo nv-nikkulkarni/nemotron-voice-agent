@@ -1,0 +1,21 @@
+{{- if .Values.llmSuper.enabled -}}
+# Service name fixed to "nemotron-3-super" — matches the hostname the app reads
+# from src/examples/*/services.local.yaml (multilingual-assistant default LLM).
+apiVersion: v1
+kind: Service
+metadata:
+  name: nemotron-3-super
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llm-super
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: llm-super
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+{{- end }}

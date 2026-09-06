@@ -1,0 +1,314 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: BSD-2-Clause -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Session Capture Dashboard</title>
+<style>
+  :root{
+    --bg:#0b0e13; --panel:#141922; --panel2:#1b212c; --border:#28303c;
+    --text:#e8ecf3; --muted:#9aa4b2; --faint:#6b7382;
+    --green:#76b900; --green-soft:rgba(118,185,0,.14); --blue:#5b9dff; --blue-soft:rgba(91,157,255,.14); --violet:#8b5cf6;
+    --user:#1e2b16; --bot:#182230;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Inter",system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+  code,pre,.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace}
+  .topbar{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--panel)}
+  .brand{font-weight:700}.brand .g{color:var(--green)}.brand .b{background:linear-gradient(90deg,var(--green),var(--blue),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .spacer{flex:1}
+  input,button{font:inherit}
+  .sid-input{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;min-width:260px;outline:none}
+  .sid-input:focus{border-color:var(--green)}
+  .btn{background:var(--green);color:#06240a;border:none;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
+  .btn.sm{padding:6px 12px;font-size:13px}
+  a.btn{display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+  .paneltop{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:12px}
+  .paneltop .ttl{margin-right:auto;color:var(--muted);font-size:14px}
+
+  .landing{max-width:600px;margin:13vh auto;text-align:center;padding:0 20px}
+  .landing h1{font-size:28px;margin:0 0 6px}
+  .landing p{color:var(--muted);margin:0 0 26px}
+  .landing .row{display:flex;gap:10px;justify-content:center}
+  .landing .sid-input{min-width:320px;text-align:center}
+  .hint{color:var(--faint);font-size:13px;margin-top:14px}
+
+  .wrap{max-width:1200px;margin:0 auto;padding:18px 20px}
+  .summary{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:14px;margin-bottom:14px}
+  .summary b{color:var(--text)}
+  .tabs{display:flex;gap:6px;margin-bottom:16px}
+  .tab{padding:8px 16px;border-radius:999px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer;font-size:14px}
+  .tab.active{background:var(--green-soft);border-color:var(--green);color:var(--text)}
+  .panel{display:none}.panel.active{display:block}
+
+  .chat{display:flex;flex-direction:column;gap:10px;max-width:820px;margin:0 auto}
+  .bubble{max-width:78%;padding:10px 14px;border-radius:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+  .bubble .who{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin-bottom:3px}
+  .bubble.user{align-self:flex-end;background:var(--user);border:1px solid #2c3f1c;border-bottom-right-radius:4px}
+  .bubble.bot{align-self:flex-start;background:var(--bot);border:1px solid #24344a;border-bottom-left-radius:4px}
+
+  /* audio visualizer */
+  .viz{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+  .viz .ctrls{display:flex;align-items:center;gap:14px;margin-bottom:10px;flex-wrap:wrap}
+  .play{width:42px;height:42px;border-radius:50%;background:var(--green);color:#06240a;border:none;cursor:pointer;font-size:16px;display:grid;place-items:center}
+  .tlabel{font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px}
+  .tlabel b{color:var(--text)}
+  .measure{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .measure .val{background:var(--green-soft);border:1px solid var(--green);color:var(--text);border-radius:8px;padding:6px 12px;font-variant-numeric:tabular-nums;font-weight:600}
+  .measure .val.idle{background:var(--panel2);border-color:var(--border);color:var(--faint);font-weight:400}
+  .legend{display:flex;gap:16px;color:var(--faint);font-size:12px;margin-top:8px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  .legend .a{background:var(--blue)} .legend .t{background:var(--green)} .legend .s{background:#e0b341}
+  canvas.timeline{width:100%;height:170px;display:block;background:var(--panel2);border-radius:8px;cursor:crosshair}
+  .hintline{color:var(--faint);font-size:12px;margin-top:8px}
+  .seglist{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+  .segrow{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:13px}
+  .segrow:hover{border-color:var(--green)}
+  .badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px}
+  .badge.asr{background:var(--blue-soft);color:var(--blue)} .badge.tts{background:var(--green-soft);color:var(--green)}
+  .segrow .d{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
+  .note{background:var(--blue-soft);border:1px solid rgba(91,157,255,.3);color:#c9dcff;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:14px}
+
+  .logbar{display:flex;gap:10px;margin-bottom:10px;align-items:center}
+  pre.log{background:#0a0d12;border:1px solid var(--border);border-radius:10px;padding:12px;max-height:70vh;overflow:auto;font-size:12.5px;line-height:1.5;white-space:pre;color:#c8d1de}
+  pre.log .hl{background:rgba(118,185,0,.28);color:#fff;border-radius:3px}
+  .center{display:flex;flex-direction:column;align-items:center;gap:14px;padding:15vh 0;color:var(--muted)}
+  .spin{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .err{color:#f87171;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);padding:12px 16px;border-radius:10px}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="brand"><span class="g">Nemotron</span> · <span class="b">Session Capture</span></span>
+  <div class="spacer"></div>
+  <input id="sidTop" class="sid-input" placeholder="session id" style="display:none" />
+  <button id="loadTop" class="btn ghost" style="display:none" onclick="go(document.getElementById('sidTop').value)">Load</button>
+</div>
+<div id="view"></div>
+
+<script>
+const view = document.getElementById('view'), sidTop=document.getElementById('sidTop'), loadTop=document.getElementById('loadTop');
+const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const kb = n => n<1024?n+' B':(n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(2)+' MB');
+const fmt = t => { t=Math.max(0,t||0); const m=Math.floor(t/60), s=t-m*60; return `${m}:${s.toFixed(2).padStart(5,'0')}`; };
+const dlBtn = (sid, what, label) => `<a class="btn ghost sm" href="/api/session/${sid}/download/${what}" download>⭳ ${label}</a>`;
+
+function landing(prefill){
+  sidTop.style.display='none'; loadTop.style.display='none';
+  view.innerHTML = `<div class="landing"><h1>Session Capture Dashboard</h1>
+    <p>Enter a session ID — its capture is downloaded from NGC and its logs, transcript, and audio are visualized here.</p>
+    <div class="row"><input id="sidIn" class="sid-input" placeholder="e.g. e54751b76240" value="${esc(prefill||'')}" />
+    <button class="btn" onclick="go(document.getElementById('sidIn').value)">Load session</button></div>
+    <div class="hint">Downloads <span class="mono">session-captures:&lt;id&gt;</span> from NGC directly (needs the container's API key).</div></div>`;
+  const i=document.getElementById('sidIn'); i.focus(); i.addEventListener('keydown',e=>{ if(e.key==='Enter') go(i.value); });
+}
+function loading(sid){ view.innerHTML=`<div class="center"><div class="spin"></div><div>Downloading &amp; extracting <b class="mono">${esc(sid)}</b> from NGC…</div></div>`; }
+
+async function go(raw){
+  const sid=(raw||'').trim().replace(/[^0-9a-fA-F]/g,'').slice(0,32);
+  if(!sid){ landing(raw); return; }
+  history.replaceState(null,'',`?sid=${sid}`); loading(sid);
+  try{
+    const r=await fetch(`/api/session/${sid}`); const d=await r.json();
+    if(!r.ok) throw new Error(d.error||`HTTP ${r.status}`);
+    render(d);
+  }catch(e){
+    sidTop.style.display='none'; loadTop.style.display='none';
+    view.innerHTML=`<div class="center"><div class="err">Couldn't load <b class="mono">${esc(sid)}</b>: ${esc(e.message)}</div>
+      <button class="btn ghost" onclick="landing('${esc(sid)}')">Back</button></div>`;
+  }
+}
+
+function render(d){
+  sidTop.style.display=''; loadTop.style.display=''; sidTop.value=d.sid;
+  const asr=d.audios.filter(a=>a.kind==='asr').length, tts=d.audios.filter(a=>a.kind==='tts').length;
+  const turns=(d.transcript||'').split('\n').filter(l=>l.trim()).length;
+  view.innerHTML=`<div class="wrap">
+    <div class="summary"><span>Session <b class="mono">${esc(d.sid)}</b></span>
+      <span><b>${turns}</b> transcript lines</span>
+      <span><b>${d.audios.length}</b> audio clips <span style="color:var(--faint)">(${asr} ASR · ${tts} TTS)</span></span>
+      <span><b>${kb((d.log||'').length)}</b> log</span></div>
+    <div class="tabs"><div class="tab active" data-t="audio">Audio</div><div class="tab" data-t="transcript">Transcript</div><div class="tab" data-t="logs">Logs</div></div>
+    <div class="panel active" id="p-audio">${renderAudio(d)}</div>
+    <div class="panel" id="p-transcript">${renderTranscript(d.transcript, d.sid)}</div>
+    <div class="panel" id="p-logs">${renderLogs(d.log, d.sid)}</div></div>`;
+  document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active'); document.getElementById('p-'+t.dataset.t).classList.add('active');
+    if(t.dataset.t==='audio') Player.redraw();
+  });
+  const lf=document.getElementById('logFilter'); if(lf) lf.addEventListener('input',()=>filterLog(d.log,lf.value));
+  Player.init(d);
+}
+
+function renderTranscript(t, sid){
+  const top=`<div class="paneltop"><span class="ttl">Conversation transcript</span>${dlBtn(sid,'transcript','transcript.txt')}</div>`;
+  if(!t||!t.trim()) return top+`<div class="center">No transcript in this capture.</div>`;
+  return top+`<div class="chat">`+t.split('\n').filter(l=>l.trim()).map(line=>{
+    const m=line.match(/^\s*(User|Assistant)\s*:\s*(.*)$/i);
+    if(!m) return `<div class="bubble bot"><div>${esc(line)}</div></div>`;
+    const who=m[1].toLowerCase()==='user'?'user':'bot';
+    return `<div class="bubble ${who}"><div class="who">${who==='user'?'User':'Assistant'}</div><div>${esc(m[2])}</div></div>`;
+  }).join('')+`</div>`;
+}
+function renderLogs(log, sid){
+  const dl=dlBtn(sid,'log','session.log');
+  if(!log||!log.trim()) return `<div class="paneltop">${dl}</div><div class="center">No log in this capture.</div>`;
+  return `<div class="logbar"><input id="logFilter" class="sid-input" placeholder="filter lines…" />
+    <span style="color:var(--faint);font-size:12px" id="logCount"></span><span style="flex:1"></span>${dl}</div><pre class="log" id="logPre">${esc(log)}</pre>`;
+}
+function filterLog(log,q){
+  const pre=document.getElementById('logPre'), cnt=document.getElementById('logCount');
+  if(!q){ pre.innerHTML=esc(log); cnt.textContent=''; return; }
+  const ql=q.toLowerCase(), lines=log.split('\n'), kept=lines.filter(l=>l.toLowerCase().includes(ql));
+  pre.innerHTML=kept.map(l=>{ const i=l.toLowerCase().indexOf(ql);
+    return esc(l.slice(0,i))+'<span class="hl">'+esc(l.slice(i,i+q.length))+'</span>'+esc(l.slice(i+q.length)); }).join('\n');
+  cnt.textContent=`${kept.length} / ${lines.length} lines`;
+}
+
+function renderAudio(d){
+  if(!d.audios.length && !d.sessionAudio) return `<div class="center">No audio in this capture.</div>`;
+  const note = d.sessionAudio
+    ? `Showing the full-session recording as captured.`
+    : `This session has <b>per-turn</b> ASR/TTS clips (no single raw recording was captured). They're concatenated here into one continuous timeline so you can scrub and measure each segment's duration. Real inter-turn gaps aren't shown — enable full-session recording for a true "as-recorded" timeline.`;
+  const dl = dlBtn(d.sid, 'audio', d.sessionAudio ? 'recording' : 'audio (.zip)');
+  return `<div class="paneltop"><span class="ttl">Session audio</span>${dl}</div>
+    <div class="note">${note}</div>
+    <div class="viz">
+      <div class="ctrls">
+        <button class="play" id="playBtn" title="Play / pause">▶</button>
+        <div class="tlabel"><b id="curT">0:00.00</b> / <span id="totT">0:00.00</span></div>
+        <div class="measure">
+          <span style="color:var(--faint);font-size:12px">drag on the waveform to measure →</span>
+          <span class="val idle" id="measVal">span: —</span>
+          <button class="btn ghost sm" id="clearSel">clear</button>
+        </div>
+      </div>
+      <canvas class="timeline" id="tl" width="1600" height="170"></canvas>
+      <div class="legend"><span><i class="a"></i>ASR (user)</span><span><i class="t"></i>TTS (bot)</span><span><i class="s"></i>selection / span</span>
+        <span style="margin-left:auto">click = seek · drag = measure a span</span></div>
+      <div id="loadingWave" class="hintline">decoding audio…</div>
+      <div class="seglist" id="segList"></div>
+    </div>`;
+}
+
+// ---- audio engine: assemble one continuous timeline, seek, play, measure ----
+const Player = (()=>{
+  let ac=null, combined=null, duration=0, segments=[], peaks=null;
+  let src=null, playing=false, playStart=0, pausedAt=0, raf=0;
+  let sel=null;           // {t0,t1} measured span
+  let drag=null;          // {x0} in-progress drag
+  const PEAKW=1600;
+
+  async function init(d){
+    combined=null; segments=[]; peaks=null; sel=null; pausedAt=0; playing=false; stopSrc();
+    const canvas=document.getElementById('tl'); if(!canvas) return;
+    try{
+      ac = ac || new (window.AudioContext||window.webkitAudioContext)();
+      let list = d.sessionAudio ? [{name:'session', kind:'session', idx:0, url:d.sessionAudio}] : d.audios;
+      const bufs=[];
+      for(const a of list){ try{ bufs.push(await ac.decodeAudioData(await (await fetch(a.url)).arrayBuffer())); }catch(e){ bufs.push(null); } }
+      const sr=ac.sampleRate;
+      const valid=list.map((a,i)=>({a,b:bufs[i]})).filter(x=>x.b);
+      const total=valid.reduce((s,x)=>s+x.b.length,0)||1;
+      combined=ac.createBuffer(1,total,sr); const out=combined.getChannelData(0);
+      let off=0;
+      for(const {a,b} of valid){
+        const n=b.length, tmp=new Float32Array(n);
+        for(let c=0;c<b.numberOfChannels;c++){ const cd=b.getChannelData(c); for(let i=0;i<n;i++) tmp[i]+=cd[i]; }
+        if(b.numberOfChannels>1) for(let i=0;i<n;i++) tmp[i]/=b.numberOfChannels;
+        out.set(tmp,off); const start=off/sr; off+=n; const end=off/sr;
+        segments.push({name:a.name,kind:a.kind,idx:a.idx,start,end,dur:end-start});
+      }
+      duration=combined.duration; peaks=computePeaks(out,PEAKW);
+    }catch(e){ /* leave empty */ }
+    const lw=document.getElementById('loadingWave'); if(lw) lw.style.display='none';
+    document.getElementById('totT').textContent=fmt(duration);
+    wireUI(canvas); renderSegList(); redraw();
+  }
+
+  function computePeaks(data,w){
+    const step=Math.max(1,Math.floor(data.length/w)), out=new Array(w);
+    for(let x=0;x<w;x++){ let mn=1,mx=-1; const b=x*step;
+      for(let i=0;i<step;i++){ const v=data[b+i]; if(v==null) break; if(v<mn)mn=v; if(v>mx)mx=v; }
+      out[x]=[mn,mx]; }
+    return out;
+  }
+  function stopSrc(){ if(src){ try{ src.onended=null; src.stop(); }catch(e){} src=null; } }
+  function curTime(){ return playing ? Math.min(duration, ac.currentTime-playStart) : pausedAt; }
+  function playFrom(t){ stopSrc(); t=Math.max(0,Math.min(t,Math.max(0,duration-0.01)));
+    src=ac.createBufferSource(); src.buffer=combined; src.connect(ac.destination);
+    playStart=ac.currentTime-t; src.start(0,t); playing=true;
+    src.onended=()=>{ if(playing){ playing=false; pausedAt=duration; setBtn(); draw(); } };
+    setBtn(); loop();
+  }
+  function toggle(){ if(!combined||!duration) return; ac.resume&&ac.resume();
+    if(playing){ pausedAt=curTime(); stopSrc(); playing=false; setBtn(); }
+    else playFrom(pausedAt>=duration-0.02?0:pausedAt);
+  }
+  function setBtn(){ const b=document.getElementById('playBtn'); if(b) b.textContent=playing?'❚❚':'▶'; }
+  function loop(){ cancelAnimationFrame(raf); const tick=()=>{ if(!playing) return; draw(); document.getElementById('curT').textContent=fmt(curTime()); raf=requestAnimationFrame(tick); }; raf=requestAnimationFrame(tick); }
+
+  function tOfX(canvas,clientX){ const r=canvas.getBoundingClientRect(); return Math.max(0,Math.min(1,(clientX-r.left)/r.width))*duration; }
+  function wireUI(canvas){
+    document.getElementById('playBtn').onclick=toggle;
+    document.getElementById('clearSel').onclick=()=>{ sel=null; showMeas(); draw(); };
+    canvas.onmousedown=e=>{ drag={x0:e.clientX, t0:tOfX(canvas,e.clientX), moved:false}; };
+    window.onmousemove=e=>{ if(!drag) return; if(Math.abs(e.clientX-drag.x0)>3) drag.moved=true;
+      const t1=tOfX(canvas,e.clientX); sel={t0:Math.min(drag.t0,t1), t1:Math.max(drag.t0,t1)}; showMeas(); draw(); };
+    window.onmouseup=e=>{ if(!drag) return;
+      if(!drag.moved){ sel=null; showMeas(); pausedAt=drag.t0; if(playing) playFrom(pausedAt); else { document.getElementById('curT').textContent=fmt(pausedAt); draw(); } }
+      drag=null; };
+  }
+  function showMeas(){ const el=document.getElementById('measVal'); if(!el) return;
+    if(sel && sel.t1-sel.t0>0.0005){ el.classList.remove('idle'); el.textContent=`span: ${(sel.t1-sel.t0).toFixed(2)}s  (${fmt(sel.t0)} → ${fmt(sel.t1)})`; }
+    else { el.classList.add('idle'); el.textContent='span: —'; } }
+
+  function renderSegList(){ const el=document.getElementById('segList'); if(!el) return;
+    if(!segments.length){ el.innerHTML=''; return; }
+    el.innerHTML=segments.map((s,i)=>`<div class="segrow" data-i="${i}">
+      <span class="badge ${s.kind}">${s.kind.toUpperCase()}</span>
+      <span>${s.kind==='asr'?'User':s.kind==='tts'?'Bot':'Session'} · turn ${s.idx}</span>
+      <span class="d">${s.dur.toFixed(2)}s</span></div>`).join('');
+    el.querySelectorAll('.segrow').forEach(r=>r.onclick=()=>{ const s=segments[+r.dataset.i]; sel={t0:s.start,t1:s.end}; showMeas(); pausedAt=s.start; if(playing) playFrom(s.start); draw(); });
+  }
+
+  function draw(){
+    const canvas=document.getElementById('tl'); if(!canvas||!peaks) return;
+    const ctx=canvas.getContext('2d'), W=canvas.width, H=canvas.height, mid=H/2;
+    ctx.clearRect(0,0,W,H);
+    // segment bands
+    for(const s of segments){ const x0=(s.start/duration)*W, x1=(s.end/duration)*W;
+      ctx.fillStyle = s.kind==='asr'?'rgba(91,157,255,.10)':(s.kind==='tts'?'rgba(118,185,0,.10)':'rgba(255,255,255,.04)');
+      ctx.fillRect(x0,0,Math.max(1,x1-x0),H);
+      ctx.fillStyle='rgba(255,255,255,.10)'; ctx.fillRect(x1-0.5,0,1,H); }
+    // waveform
+    for(let x=0;x<W;x++){ const p=peaks[x]; if(!p) continue;
+      const inSel = sel && (x/W*duration)>=sel.t0 && (x/W*duration)<=sel.t1;
+      ctx.fillStyle = inSel ? '#e0b341' : '#8fd24a';
+      const top=mid-(p[1])*mid*0.92, bot=mid-(p[0])*mid*0.92;
+      ctx.fillRect(x,top,1,Math.max(1,bot-top)); }
+    // selection overlay
+    if(sel && sel.t1>sel.t0){ const x0=(sel.t0/duration)*W, x1=(sel.t1/duration)*W;
+      ctx.fillStyle='rgba(224,179,65,.14)'; ctx.fillRect(x0,0,x1-x0,H);
+      ctx.fillStyle='#e0b341'; ctx.fillRect(x0,0,1.5,H); ctx.fillRect(x1-1.5,0,1.5,H); }
+    // playhead
+    const px=(curTime()/duration)*W;
+    ctx.fillStyle='#ffffff'; ctx.fillRect(px-1,0,2,H);
+    ctx.fillStyle='#ffffff'; ctx.beginPath(); ctx.moveTo(px-5,0); ctx.lineTo(px+5,0); ctx.lineTo(px,7); ctx.fill();
+  }
+
+  return { init, redraw:draw };
+})();
+
+const q=new URLSearchParams(location.search).get('sid');
+if(q) go(q); else landing('');
+</script>
+</body>
+</html>

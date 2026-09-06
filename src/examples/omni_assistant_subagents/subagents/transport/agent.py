@@ -63,9 +63,15 @@ from examples.omni_assistant_subagents.subagents.transport.webcam_controller imp
     WebcamController,
 )
 from examples.omni_assistant_subagents.subagents.webcam import WebcamAgent
+from examples.shared.audio_recorder import create_audio_recorder
 from examples.shared.nemotron_speech_text_filter import NemotronSpeechTextFilter
 from examples.shared.pipeline_utils import build_pipeline_params
 from examples.shared.subagents import SubagentRegistry
+from examples.shared.tts_chunk_aggregator import (
+    LengthLimitedSentenceAggregator,
+    resolve_tts_chunk_chars,
+)
+from session_capture.capture import mark_pipeline_finished, run_finalize
 from tracing import IS_TRACING_ENABLED
 from utils import load_ipa_dictionary, normalize_lang_code, parse_env_float
 from webcam_frame_store import clear_session_webcam_frames
@@ -129,6 +135,7 @@ class OmniTransportAgent(PipelineWorker):
         self._capture_task: asyncio.Task[None] | None = None
         self._assistant_speaking = False
         self._user_speaking = False
+        self._audio_recorder = create_audio_recorder(self._session_id)
 
         tts_settings_kwargs: dict[str, Any] = {"voice": tts_voice}
         if tts_synthesis_mode:
@@ -139,7 +146,7 @@ class OmniTransportAgent(PipelineWorker):
             "settings": NvidiaTTSSettings(**tts_settings_kwargs),
             "use_ssl": tts_ssl,
             "text_filters": [NemotronSpeechTextFilter()],
-            "custom_dictionary": load_ipa_dictionary(),
+            "custom_dictionary": load_ipa_dictionary(tts_model),
             "stop_frame_timeout_s": parse_env_float("TTS_STOP_FRAME_TIMEOUT_S", 30.0, min_value=5.0),
         }
         if tts_function_id or tts_model:
@@ -150,6 +157,14 @@ class OmniTransportAgent(PipelineWorker):
         if tts_zero_shot_audio_prompt_file:
             tts_kwargs["zero_shot_audio_prompt_file"] = tts_zero_shot_audio_prompt_file
         self._tts = NvidiaTTSService(**tts_kwargs)
+        # Split chunks for engines with a per-synthesis cap (Chatterbox ~500 chars / ~20s).
+        _chunk_chars = resolve_tts_chunk_chars(tts_model, tts_voice)
+        if _chunk_chars:
+            _agg_kwargs: dict = {"max_chars": _chunk_chars}
+            _mode = getattr(self._tts, "_text_aggregation_mode", None)
+            if _mode is not None:
+                _agg_kwargs["aggregation_type"] = _mode
+            self._tts._text_aggregator = LengthLimitedSentenceAggregator(**_agg_kwargs)
         logger.info(
             f"Nemotron Omni subagents TTS: server={tts_server}, ssl={tts_ssl}, "
             f"voice={tts_voice}, model={tts_model or '(pipecat default)'}, "
@@ -232,6 +247,7 @@ class OmniTransportAgent(PipelineWorker):
                 PostAckMediaDispatchProcessor(handler=self),
                 self._tts,
                 self._transport.output(),
+                *([self._audio_recorder] if self._audio_recorder else []),
                 assistant_aggregator,
             ]
         )
@@ -339,6 +355,8 @@ class OmniTransportAgent(PipelineWorker):
                 return
             started = True
             logger.info(f"Nemotron Omni subagents client session start via {source}")
+            if self._audio_recorder:
+                await self._audio_recorder.start_recording()
             self._start_attachment_state_listener()
             self._webcam_controller.start_summary_loop()
             if not welcome_enabled:
@@ -368,11 +386,18 @@ class OmniTransportAgent(PipelineWorker):
         @self._transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):
             logger.info("Nemotron Omni subagents client disconnected")
-            self._webcam_controller.stop_summary_loop()
+            await self._stop_session_tasks()
             self._stop_attachment_state_listener()
             clear_session_attachments(self._session_id)
             clear_session_webcam_frames(self._session_id)
             await self.send_bus_message(BusCancelMessage(source=self.name, reason="client disconnected"))
+
+        @self.event_handler("on_pipeline_finished")
+        async def on_pipeline_finished(task, frame):  # noqa: ARG001
+            # The transport pipeline owns every session audio frame. Finalize only
+            # after its CancelFrame has reached the sink, so the recorder has flushed
+            # the last turn before the shared-store/NGC archive is assembled.
+            await self._finalize_session_capture()
 
         @self.rtvi.event_handler("on_client_message")
         async def on_client_message(rtvi, message):
@@ -383,6 +408,27 @@ class OmniTransportAgent(PipelineWorker):
                 await self._webcam_controller.apply_webcam_state(payload)
             elif message.type == "webcam-chunk":
                 await self._webcam_controller.set_window_seconds(payload)
+
+    async def _stop_session_tasks(self) -> None:
+        """Stop local producers, then cancel remote jobs before runner teardown."""
+        await self._webcam_controller.stop_summary_loop()
+        if self._capture_task and not self._capture_task.done():
+            self._capture_task.cancel()
+            await asyncio.gather(self._capture_task, return_exceptions=True)
+        self._capture_task = None
+
+        # ``BusCancelMessage`` stops every root worker concurrently. If a remote
+        # webcam/media/thinker handler is still running, that broad stop removes
+        # its active job before the handler can reply, producing "no active job"
+        # and a dangling-task warning. Cancel requester-owned groups first; the
+        # bus preserves this ordering for each local worker.
+        for job_id in list(self.job_groups):
+            await self.cancel_job_group(job_id, reason="client disconnected")
+        await asyncio.sleep(0)
+
+    async def _finalize_session_capture(self) -> None:
+        """Publish the pipeline-done signal and finalize a consented capture."""
+        await run_finalize(mark_pipeline_finished, self._session_id)
 
     async def queue_media_analysis_prompt(
         self,

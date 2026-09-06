@@ -8,11 +8,14 @@ from __future__ import annotations
 import base64
 import contextlib
 import itertools
+import os
 import threading
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+
+from session_bus import client as _bus
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,10 @@ def register_attachment_listener(session_id: str, listener: Callable[[], None]) 
     cleaned_session_id = session_id.strip()
     if not cleaned_session_id:
         return lambda: None
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        return _busmedia.start_listener(f"sb:att:{cleaned_session_id}", listener)
     with _lock:
         _listeners_by_session.setdefault(cleaned_session_id, []).append(listener)
 
@@ -88,6 +95,10 @@ def create_capture_request(session_id: str) -> str:
     cleaned_session_id = session_id.strip()
     if not cleaned_session_id:
         raise ValueError("session_id is required")
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        return _busmedia.create_capture_request(cleaned_session_id)
     request_id = uuid.uuid4().hex
     with _lock:
         _capture_request_by_session[cleaned_session_id] = request_id
@@ -100,11 +111,44 @@ def consume_capture_request(session_id: str, request_id: str) -> bool:
     cleaned_request_id = request_id.strip()
     if not cleaned_session_id or not cleaned_request_id:
         return False
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        return _busmedia.consume_capture_request(cleaned_session_id, cleaned_request_id)
     with _lock:
         if _capture_request_by_session.get(cleaned_session_id) != cleaned_request_id:
             return False
         _capture_request_by_session.pop(cleaned_session_id, None)
     return True
+
+
+# Image uploads are restricted to JPEG/PNG, validated by extension AND by magic bytes
+# (extension/content-type alone can be spoofed).
+_ALLOWED_IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".png"})
+
+
+def _sniff_image_kind(data: bytes) -> str | None:
+    """Return 'jpeg' or 'png' from the file's magic bytes, or None if it's neither."""
+    if len(data) < 8:
+        return None
+    if data[:3] == b"\xff\xd8\xff":
+        return "jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    return None
+
+
+def _validate_image(name: str, data: bytes, source: str) -> None:
+    """Reject non-JPEG/PNG payloads and (for user uploads) unsupported image extensions."""
+    if _sniff_image_kind(data) is None:
+        raise ValueError("attachment is not a supported image (only JPEG or PNG)")
+    if source == "upload":  # agent captures are app-generated and have no user filename
+        ext = os.path.splitext(name.strip())[1].lower()
+        if ext not in _ALLOWED_IMAGE_EXTS:
+            raise ValueError(
+                f"unsupported image extension {ext or '(none)'}; "
+                f"allowed: {', '.join(sorted(_ALLOWED_IMAGE_EXTS))}"
+            )
 
 
 def store_attachment(
@@ -132,6 +176,20 @@ def store_attachment(
         raise ValueError("source must be upload or capture")
     if not data:
         raise ValueError("attachment is empty")
+    if cleaned_kind == "image":
+        _validate_image(name, data, cleaned_source)
+
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        return _busmedia.store_attachment(
+            session_id=cleaned_session_id,
+            kind=cleaned_kind,
+            name=name.strip() or "attachment",
+            content_type=content_type.strip() or f"{cleaned_kind}/*",
+            data=data,
+            source=cleaned_source,
+        )
 
     with _lock:
         attachment = Attachment(
@@ -154,6 +212,11 @@ def store_attachment(
 
 def latest_attachment(session_id: str) -> Attachment | None:
     """Return the latest attachment for a session (any source)."""
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        attachments = _busmedia.all_attachments(session_id.strip())
+        return attachments[-1] if attachments else None
     with _lock:
         attachments = list(_attachments_by_session.get(session_id.strip(), ()))
     return attachments[-1] if attachments else None
@@ -165,6 +228,11 @@ def latest_user_attachment(session_id: str) -> Attachment | None:
     This is what the Speaker's webcam-first input routing keys off: an agent-captured
     high-res snapshot must never become the "pending uploaded attachment".
     """
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        attachments = _busmedia.all_attachments(session_id.strip())
+        return next((item for item in reversed(attachments) if item.source == "upload"), None)
     with _lock:
         attachments = list(_attachments_by_session.get(session_id.strip(), ()))
     return next((item for item in reversed(attachments) if item.source == "upload"), None)
@@ -176,6 +244,11 @@ def get_attachment(session_id: str, attachment_id: str) -> Attachment | None:
     cleaned_attachment_id = attachment_id.strip()
     if not cleaned_session_id or not cleaned_attachment_id:
         return None
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        attachments = _busmedia.all_attachments(cleaned_session_id)
+        return next((a for a in attachments if a.id == cleaned_attachment_id), None)
     with _lock:
         attachments = list(_attachments_by_session.get(cleaned_session_id, ()))
     return next((attachment for attachment in attachments if attachment.id == cleaned_attachment_id), None)
@@ -186,6 +259,11 @@ def remove_attachment(session_id: str, attachment_id: str) -> None:
     cleaned_session_id = session_id.strip()
     cleaned_attachment_id = attachment_id.strip()
     if not cleaned_session_id or not cleaned_attachment_id:
+        return
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        _busmedia.remove_attachment(cleaned_session_id, cleaned_attachment_id)
         return
     with _lock:
         attachments = _attachments_by_session.get(cleaned_session_id)
@@ -198,6 +276,11 @@ def remove_attachment(session_id: str, attachment_id: str) -> None:
 
 def clear_session_attachments(session_id: str) -> None:
     """Drop all attachments for a session."""
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        _busmedia.clear_attachments(session_id.strip())
+        return
     with _lock:
         _attachments_by_session.pop(session_id.strip(), None)
         _listeners_by_session.pop(session_id.strip(), None)

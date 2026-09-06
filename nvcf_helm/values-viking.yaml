@@ -1,0 +1,86 @@
+# =============================================================================
+# viking-prod cluster overlay (self-managed 8×GPU node, non-NVCF)
+# =============================================================================
+# Render/apply the complete local topology with:
+#   helm template p7 nvcf_helm -n nva-p7 -f nvcf_helm/values-viking.yaml | kubectl apply -n nva-p7 -f -
+# The namespace-scoped secrets named below must already exist.
+# =============================================================================
+
+# The org-access key pulls the app and mirrored NIMs from the private registry.
+ngcImageRegistryPath: "0491162300748285"
+
+# The app image is the team's private build (not in the public catalog) — it is
+# built from source and loaded onto the node; tagged distinctly, pulled locally.
+appImage:
+  tag: "2.0.51"
+  pullPolicy: IfNotPresent
+
+# Phoenix trace collector image lives in the private org (inaccessible) — off.
+tracing:
+  enabled: false
+
+# Not NVCF: NIMs read the NGC key from a K8s Secret (not /var/secrets/secrets.json),
+# and the app's init-containers gate startup on each enabled NIM's readiness.
+nvcf: false
+
+# Image pull + NGC model-download credentials (created in the voice-agent ns).
+ngcImagePullSecretName: ngc-registry
+nim:
+  existingSecret: nvidia-api-key
+  existingSecretKey: NGC_API_KEY
+app:
+  existingSecret: nvidia-api-key
+  existingSecretKey: NVIDIA_API_KEY
+  # Expose all reachable examples (the client allow-lists the two we want:
+  # generic-frontend-backend-agent + omni-assistant-subagents).
+  example: all
+  # Phoenix isn't deployed here (private-org image) — stop the app exporting OTel
+  # traces to a dead phoenix:4317 that was flooding the logs every second.
+  otel:
+    enabled: false
+  service:
+    type: NodePort
+    nodePort: 30786
+
+# Live provider credentials are held in one namespace-scoped Secret. Only its
+# name and key selectors are versioned here; credential values never enter Git.
+webSearch:
+  apiKeySecret: nva-tool-api-keys
+  apiKeySecretKey: PERPLEXITY_API_KEY
+weatherApi:
+  apiKeySecret: nva-tool-api-keys
+  apiKeySecretKey: WEATHERAPI_KEY
+stockApi:
+  apiKeySecret: nva-tool-api-keys
+  apiKeySecretKey: FINNHUB_API_KEY
+
+# Match the proven local deployment: pod-local emptyDir caches avoid replacing
+# the already-warmed NIM deployments with new PVC-backed pods.
+llm:
+  enabled: false
+  cache: { nvcf: true }
+llmSuper:
+  cache: { nvcf: true }
+  enabled: true
+  # 120B fp8 nearly fills 2×80GB; 32k KV cache won't fit. Shrink context + seqs
+  # and give KV more headroom so the engine can allocate cache blocks.
+  nimMaxModelLen: "8192"
+  # Mamba-hybrid: each decode seq needs a Mamba cache block; 256 exceeds what
+  # fits, so cap at 128 (the chart renders this into --max-num-seqs).
+  nimMaxNumSeqs: "128"
+  nimKvCachePercent: "0.85"
+asr:
+  cache: { nvcf: true }
+asrParakeet:
+  cache: { nvcf: true }
+tts:
+  cache: { nvcf: true }
+chatterboxTts:
+  cache: { nvcf: true }
+  enabled: true
+# Omni (single speech-to-speech model) for the omni-assistant-subagents example.
+# Image is the private-org vllm-omni build — now pullable via the org key.
+# Uses the 8th GPU. Weights pull from the PUBLIC HF model (no token needed).
+omni:
+  enabled: true
+  cache: { nvcf: true }

@@ -1,0 +1,21 @@
+{{- if .Values.omni.enabled -}}
+# Service name fixed to "nvidia-llm-vllm-omni" on port 8002 — matches the hostname
+# the app reads from src/examples/omni_assistant*/services.local.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: nvidia-llm-vllm-omni
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: omni
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: omni
+  ports:
+    - name: http
+      port: {{ .Values.omni.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

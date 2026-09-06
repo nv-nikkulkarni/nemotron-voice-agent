@@ -1,0 +1,21 @@
+{{- if and .Values.llm.enabled (not .Values.llm.cache.nvcf) -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-llm-cache
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llm
+  annotations:
+    # Retain the volume when the release is deleted so model weights survive upgrades.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.llm.cache.storageClass }}
+  storageClassName: {{ .Values.llm.cache.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.llm.cache.size }}
+{{- end }}

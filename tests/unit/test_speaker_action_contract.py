@@ -173,8 +173,12 @@ class PromptAndStreamingContractTests(unittest.TestCase):
         system = _expand_fragments(self.catalog["generic_omni_assistant"]["content"], self.catalog)
         self.assertIn("ten-sentence story", system)
         self.assertIn("one, two, three, four, five", system)
+        self.assertIn("silently calculate and verify", system)
+        self.assertIn("Three hundred ninety-one", system)
         self.assertIn("What would you like help with?", system)
         self.assertIn("the camera is ON", system)
+        self.assertIn("camera is on but the view is still loading", system)
+        self.assertIn("never call the camera off, unavailable", system)
 
     def test_catalog_prompts_have_no_unresolved_fragments(self) -> None:
         contents = [self.catalog["generic_omni_assistant"]["content"]]
@@ -253,6 +257,7 @@ class EnvelopeStreamingTests(unittest.IsolatedAsyncioTestCase):
         service._context = None
         service._active_turn_parts = AUDIO_TURN_PARTS
         service.run_inference = AsyncMock()
+        service.retry_active_audio_inference = AsyncMock()
         service.push_frame = AsyncMock()
         self.transcripts: list[str] = []
         self.spoken: list[str] = []
@@ -295,6 +300,69 @@ class EnvelopeStreamingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.transcripts, ["Count one to five"])
         # Already streamed, so the parsed envelope must not repeat it.
         self.assertEqual(self.spoken, [])
+        service.retry_active_audio_inference.assert_not_awaited()
+
+    async def test_empty_audio_transcript_retries_same_audio_once(self) -> None:
+        service = self._service()
+        service._context = LLMContext([{"role": "system", "content": "You are helpful."}])
+        service.retry_active_audio_inference = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "transcript": "Name one primary color",
+                    "turn_action": "respond",
+                    "response": "Red is one primary color.",
+                    "selected_input_source": "none",
+                    "media_analysis_action": "none",
+                    "media_analysis_prompt": "",
+                    "highres_query": "",
+                }
+            )
+        )
+
+        visible = await self._drain(
+            service,
+            {
+                "transcript": "",
+                "turn_action": "respond",
+                "response": "I can't see anything right now.",
+                "selected_input_source": "none",
+                "media_analysis_action": "none",
+                "media_analysis_prompt": "",
+                "highres_query": "",
+            },
+        )
+
+        self.assertEqual(visible, "")
+        self.assertEqual(self.transcripts, ["Name one primary color"])
+        self.assertEqual(self.spoken, ["Red is one primary color."])
+        service.retry_active_audio_inference.assert_awaited_once()
+        service.run_inference.assert_not_awaited()
+        service._thinking_handler.assert_not_awaited()
+
+    async def test_empty_audio_transcript_retry_exhaustion_speaks_fallback(self) -> None:
+        service = self._service()
+        service._context = LLMContext([{"role": "system", "content": "You are helpful."}])
+        service.retry_active_audio_inference = AsyncMock(return_value=None)
+
+        visible = await self._drain(
+            service,
+            {
+                "transcript": "",
+                "turn_action": "respond",
+                "response": "I can't see anything right now.",
+                "selected_input_source": "none",
+                "media_analysis_action": "none",
+                "media_analysis_prompt": "",
+                "highres_query": "",
+            },
+        )
+
+        self.assertEqual(visible, "")
+        self.assertEqual(self.transcripts, [])
+        self.assertEqual(self.spoken, ["I didn't catch that clearly. Please say it again."])
+        service.retry_active_audio_inference.assert_awaited_once()
+        service.run_inference.assert_not_awaited()
+        service._thinking_handler.assert_not_awaited()
 
     async def test_streamed_repeat_is_replaced_before_reaching_tts(self) -> None:
         service = self._service()
@@ -421,6 +489,86 @@ class EnvelopeStreamingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(visible, "Hi there! I'm your NVIDIA voice assistant.")
         self.assertEqual(self.transcripts, [])
+        service.retry_active_audio_inference.assert_not_awaited()
+
+    async def test_pending_attachment_clarification_is_corrected_before_tts(self) -> None:
+        service = self._service()
+        service.run_inference = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "transcript": "Describe exactly what is in it.",
+                    "turn_action": "analyze_attachment",
+                    "response": "I will inspect the uploaded image now.",
+                    "selected_input_source": "uploaded_attachment",
+                    "media_analysis_action": "new",
+                    "media_analysis_prompt": "Describe exactly what is in the uploaded image.",
+                    "highres_query": "",
+                }
+            )
+        )
+
+        visible = await self._drain(
+            service,
+            {
+                "transcript": "Describe exactly what is in it.",
+                "turn_action": "clarify",
+                "response": "What would you like described?",
+                "selected_input_source": "none",
+                "media_analysis_action": "none",
+                "media_analysis_prompt": "",
+                "highres_query": "",
+            },
+        )
+
+        self.assertEqual(visible, "")
+        self.assertEqual(self.spoken, ["I will inspect the uploaded image now."])
+        service.run_inference.assert_awaited_once()
+        service._media_analysis_prompt_handler.assert_awaited_once()
+        service._thinking_handler.assert_not_awaited()
+
+    async def test_failed_pending_attachment_correction_fails_closed_without_thinker(self) -> None:
+        service = self._service()
+        invalid = {
+            "transcript": "Describe exactly what is in it.",
+            "turn_action": "clarify",
+            "response": "What would you like described?",
+            "selected_input_source": "none",
+            "media_analysis_action": "none",
+            "media_analysis_prompt": "",
+            "highres_query": "",
+        }
+        service.run_inference = AsyncMock(return_value=json.dumps(invalid))
+
+        visible = await self._drain(service, invalid)
+
+        self.assertEqual(visible, "")
+        self.assertEqual(
+            self.spoken,
+            ["I could not start the uploaded-file analysis. Please ask me to analyze that file again."],
+        )
+        service.run_inference.assert_awaited_once()
+        service._media_analysis_prompt_handler.assert_not_awaited()
+        service._thinking_handler.assert_not_awaited()
+
+    async def test_unrelated_clarification_is_not_forced_to_pending_media(self) -> None:
+        service = self._service()
+
+        visible = await self._drain(
+            service,
+            {
+                "transcript": "Can you help?",
+                "turn_action": "clarify",
+                "response": "What would you like help with?",
+                "selected_input_source": "none",
+                "media_analysis_action": "none",
+                "media_analysis_prompt": "",
+                "highres_query": "",
+            },
+        )
+
+        self.assertEqual(visible, "What would you like help with?")
+        service.run_inference.assert_not_awaited()
+        service._media_analysis_prompt_handler.assert_not_awaited()
 
     async def test_audio_turn_still_reports_its_transcript(self) -> None:
         service = self._service()
@@ -516,6 +664,17 @@ class LiveViewDeliveryTests(unittest.TestCase):
         service._visual_status_provider = boom
 
         self.assertNotIn("Live view right now", service._audio_response_instruction())
+
+    def test_pending_upload_rule_is_stated_beside_the_turn(self) -> None:
+        service = self._service("the camera is OFF right now")
+        service._attachment_pending = lambda: True
+        service._uploaded_attachment_available = lambda: True
+
+        instruction = service._audio_response_instruction()
+
+        self.assertIn("freshly uploaded file is PENDING analysis", instruction)
+        self.assertIn("must use turn_action analyze_attachment", instruction)
+        self.assertIn("never respond, think, or clarify", instruction)
 
 
 class SpeakerHistoryOwnershipTests(unittest.IsolatedAsyncioTestCase):

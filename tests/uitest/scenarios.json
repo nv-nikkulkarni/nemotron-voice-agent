@@ -1,0 +1,39 @@
+{
+  "lead": 10.0,
+  "trail": 45.0,
+  "scenarios": [
+    {
+      "slug": "g_know_planet",
+      "example": "generic",
+      "model": "nano",
+      "mic": "audio/g_know_planet_48k.wav",
+      "utteranceLandsAtS": 10.0,
+      "category": "knowledge",
+      "expect": "jupiter",
+      "budgetS": 8.0,
+      "text": "What is the largest planet in our solar system?"
+    },
+    {
+      "slug": "g_weather_tokyo",
+      "example": "generic",
+      "model": "nano",
+      "mic": "audio/g_weather_tokyo_48k.wav",
+      "utteranceLandsAtS": 10.0,
+      "category": "tool:get_weather",
+      "expect": "tokyo|temperature|\\d",
+      "budgetS": 10.0,
+      "text": "What's the weather in Tokyo?"
+    },
+    {
+      "slug": "g_introduce",
+      "example": "generic",
+      "model": "nano",
+      "mic": "audio/g_introduce_48k.wav",
+      "utteranceLandsAtS": 10.0,
+      "category": "format",
+      "expect": "nemotron|nvidia|assist",
+      "budgetS": 8.0,
+      "text": "Hello, please introduce yourself."
+    }
+  ]
+}

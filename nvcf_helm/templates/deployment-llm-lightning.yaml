@@ -1,0 +1,141 @@
+{{- if .Values.llmLightning.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-llm-lightning
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llm-lightning
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 7200
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "nemotron-voice-agent.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: llm-lightning
+  template:
+    metadata:
+      labels:
+        {{- include "nemotron-voice-agent.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: llm-lightning
+    spec:
+      {{- include "nemotron-voice-agent.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - name: nim-llm-lightning
+          image: "{{ include "nemotron-voice-agent.llmLightningImage" . }}"
+          imagePullPolicy: {{ .Values.llmLightningImage.pullPolicy }}
+          {{- include "nemotron-voice-agent.nimStartCommand" . | nindent 10 }}
+          env:
+            {{- include "nemotron-voice-agent.ngcApiKeyEnv" . | nindent 12 }}
+            - name: NIM_HTTP_API_PORT
+              value: "8000"
+            {{- if .Values.llmLightning.vanilla }}
+            # 0.1.80 VANILLA+TOOLS: the crash was NIM_TAGS_SELECTOR "precision=fp8,tp=1"
+            # (the image has no matching profile -> NIM aborts at startup) and/or the
+            # KV/model-len overrides — proven by 0.1.79 running clean with NONE of them.
+            # We keep profile selection + KV + model-len at the NIM's own defaults, but add
+            # back ONLY the tool-calling flags the APP needs (it sends tool_choice="auto",
+            # which vLLM rejects 400 unless these are set). Same parsers Super runs fine.
+            - name: NIM_PASSTHROUGH_ARGS
+              value: >-
+                --enable-auto-tool-choice
+                --tool-call-parser qwen3_coder
+                --reasoning-parser nemotron_v3
+            {{- else }}
+            - name: NIM_KVCACHE_PERCENT
+              value: {{ .Values.llmLightning.nimKvCachePercent | quote }}
+            - name: NIM_MAX_MODEL_LEN
+              value: {{ .Values.llmLightning.nimMaxModelLen | quote }}
+            - name: NIM_PASSTHROUGH_ARGS
+              value: >-
+                --enable-auto-tool-choice
+                --tool-call-parser qwen3_coder
+                --reasoning-parser nemotron_v3
+                --max-num-seqs {{ .Values.llmLightning.nimMaxNumSeqs }}
+            - name: NIM_TAGS_SELECTOR
+              value: {{ .Values.llmLightning.nimTagsSelector | quote }}
+            {{- end }}
+            {{- if .Values.llmLightning.pinVisibleDevices }}
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: {{ .Values.llmLightning.gpuDevices | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          {{- if and .Values.nimReadyImmediate (not .Values.llmLightning.vanilla) }}
+          # STAGING (nimReadyImmediate): report Ready as soon as the container is running so NVCF
+          # marks the function ACTIVE without waiting for the ~15-20 min model-load / TRT-engine
+          # rebuild (which exceeds NVCF's pod-readiness deadline). NIMs warm ASYNC; liveness is
+          # delayed 40 min so it does not kill the container mid-load.
+          livenessProbe:
+            httpGet:
+              path: /v1/health/ready
+              port: http
+            initialDelaySeconds: 2400
+            periodSeconds: 60
+            timeoutSeconds: 15
+            failureThreshold: 10
+          {{- else }}
+          startupProbe:
+            httpGet:
+              path: /v1/health/ready
+              port: http
+            periodSeconds: 30
+            failureThreshold: 60
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v1/health/ready
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /v1/health/ready
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 3
+          {{- end }}
+          volumeMounts:
+            - name: nim-cache
+              mountPath: /opt/nim/.cache
+            - name: shm
+              mountPath: /dev/shm
+          {{- with .Values.llmLightning.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: nim-cache
+          {{- if .Values.llmLightning.cache.nvcf }}
+          emptyDir:
+            sizeLimit: {{ .Values.llmLightning.cache.size }}
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ include "nemotron-voice-agent.fullname" . }}-llm-lightning-cache
+          {{- end }}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.llmLightning.shmSize }}
+      {{- with .Values.llmLightning.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.llmLightning.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.llmLightning.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

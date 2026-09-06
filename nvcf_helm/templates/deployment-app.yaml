@@ -1,0 +1,455 @@
+{{- if and .Values.sessionCapture.enabled (gt (int .Values.app.replicas) 1) (not .Values.redis.enabled) }}
+{{- fail "sessionCapture.enabled with app.replicas>1 requires redis.enabled=true: the two-signal coordination state (pipeline-done / consent) is per-process without it, so a signal recorded on one pod is never visible to another -- sessions posted to a different pod than the one that ran the pipeline simply never finalize. Either set redis.enabled=true or run app.replicas=1." }}
+{{- end }}
+{{- if and .Values.sessionCapture.enabled (gt (int .Values.app.replicas) 1) (not .Values.sessionStore.enabled) }}
+{{- fail "sessionCapture.enabled with app.replicas>1 requires sessionStore.enabled=true: per-pod local storage silently discards sessions whose consent POST lands on a different pod than the one that ran the pipeline (refer to docs/current-deployed-pipeline-architecture.md section 14). Either set sessionStore.enabled=true or run app.replicas=1." }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.app.replicas }}
+  progressDeadlineSeconds: 3600
+  # WebSocket sessions are stateful per process; Recreate avoids split-brain when scaling.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "nemotron-voice-agent.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: app
+  template:
+    metadata:
+      labels:
+        {{- include "nemotron-voice-agent.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: app
+    spec:
+      {{- include "nemotron-voice-agent.imagePullSecrets" . | nindent 6 }}
+      # Init containers poll each NIM's readiness endpoint before the app starts.
+      # Skipped on NVCF: NIM pods can take 60+ min to warm up on cold nodes,
+      # which would exceed the deployment progress deadline. On NVCF the app
+      # starts immediately; NIMs warm up asynchronously.
+      {{- if not .Values.nvcf }}
+      initContainers:
+        {{- if .Values.llm.enabled }}
+        - name: wait-for-llm
+          image: "{{ include "nemotron-voice-agent.appImage" . }}"
+          imagePullPolicy: {{ .Values.appImage.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for LLM NIM at nvidia-llm:8000 ..."
+              until curl -sf http://nvidia-llm:8000/v1/health/ready; do
+                echo "  LLM not ready, retrying in 15s ..."; sleep 15
+              done
+              echo "LLM NIM ready."
+        {{- end }}
+        {{- if .Values.tts.enabled }}
+        - name: wait-for-tts
+          image: "{{ include "nemotron-voice-agent.appImage" . }}"
+          imagePullPolicy: {{ .Values.appImage.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for TTS NIM at tts-service:9000 ..."
+              until curl -sf http://tts-service:9000/v1/health/ready; do
+                echo "  TTS not ready, retrying in 15s ..."; sleep 15
+              done
+              echo "TTS NIM ready."
+        {{- end }}
+        {{- if .Values.asr.enabled }}
+        - name: wait-for-asr
+          image: "{{ include "nemotron-voice-agent.appImage" . }}"
+          imagePullPolicy: {{ .Values.appImage.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for ASR NIM at nemotron-asr-streaming-english:9001 ..."
+              until curl -sf http://nemotron-asr-streaming-english:9001/v1/health/ready; do
+                echo "  ASR not ready, retrying in 15s ..."; sleep 15
+              done
+              echo "ASR NIM ready."
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: app
+          image: "{{ include "nemotron-voice-agent.appImage" . }}"
+          imagePullPolicy: {{ .Values.appImage.pullPolicy }}
+          {{- if .Values.nvcf }}
+          command:
+            - sh
+            - -c
+            - |
+              # Multi-replica NVCF requires these shared services. NVCF schedules
+              # chart pods independently, which can exceed the app's bounded
+              # one-time retry windows; do not start a permanently degraded app.
+              if [ -n "${REDIS_URL:-}" ]; then
+                echo "Waiting for required Redis session bus..."
+                until uv run python -c 'import os, redis; redis.Redis.from_url(os.environ["REDIS_URL"], socket_connect_timeout=2).ping()' >/dev/null 2>&1; do
+                  sleep 2
+                done
+                echo "Redis session bus ready."
+              fi
+              if [ "${SESSION_STORE_BACKEND:-local}" = "s3" ]; then
+                echo "Waiting for required shared session store..."
+                until curl -fsS "${SESSION_STORE_ENDPOINT%/}/" >/dev/null 2>&1; do
+                  sleep 2
+                done
+                echo "Shared session store ready."
+              fi
+              if [ -f /var/secrets/secrets.json ]; then
+                export NVIDIA_API_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('NVIDIA_API_KEY',''))")
+                # Dedicated NGC Registry credential used by session-capture uploads.
+                # Keep it separate from NVIDIA_API_KEY: the latter is the inference
+                # credential and may not have permission to publish resource versions.
+                export NGC_API_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('NGC_API_KEY',''))")
+                # web_search (Perplexity Sonar) key — passed as an NVCF function --secret,
+                # so it arrives in secrets.json (NVCF has no k8s secret for webSearch.apiKeySecret).
+                export PERPLEXITY_API_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('PERPLEXITY_API_KEY',''))")
+                # get_weather (WeatherAPI) key — same pattern: an NVCF function --secret.
+                export WEATHERAPI_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('WEATHERAPI_KEY',''))")
+                # get_stock_price (Finnhub) key — same pattern: an NVCF function --secret.
+                export FINNHUB_API_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('FINNHUB_API_KEY',''))")
+                # Capture destination is deployment configuration, supplied alongside the
+                # five function credentials so the org/resource is never hardcoded in Git.
+                export SESSION_CAPTURE_NGC=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('SESSION_CAPTURE_NGC',''))")
+              fi
+              exec uv run python src/server.py --host 0.0.0.0
+          {{- else }}
+          command:
+            - uv
+            - run
+            - python
+            - src/server.py
+            - --host
+            - "0.0.0.0"
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.port }}
+              protocol: TCP
+          env:
+            - name: APP_RUNTIME
+              value: "container"
+            - name: PLATFORM
+              value: {{ .Values.app.platform | quote }}
+            - name: EXAMPLE_SELECTION
+              value: {{ .Values.app.example | quote }}
+            {{- if .Values.app.transport }}
+            - name: TRANSPORT_SELECTION
+              value: {{ .Values.app.transport | quote }}
+            {{- end }}
+            - name: PIPELINE_TLS
+              value: {{ .Values.app.tls | toString | quote }}
+            {{- if not .Values.nvcf }}
+            - name: NVIDIA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.app.existingSecret }}
+                  key: {{ .Values.app.existingSecretKey }}
+            {{- if .Values.sessionCapture.enabled }}
+            - name: NGC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.sessionCapture.ngcSecret | default .Values.nim.existingSecret }}
+                  key: {{ .Values.sessionCapture.ngcSecretKey | default .Values.nim.existingSecretKey }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.app.idleTimeoutSecs }}
+            - name: PIPELINE_IDLE_TIMEOUT_SECS
+              value: {{ .Values.app.idleTimeoutSecs | quote }}
+            {{- end }}
+            {{- if .Values.app.prewarmTimeoutSecs }}
+            - name: CONNECT_PREWARM_TIMEOUT_SECS
+              value: {{ .Values.app.prewarmTimeoutSecs | quote }}
+            {{- end }}
+            {{- if .Values.app.thinkerMaxTokens }}
+            # Omni Thinker output cap. MUST stay well under the omni model's served
+            # context (omni.maxModelLen) so the prompt fits — else vLLM 400s with
+            # "maximum context length is N tokens ... you requested N output tokens".
+            - name: THINKER_MAX_TOKENS
+              value: {{ .Values.app.thinkerMaxTokens | quote }}
+            {{- end }}
+            {{- if .Values.app.uvicornWorkers }}
+            - name: UVICORN_WORKERS
+              value: {{ .Values.app.uvicornWorkers | quote }}
+            {{- end }}
+            {{- if .Values.app.chatHistoryRecentTurns }}
+            - name: CHAT_HISTORY_RECENT_TURNS
+              value: {{ .Values.app.chatHistoryRecentTurns | quote }}
+            {{- end }}
+            {{- if .Values.app.frontendBackendDirectToolResponse }}
+            - name: FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE
+              value: "true"
+            {{- end }}
+            {{- if .Values.app.ttsPronunciationPath }}
+            - name: TTS_IPA_FILE_PATH
+              value: {{ .Values.app.ttsPronunciationPath | quote }}
+            {{- end }}
+            {{- if .Values.app.audioOut10msChunks }}
+            - name: AUDIO_OUT_10MS_CHUNKS
+              value: {{ .Values.app.audioOut10msChunks | quote }}
+            {{- end }}
+            {{- if .Values.app.useSileroVadTurnDetection }}
+            - name: USE_SILERO_VAD_TURN_DETECTION
+              value: {{ .Values.app.useSileroVadTurnDetection | quote }}
+            {{- end }}
+            {{- if .Values.app.sileroVadStopSecs }}
+            - name: SILERO_VAD_STOP_SECS
+              value: {{ .Values.app.sileroVadStopSecs | quote }}
+            {{- end }}
+            {{- if .Values.app.otel.enabled }}
+            - name: ENABLE_TRACING
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.app.otel.endpoint | quote }}
+            - name: OTEL_CONSOLE_EXPORT
+              value: {{ .Values.app.otel.consoleExport | toString | quote }}
+            {{- end }}
+            {{- if .Values.turn.enabled }}
+            - name: TURN_URL
+              value: "turn:{{ include "nemotron-voice-agent.fullname" . }}-coturn:{{ .Values.turn.service.signalingPort }}"
+            - name: TURN_USERNAME
+              value: {{ .Values.turn.username | quote }}
+            - name: TURN_PASSWORD
+              value: {{ .Values.turn.password | quote }}
+            {{- end }}
+            # Read by server.py's D13 replica-safety backstop (a warning-only check;
+            # the hard failure already happened at `helm template` time above if this
+            # combination is unsafe). Always set, not just when sessionCapture.enabled,
+            # since it's a general "how many pods am I one of" signal.
+            - name: APP_REPLICAS
+              value: {{ .Values.app.replicas | quote }}
+            # session_capture/ (src/session_capture/) is a self-contained, gateable module:
+            # SESSION_CAPTURE_ENABLED is the top-level kill switch — when false (or unset),
+            # session_capture.register_routes() is a no-op and /api/session-capture* never
+            # exists (404), regardless of any other value below.
+            - name: SESSION_CAPTURE_ENABLED
+              value: {{ .Values.sessionCapture.enabled | toString | quote }}
+            {{- if .Values.sessionCapture.enabled }}
+            # Session capture: per-turn ASR/TTS audio, written through session_store
+            # (src/session_store/) -- entirely in-process, no sidecar. NOTE:
+            # AUDIO_DUMP_PATH is NOT set here on purpose: the recorder no longer writes
+            # to a local path at all (see src/examples/shared/audio_recorder.py), only
+            # through session_store's configured backend (SESSION_STORE_* below).
+            - name: ENABLE_ASR_AUDIO_DUMP
+              value: "true"
+            - name: ENABLE_TTS_AUDIO_DUMP
+              value: "true"
+            # Enables POST /api/session-capture -> writes consent + transcript markers here.
+            - name: SESSION_CAPTURE_PATH
+              value: /session-data/capture
+            # Per-session app log written to the PVC (bundled into the capture tarball).
+            - name: SESSION_LOG_PATH
+              value: /session-data/logs
+            {{- if and .Values.sessionCapture.ngcOrg .Values.sessionCapture.ngcResource }}
+            # In-app capture uploads the tarball to this NGC resource (org/resource); the
+            # app process does capture + upload since NVCF has no usable sidecars/k8s-API.
+            # NEVER hardcoded: both ngcOrg and ngcResource come from values/deploy config;
+            # leave either blank to disable the upload (capture still writes locally).
+            - name: SESSION_CAPTURE_NGC
+              value: {{ printf "%s/%s" .Values.sessionCapture.ngcOrg .Values.sessionCapture.ngcResource | quote }}
+            {{- end }}
+            - name: SESSION_CAPTURE_REQUIRE_CONSENT
+              value: {{ .Values.sessionCapture.requireConsent | toString | quote }}
+            {{- end }}
+            {{- if .Values.sessionStore.enabled }}
+            # session_store (src/session_store/): the SHARED object store backing
+            # session-capture artifacts (log/audio/transcript) across replicas --
+            # this is what makes sessionCapture.enabled + app.replicas>1 safe at all
+            # (refer to the hard-fail guard above and section 14 in
+            # docs/current-deployed-pipeline-architecture.md). NOT the same thing as
+            # SESSION_STORE_DIR below, which is unrelated: that's per-session
+            # CONFIG sharing (a different subsystem, session config resolution),
+            # this is capture ARTIFACT storage. The name collision is coincidental
+            # (both trace back to "session" + "store") but the two are independent.
+            - name: SESSION_STORE_BACKEND
+              value: "s3"
+            - name: SESSION_STORE_ENDPOINT
+              value: "http://seaweedfs:8333"
+            - name: SESSION_STORE_BUCKET
+              value: {{ .Values.sessionStore.bucket | quote }}
+            {{- if .Values.sessionStore.auth.existingSecret }}
+            - name: SESSION_STORE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.sessionStore.auth.existingSecret }}
+                  key: {{ .Values.sessionStore.auth.accessKeyKey }}
+            - name: SESSION_STORE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.sessionStore.auth.existingSecret }}
+                  key: {{ .Values.sessionStore.auth.secretKeyKey }}
+            {{- else }}
+            # No auth.existingSecret -- SeaweedFS enforces no auth by default (see
+            # deployment-seaweedfs.yaml), but boto3 still requires NON-EMPTY
+            # access/secret key values to sign requests at all: with neither env var
+            # set, boto3 falls through its whole credential provider chain (env,
+            # ~/.aws/credentials, IAM role -- none of which exist in this container)
+            # and S3Backend.from_env() fails outright with "Unable to locate
+            # credentials", never reaching the network. Same placeholder
+            # docker-compose.yml's seaweedfs profile uses.
+            - name: SESSION_STORE_ACCESS_KEY
+              value: "seaweedfs"
+            - name: SESSION_STORE_SECRET_KEY
+              value: "seaweedfs"
+            {{- end }}
+            {{- end }}
+            {{- if .Values.redis.enabled }}
+            # Redis session bus (src/session_bus/): shared webcam/attachment/session-config
+            # state across app replicas -- any pod can serve any session's media. Also the
+            # transport for session_capture's cross-pod coordination state (see
+            # src/session_capture/state.py) -- preferred over SESSION_STORE_DIR below on
+            # NVCF, where the RWO oci-bv PVC can't actually be co-mounted across pods
+            # (zone-locked). See templates/deployment-redis.yaml.
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            - name: SESSION_BUS_SOCKET_TIMEOUT_SECS
+              value: {{ .Values.redis.client.socketTimeoutSeconds | quote }}
+            - name: SESSION_BUS_BLOCK_MS
+              value: {{ .Values.redis.client.blockMilliseconds | quote }}
+            - name: SESSION_BUS_TTL
+              value: {{ .Values.redis.client.ttlSeconds | quote }}
+            {{- end }}
+            {{- if and .Values.sessionCapture.enabled (gt (int .Values.app.replicas) 1) (not .Values.redis.enabled) }}
+            # Horizontal scale WITHOUT Redis: share per-session CONFIG across pods via the
+            # PVC so /api/session-config (pod A) and /api/ws (pod B) resolve the SAME config
+            # (else the WS silently defaults). Needs the session-data PVC co-mounted by all
+            # replicas -- NOT reliable on NVCF (zone-locked RWO); prefer redis.enabled there.
+            # Unrelated to SESSION_STORE_BACKEND/_ENDPOINT/etc above -- see the comment there.
+            - name: SESSION_STORE_DIR
+              value: /session-data/sessions
+            {{- end }}
+            {{- if .Values.webSearch.apiKeySecret }}
+            # Perplexity Sonar key for the web_search tool (from a secret, like the NGC key).
+            - name: PERPLEXITY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.webSearch.apiKeySecret }}
+                  key: {{ .Values.webSearch.apiKeySecretKey | default "PERPLEXITY_API_KEY" }}
+            {{- end }}
+            {{- with .Values.webSearch.baseUrl }}
+            - name: PERPLEXITY_BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.webSearch.model }}
+            - name: PERPLEXITY_MODEL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.weatherApi.apiKeySecret }}
+            # get_weather (WeatherAPI) key for off-NVCF (k8s secret). On NVCF it comes from
+            # secrets.json via the entrypoint above.
+            - name: WEATHERAPI_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.weatherApi.apiKeySecret }}
+                  key: {{ .Values.weatherApi.apiKeySecretKey | default "WEATHERAPI_KEY" }}
+            {{- end }}
+            {{- with .Values.weatherApi.baseUrl }}
+            - name: WEATHERAPI_BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.stockApi.apiKeySecret }}
+            # get_stock_price (Finnhub) key for off-NVCF (k8s secret). On NVCF it comes
+            # from secrets.json via the entrypoint above.
+            - name: FINNHUB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.stockApi.apiKeySecret }}
+                  key: {{ .Values.stockApi.apiKeySecretKey | default "FINNHUB_API_KEY" }}
+            {{- end }}
+            {{- with .Values.stockApi.baseUrl }}
+            - name: FINNHUB_BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: examples-registry
+              mountPath: /app/examples_registry.yaml
+              subPath: examples_registry.yaml
+              readOnly: true
+            {{- if .Values.app.disableCloudServices }}
+            {{- range .Values.app.cloudCatalogDirs }}
+            # Blank each example's cloud catalog -> no hosted-LLM fallback.
+            - name: cloud-catalog-empty
+              mountPath: /app/src/examples/{{ . }}/services.cloud.yaml
+              subPath: services.cloud.yaml
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- if .Values.sessionCapture.enabled }}
+            - name: session-data
+              mountPath: /session-data
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          {{- with .Values.app.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: examples-registry
+          configMap:
+            name: {{ include "nemotron-voice-agent.fullname" . }}-config
+            items:
+              - key: examples_registry.yaml
+                path: examples_registry.yaml
+        {{- if .Values.app.disableCloudServices }}
+        - name: cloud-catalog-empty
+          configMap:
+            name: {{ include "nemotron-voice-agent.fullname" . }}-config
+            items:
+              - key: empty-cloud-catalog.yaml
+                path: services.cloud.yaml
+        {{- end }}
+        {{- if .Values.sessionCapture.enabled }}
+        # Shared session-capture volume. A persistent oci-bv PVC when persistence is enabled
+        # (NVCF now supports PVCs — survives pod restarts, unlike the old emptyDir); an
+        # ephemeral emptyDir otherwise. The collect/upload scripts are baked into the app
+        # image (/app/session-capture), so there is no ConfigMap volume to be stripped.
+        - name: session-data
+          {{- if .Values.sessionCapture.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "nemotron-voice-agent.fullname" . }}-session-data
+          {{- else }}
+          emptyDir:
+            {{- with .Values.sessionCapture.emptyDirSizeLimit }}
+            sizeLimit: {{ . }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- with .Values.app.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.app.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.app.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

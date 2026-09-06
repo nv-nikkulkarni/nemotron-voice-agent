@@ -74,6 +74,7 @@ class WebcamController:
         self._last_dispatched_sequence = 0
         self._latest_observation = ""
         self._board_state = ""
+        self._has_baseline = False
         self._enabled = False
         self._explicitly_disabled = False
         self._epoch = 0
@@ -94,19 +95,27 @@ class WebcamController:
         self._summary_loop_task = asyncio.create_task(self._run_summary_loop())
         self._set_board_state(_CAMERA_OFF_STATE)
 
-    def stop_summary_loop(self) -> None:
-        """Stop the webcam streaming loop for this session."""
-        if self._summary_loop_task and not self._summary_loop_task.done():
-            self._summary_loop_task.cancel()
-        if self._upload_control_task and not self._upload_control_task.done():
-            self._upload_control_task.cancel()
+    async def stop_summary_loop(self) -> None:
+        """Stop and await every local webcam producer for this session."""
+        self._enabled = False
+        self._epoch += 1
         if self._unregister_frame_listener:
             self._unregister_frame_listener()
+        tasks = [
+            task
+            for task in (self._summary_loop_task, self._upload_control_task)
+            if task is not None and not task.done()
+        ]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         self._summary_loop_task = None
         self._upload_control_task = None
         self._frame_event = None
         self._unregister_frame_listener = None
         self._summary_task_id = ""
+        self._summary_epoch = -1
 
     async def apply_webcam_state(self, payload: dict[str, Any]) -> None:
         """Start/stop continuous webcam uploads when the browser toggles the camera."""
@@ -120,6 +129,8 @@ class WebcamController:
         self._epoch += 1
         if enabled:
             self._explicitly_disabled = False
+            self._latest_observation = ""
+            self._has_baseline = False
             self._set_board_state(_CAMERA_ON_STATE)
             await self._start_continuous_uploads()
         else:
@@ -128,6 +139,7 @@ class WebcamController:
                 self._upload_control_task.cancel()
             clear_session_webcam_frame_data(self._session_id)
             self._latest_observation = ""
+            self._has_baseline = False
             self._set_board_state(_CAMERA_OFF_STATE)
             await self._emit_upload_control(active=False)
         logger.info(f"Browser webcam state changed: enabled={enabled}")
@@ -180,9 +192,31 @@ class WebcamController:
         focus = str(response.get("focus") or "").strip()
         visual_control = response.get("visual_control") if isinstance(response.get("visual_control"), dict) else {}
         frame = response.get("frame") if isinstance(response.get("frame"), dict) else {}
-        self._latest_observation = observation
-        if not _is_noop_observation(observation):
+        is_noop = _is_noop_observation(observation)
+        if is_noop and not self._has_baseline:
+            logger.bind(
+                event="webcam_baseline",
+                outcome="retry_next_frame",
+                session_id=self._session_id,
+            ).warning("Rejected no-change webcam observation before a visual baseline existed")
+            return False
+        if not is_noop:
+            first_baseline = not self._has_baseline
+            self._latest_observation = observation
+            self._has_baseline = True
             self._set_board_state(observation)
+            if first_baseline:
+                logger.bind(
+                    event="webcam_baseline",
+                    outcome="established",
+                    session_id=self._session_id,
+                ).info("Established the first concrete webcam visual baseline")
+        else:
+            logger.bind(
+                event="webcam_baseline",
+                outcome="retained",
+                session_id=self._session_id,
+            ).debug("Retained the prior webcam baseline after a no-change observation")
         await self._emit_agent_update(
             observation=observation,
             focus=focus,
@@ -215,6 +249,8 @@ class WebcamController:
                 return
             self._enabled = True
             self._epoch += 1
+            self._latest_observation = ""
+            self._has_baseline = False
             self._set_board_state(_CAMERA_ON_STATE)
             if self._upload_control_task is None or self._upload_control_task.done():
                 self._upload_control_task = asyncio.create_task(self._start_continuous_uploads())
@@ -225,6 +261,17 @@ class WebcamController:
         """Wake the streaming loop."""
         if self._frame_event:
             self._frame_event.set()
+
+    def _build_summary_payload(self, frame: Any) -> dict[str, Any]:
+        """Build one backward-compatible WebcamAgent job payload."""
+        return {
+            "session_id": self._session_id,
+            "frame": frame.metadata(),
+            "window_seconds": self._window_seconds,
+            "conversation_context": self._conversation_context(),
+            "previous_observation": self._latest_observation if self._has_baseline else "",
+            "has_baseline": self._has_baseline,
+        }
 
     async def _run_summary_loop(self) -> None:
         """Send each fresh webcam frame to the WebcamAgent as soon as it arrives."""
@@ -250,12 +297,7 @@ class WebcamController:
                     self._summary_task_id = await self._request_job(
                         WebcamAgent.AGENT_NAME,
                         name=WEBCAM_SUMMARY_TASK_NAME,
-                        payload={
-                            "session_id": self._session_id,
-                            "frame": frame.metadata(),
-                            "window_seconds": self._window_seconds,
-                            "conversation_context": self._conversation_context(),
-                        },
+                        payload=self._build_summary_payload(frame),
                         timeout=60.0,
                     )
                     self._summary_epoch = dispatch_epoch

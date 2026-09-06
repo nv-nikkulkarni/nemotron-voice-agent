@@ -4,12 +4,14 @@
 # ruff: noqa: D100, D101, D102, D105
 
 import asyncio
+import time
 import unittest
 from collections.abc import Callable
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from pipecat.frames.frames import (
+    InterruptionFrame,
     LLMTextFrame,
     LLMThoughtEndFrame,
     LLMThoughtStartFrame,
@@ -18,6 +20,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection
+from pipecat.services.llm_service import LLMService
 
 from examples.omni_assistant.nvidia_omni_multimodal_service import (
     NvidiaOmniLLMService,
@@ -122,6 +125,118 @@ class OmniTurnPreemptionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNot(second_task, first_task)
         await self._wait_for(lambda: len(self.turns) == 2)
         self.assertFalse(second_task.done())
+
+    async def test_adjacent_unheard_audio_is_merged_before_restarting_the_turn(self) -> None:
+        self._fill_audio(seconds=1.0)
+        self.service._last_user_eou_at = time.time()
+        await self.service._maybe_run_audio_turn()
+        first_task = self.service._pending_request
+        await self._wait_for(lambda: len(self.turns) == 1)
+
+        await self.service._handle_user_started()
+
+        self.assertTrue(first_task.cancelled())
+        self.assertTrue(self.turns[0].cancelled)
+        self.assertIsNotNone(self.service._continuation_audio_prefix)
+
+        self._fill_audio(seconds=0.75)
+        await self.service._handle_user_stopped()
+        await self._wait_for(lambda: len(self.turns) == 2)
+
+        expected_bytes = int(self.service._sample_rate * self.service._channels * 2 * 1.75)
+        self.assertEqual(len(self.service._pending_audio_payload), expected_bytes)
+        self.assertIsNone(self.service._continuation_audio_prefix)
+        self.assertFalse(self.service._pending_audio_output_started)
+
+    async def test_audio_with_visible_output_is_not_merged_into_a_new_turn(self) -> None:
+        self._fill_audio(seconds=1.0)
+        self.service._last_user_eou_at = time.time()
+        await self.service._maybe_run_audio_turn()
+        first_task = self.service._pending_request
+        await self._wait_for(lambda: len(self.turns) == 1)
+        self.service._pending_audio_output_started = True
+
+        await self.service._handle_user_started()
+
+        self.assertTrue(first_task.cancelled())
+        self.assertIsNone(self.service._continuation_audio_prefix)
+
+        self._fill_audio(seconds=0.75)
+        await self.service._handle_user_stopped()
+        await self._wait_for(lambda: len(self.turns) == 2)
+
+        expected_bytes = int(self.service._sample_rate * self.service._channels * 2 * 0.75)
+        self.assertEqual(len(self.service._pending_audio_payload), expected_bytes)
+
+    async def test_audio_outside_the_continuation_window_is_not_merged(self) -> None:
+        self._fill_audio(seconds=1.0)
+        self.service._last_user_eou_at = time.time()
+        await self.service._maybe_run_audio_turn()
+        first_task = self.service._pending_request
+        await self._wait_for(lambda: len(self.turns) == 1)
+        self.service._pending_audio_eou_at = time.time() - 2.1
+
+        await self.service._handle_user_started()
+
+        self.assertTrue(first_task.cancelled())
+        self.assertIsNone(self.service._continuation_audio_prefix)
+
+        self._fill_audio(seconds=0.75)
+        await self.service._handle_user_stopped()
+        await self._wait_for(lambda: len(self.turns) == 2)
+
+        expected_bytes = int(self.service._sample_rate * self.service._channels * 2 * 0.75)
+        self.assertEqual(len(self.service._pending_audio_payload), expected_bytes)
+
+    async def test_bot_barge_in_never_reuses_obsolete_audio(self) -> None:
+        self._fill_audio(seconds=1.0)
+        self.service._last_user_eou_at = time.time()
+        await self.service._maybe_run_audio_turn()
+        first_task = self.service._pending_request
+        await self._wait_for(lambda: len(self.turns) == 1)
+        self.service._bot_responding = True
+
+        await self.service._handle_user_started()
+
+        self.assertTrue(first_task.cancelled())
+        self.assertFalse(self.service._bot_responding)
+        self.assertIsNone(self.service._continuation_audio_prefix)
+
+    async def test_interruption_frame_preserves_unheard_audio_for_the_same_new_speech(self) -> None:
+        self._fill_audio(seconds=1.0)
+        self.service._last_user_eou_at = time.time()
+        await self.service._maybe_run_audio_turn()
+        first_task = self.service._pending_request
+        await self._wait_for(lambda: len(self.turns) == 1)
+        self.service.push_frame = AsyncMock()
+
+        with patch.object(LLMService, "process_frame", AsyncMock()):
+            await self.service.process_frame(InterruptionFrame(), FrameDirection.DOWNSTREAM)
+
+        self.assertTrue(first_task.cancelled())
+        self.assertTrue(self.turns[0].cancelled)
+        self.assertIsNotNone(self.service._continuation_audio_prefix)
+
+        await self.service._handle_user_started()
+        self._fill_audio(seconds=0.75)
+        await self.service._handle_user_stopped()
+        await self._wait_for(lambda: len(self.turns) == 2)
+
+        expected_bytes = int(self.service._sample_rate * self.service._channels * 2 * 1.75)
+        self.assertEqual(len(self.service._pending_audio_payload), expected_bytes)
+
+    async def test_stale_interruption_prefix_is_not_reused_by_a_later_turn(self) -> None:
+        self._fill_audio(seconds=1.0)
+        self.service._last_user_eou_at = time.time()
+        await self.service._maybe_run_audio_turn()
+        await self._wait_for(lambda: len(self.turns) == 1)
+        prefix = self.service._continuation_prefix_for_new_speech()
+        await self.service._cancel_pending_request()
+        self.service._continuation_audio_prefix = (*prefix[:3], time.time() - 2.1)
+
+        await self.service._handle_user_started()
+
+        self.assertIsNone(self.service._continuation_audio_prefix)
 
     async def test_text_turn_preempts_in_flight_turn(self) -> None:
         await self.service._maybe_run_text_turn(_user_context(), force=True)
@@ -493,6 +608,42 @@ class OmniRequestBuildingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(sent["max_tokens"], 2048)
         self.assertNotIn("max_completion_tokens", sent)
+
+    async def test_audio_retry_reuses_active_audio_and_restores_turn_parts(self) -> None:
+        audio = audio_message_part(b"\x00\x00", 16000, 1)
+        contract = {"type": "text", "text": "original response contract"}
+        active = [audio, contract]
+        self.service._active_turn_parts = active
+        sent: dict = {}
+
+        async def fake_create(**kwargs):
+            sent.update(kwargs)
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="corrected envelope"))])
+
+        self.service._client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
+        result = await self.service.retry_active_audio_inference(
+            LLMContext([{"role": "system", "content": "You are helpful."}]),
+            correction_instruction="Listen to the same audio again.",
+            max_tokens=2048,
+        )
+
+        self.assertEqual(result, "corrected envelope")
+        self.assertIs(self.service._active_turn_parts, active)
+        self.assertIs(self.service._active_turn_parts[0], audio)
+        self.assertIs(self.service._active_turn_parts[1], contract)
+        self.assertEqual(len(self.service._active_turn_parts), 2)
+        request_parts = sent["messages"][-1]["content"]
+        self.assertEqual(request_parts[0]["type"], "audio_url")
+        self.assertEqual(request_parts[1], contract)
+        self.assertEqual(request_parts[2]["text"], "Listen to the same audio again.")
+        self.assertFalse(sent["stream"])
+        self.assertEqual(sent["max_tokens"], 2048)
+
+    async def test_audio_retry_rejects_turn_without_audio(self) -> None:
+        self.service._active_turn_parts = [{"type": "text", "text": "contract"}]
+
+        with self.assertRaisesRegex(ValueError, "active audio"):
+            await self.service.retry_active_audio_inference(LLMContext([]), correction_instruction="retry")
 
     async def test_no_token_limit_is_sent_unless_one_is_configured(self) -> None:
         params = self.service.build_chat_completion_params({"messages": []})

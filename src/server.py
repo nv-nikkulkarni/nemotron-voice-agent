@@ -66,10 +66,16 @@ from pipecat.transports.smallwebrtc.request_handler import (
 
 import config_store
 import examples_registry
+import session_bus
+import session_store
 from attachment_store import consume_capture_request, store_attachment
 from examples.shared.pipeline_utils import PIPELINE_AUDIO_IN_SAMPLE_RATE, PIPELINE_AUDIO_OUT_SAMPLE_RATE
 from examples.shared.prewarm import build_session_languages, peek_cached_tts_config, prewarm_tts, warmup_tts_synthesis
 from examples.shared.subagents import load_subagent_registry
+from session_capture import install_log_sink as install_capture_log_sink
+from session_capture import reaper as capture_reaper
+from session_capture import register_routes as register_capture_routes
+from session_capture import settings as capture_settings
 from utils import (
     PROJECT_ROOT,
     build_services_api_response,
@@ -90,6 +96,50 @@ from webcam_frame_store import store_webcam_frame, webcam_client_config
 CLIENT_DIST = PROJECT_ROOT / "client" / "dist"
 _session_configs: dict[str, dict] = {}
 _active_session_configs: dict[str, dict] = {}
+
+# Cross-pod session store. Session config is otherwise held per-process, so with >1 app
+# REPLICA (K8s horizontal scale) a client's POST /api/session-config (pod A) and its
+# WS /api/ws?session_id (pod B, via the load balancer) land on different pods and the WS
+# would silently fall back to the default example. When SESSION_STORE_DIR is set (a shared
+# volume — the oci-bv PVC the replicas co-mount), the config is also persisted there so ANY
+# pod resolves ANY session. Empty -> single-pod, in-memory only (unchanged behavior).
+_SESSION_STORE_DIR = os.environ.get("SESSION_STORE_DIR", "")
+
+
+def _persist_session(session_id: str, config: dict) -> None:
+    # Redis session bus (see session_bus/) is the preferred cross-pod path when enabled;
+    # SESSION_STORE_DIR (a shared filesystem) remains the fallback for on-prem/no-Redis.
+    if session_bus.is_enabled():
+        from session_bus import session_config as _bus_config
+
+        _bus_config.put(session_id, config)
+        return
+    if not _SESSION_STORE_DIR or not session_id:
+        return
+    try:
+        os.makedirs(_SESSION_STORE_DIR, exist_ok=True)
+        tmp = os.path.join(_SESSION_STORE_DIR, f".{session_id}.tmp")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(config, fh)
+        os.replace(tmp, os.path.join(_SESSION_STORE_DIR, f"{session_id}.json"))  # atomic
+    except (OSError, TypeError) as exc:
+        logger.warning(f"session-store: persist {session_id} failed: {exc}")
+
+
+def _load_session(session_id: str) -> dict:
+    if session_bus.is_enabled():
+        from session_bus import session_config as _bus_config
+
+        return _bus_config.get(session_id)
+    if not _SESSION_STORE_DIR or not session_id:
+        return {}
+    try:
+        with open(os.path.join(_SESSION_STORE_DIR, f"{session_id}.json"), encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
 _CONNECT_PREWARM_TIMEOUT_SECS = parse_env_int("CONNECT_PREWARM_TIMEOUT_SECS", 45)
 _CONNECT_HEALTH_TIMEOUT_SECS = 5
 _NIM_READY_PATH = "/v1/health/ready"
@@ -178,8 +228,13 @@ def _run_multi_worker(args: argparse.Namespace, workers: int, ssl_kwargs: dict) 
 
 
 def _multi_worker_mode_enabled() -> bool:
-    """Return whether the server is running with more than one uvicorn worker."""
-    return parse_env_int("UVICORN_WORKERS", 1, min_value=1) > 1
+    """Return whether >1 uvicorn worker is running WITHOUT a shared session bus.
+
+    Session-config/WS/attachment routes rely on process-local state unless the
+    Redis session bus (session_bus.is_enabled()) is connected, in which case
+    that state is shared across workers/pods and multi-worker is safe.
+    """
+    return parse_env_int("UVICORN_WORKERS", 1, min_value=1) > 1 and not session_bus.is_enabled()
 
 
 def _multi_worker_session_config_response() -> JSONResponse:
@@ -216,11 +271,39 @@ def _sanitize_session_config(data: dict, fallback_example_key: str = "") -> dict
         raise ValueError("session config must be a JSON object")
     example = _bind_example_context_by_key(str(data.get("pipeline_mode", "")) or fallback_example_key)
     config = dict(data)
-    if not config.get("prompt_key") and not config.get("prompt_content"):
-        prompt_key = examples_registry.prompt_default_key(example["key"])
-        if prompt_key:
-            config["prompt_key"] = prompt_key
+    # Registry-owned: a client cannot pair a prompt catalog with another domain backend.
+    config["domain_profile"] = example.get("domain_profile", "")
+    config["thinker_prompt"] = example.get("thinker_prompt", "")
+    config["tools"] = list(example.get("tools") or ())
+    if example.get("domain_profile"):
+        config.pop("tools_available", None)
+
+    _bind_registry_prompt(example, config)
     return filter_session_config(config)
+
+
+def _bind_registry_prompt(example: dict, config: dict) -> None:
+    """Prevent a domain profile from selecting another domain's catalog prompt."""
+    if config.get("prompt_content"):
+        return
+    default_key = examples_registry.prompt_default_key(example["key"])
+    requested_key = str(config.get("prompt_key") or default_key or "").strip()
+    if not example.get("domain_profile"):
+        if requested_key:
+            config["prompt_key"] = requested_key
+        return
+
+    module_file = examples_registry.example_module_file(example)
+    catalog = load_prompt_catalog(module_file)
+    hidden_keys = frozenset(example.get("agent_prompt_keys") or ())
+    if requested_key not in catalog or requested_key in hidden_keys:
+        logger.warning(
+            f"Prompt {requested_key!r} is not selectable for domain {example['domain_profile']!r}; "
+            f"using registry default {default_key!r}"
+        )
+        requested_key = default_key or ""
+    if requested_key:
+        config["prompt_key"] = requested_key
 
 
 def _example_with_module_file(example_key: str = "") -> tuple[dict, Path]:
@@ -261,7 +344,11 @@ def _activate_example_catalog_by_key(example_key: str = "") -> dict:
 
 def _resolve_config(session_id: str = "", fallback_example_key: str = "", **query_params: str) -> dict:
     """Merge stored session config with query overrides; sanitize and hydrate from YAML."""
-    base = _session_configs.pop(session_id, {}) if session_id else {}
+    # In-memory (same-pod fast path) first; else the shared PVC store (cross-pod, multi-replica).
+    base = _session_configs.pop(session_id, None) if session_id else None
+    if base is None:
+        base = _load_session(session_id) if session_id else {}
+    base = dict(base or {})
     base.update({k: v for k, v in query_params.items() if v})
     return _sanitize_session_config({k: v for k, v in base.items() if v}, fallback_example_key=fallback_example_key)
 
@@ -324,14 +411,20 @@ def _get_default_llm_selection() -> tuple[str, str]:
 
 def _store_session_config(data: dict, fallback_example_key: str = "") -> str:
     session_id = uuid.uuid4().hex[:12]
-    _session_configs[session_id] = _sanitize_session_config(data, fallback_example_key=fallback_example_key)
+    cfg = _sanitize_session_config(data, fallback_example_key=fallback_example_key)
+    _session_configs[session_id] = cfg
+    _persist_session(session_id, cfg)  # cross-pod: any replica can resolve this session
     return session_id
 
 
 def _session_capability_error(session_id: str, capability: str) -> JSONResponse | None:
     """Return an upload rejection when session/capability validation fails."""
     cleaned_session_id = session_id.strip()
-    config = _active_session_configs.get(cleaned_session_id) or _session_configs.get(cleaned_session_id)
+    config = (
+        _active_session_configs.get(cleaned_session_id)
+        or _session_configs.get(cleaned_session_id)
+        or _load_session(cleaned_session_id)
+    )
     if not cleaned_session_id or config is None:
         return JSONResponse(status_code=404, content={"detail": "session not found"})
     example = examples_registry.metadata(examples_registry.find(config.get("pipeline_mode", "")))
@@ -638,8 +731,40 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        session_bus.init_from_env()  # no-op unless REDIS_URL is set
+        session_store.init_from_env()  # local filesystem unless SESSION_STORE_BACKEND=s3
+        capture_reaper.start()  # no-op unless session capture is enabled
+        # session-capture needs TWO independent things to be shared for >1 replica:
+        # coordination state (Redis; see session_capture/state.py) and the
+        # artifacts themselves (session_store). Missing either one breaks a
+        # different way -- without Redis, the two-signal handshake is per-process,
+        # so a signal recorded on one pod is invisible to another and the session
+        # just never finalizes (hangs forever, no error); without a shared store,
+        # the finalizing pod reads only its OWN local disk, finds nothing, and
+        # reports success while the pipeline pod's real artifacts are orphaned
+        # (refer to docs/current-deployed-pipeline-architecture.md section 14). The Helm chart
+        # hard-fails both combinations at template time (P5.6); this is a
+        # backstop for anyone running the app outside that chart.
+        app_replicas = parse_env_int("APP_REPLICAS", 1, min_value=1)
+        if capture_settings.enabled() and app_replicas > 1:
+            if not session_bus.is_enabled():
+                logger.error(
+                    f"session-capture is enabled with APP_REPLICAS={app_replicas} but the Redis "
+                    "session bus is NOT connected (REDIS_URL unset/unreachable) -- coordination "
+                    "state is per-process, so sessions whose two signals land on different pods "
+                    "will never finalize. Set REDIS_URL to a shared Redis, or run a single replica."
+                )
+            if not session_store.is_s3():
+                logger.error(
+                    f"session-capture is enabled with APP_REPLICAS={app_replicas} but session_store "
+                    "is NOT a shared backend (SESSION_STORE_BACKEND=local) -- a session whose consent "
+                    "POST lands on a different pod than its pipeline WILL be silently lost. Set "
+                    "SESSION_STORE_BACKEND=s3 with a shared endpoint, or run a single replica."
+                )
         yield
+        capture_reaper.stop()
         await handler.close()
+        await session_bus.aclose()
 
     app = FastAPI(lifespan=lifespan)
 
@@ -684,6 +809,12 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
         if (failure := await _readiness_check_or_503(config, "session config")) is not None:
             return failure
         return {"session_id": _store_session_config(config, fallback_example_key=fallback_example_key)}
+
+    # ---- Session capture (consent + transcript + per-session log -> tarball -> NGC) ----
+    # Fully isolated in session_capture/; a no-op (routes never registered) unless
+    # SESSION_CAPTURE_ENABLED is true. See session_capture/settings.py for the env contract.
+    register_capture_routes(app)
+    install_capture_log_sink()
 
     @app.post("/api/start")
     async def start_bot(request: Request):
@@ -1175,6 +1306,13 @@ def main():
             "<level>{message}</level>"
         ),
     )
+
+    # Per-session log capture (session_capture.install_log_sink) is now installed from
+    # create_app() itself, so it runs once per worker process in BOTH single-worker
+    # (main() calls create_app directly, below) and multi-worker (each uvicorn worker
+    # imports server:app_factory -> create_app independently — the old inline version of
+    # this block only ran in main() and was therefore never installed in worker
+    # subprocesses; this fixes that gap as a side effect of the isolation).
 
     workers = args.workers if args.workers is not None else parse_env_int("UVICORN_WORKERS", 1, min_value=1)
     os.environ["UVICORN_WORKERS"] = str(workers)
