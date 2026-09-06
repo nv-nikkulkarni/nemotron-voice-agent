@@ -14,6 +14,14 @@ const execFileP = promisify(execFile);
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const BASE = process.env.SQA_BASE || "http://localhost:7862";
 export const OUT = process.env.SQA_OUT || "/sqa/out";
+export const RUN_ID = process.env.SQA_RUN_ID || "unversioned-run";
+export const GENERIC_SERVER_TOOL_NAMES = Object.freeze([
+  "get_weather",
+  "get_stock_price",
+  "web_search",
+  "calculate_bmi",
+  "generate_random_number",
+]);
 mkdirSync(OUT, { recursive: true });
 
 // WebAudio tap: records when bot audio starts + a level trace, resettable per turn.
@@ -112,16 +120,64 @@ export async function newPage(browser, sig, { viewport = { width: 1280, height: 
 // popup (.ex-config). We configure the per-session choices in the popup but do NOT
 // launch here — startConversation() clicks the popup's "Start conversation".
 //   example : "generic" | "omni"
-//   model   : "lightning" | "super"            (generic only; anything not "super" → Lightning)
+//   model   : "lightning" only. Generic model roles are fixed; any other value
+//             is rejected so a test cannot silently claim it selected Super/Nano.
 //   tts     : "magpie" | "chatterbox"          (optional; leaves the popup default if omitted)
-//   tools   : string[] of visible tool LABELS to ENABLE, e.g. ["Weather","BMI"];
-//             the enabled set is made to match this exactly (generic only). Omitted → defaults.
+//   tools   : string[] of visible tool LABELS to ENABLE on a UI that actually
+//             renders tool checkboxes. The Generic Frontend/Backend example owns
+//             its fixed allowlist server-side, so callers must use
+//             assertServerOwnedTools() and omit this option for that example.
 //   reasoning: boolean (optional); explicitly set the popup reasoning toggle.
 //              Generic has fixed model roles (Talker reasoning off, Thinker on),
 //              so `false` is valid even though that popup has no toggle.
 //   consent : check the "Store my audio…" toggle inside the popup.
+export async function waitForDeploymentReady(page, { timeoutMs = 30000 } = {}) {
+  const cards = page.locator(".example-card");
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await cards.count() >= 2) return true;
+    await sleep(250);
+  }
+  return false;
+}
+
+export async function assertServerOwnedTools(page, {
+  pipelineMode = "generic-frontend-backend-agent",
+  promptKey = "generic_talker",
+  expected = GENERIC_SERVER_TOOL_NAMES,
+} = {}) {
+  if (!Array.isArray(expected) || expected.length === 0) {
+    throw new Error("server-owned tool assertion requires a nonempty expected tool list");
+  }
+  const endpoint = new URL("/api/prompts", BASE);
+  endpoint.searchParams.set("pipeline_mode", pipelineMode);
+  const response = await page.request.get(endpoint.toString(), { timeout: 15000 });
+  if (!response.ok()) {
+    throw new Error(`server-owned tool catalog request failed: HTTP ${response.status()}`);
+  }
+  const prompts = await response.json();
+  if (!Array.isArray(prompts)) throw new Error("server-owned tool catalog response is not an array");
+  const prompt = prompts.find((item) => item?.key === promptKey);
+  if (!prompt) throw new Error(`server-owned tool prompt not found: ${promptKey}`);
+  const actual = Array.isArray(prompt.tools)
+    ? [...new Set(prompt.tools.filter((tool) => typeof tool === "string" && tool.trim()).map((tool) => tool.trim()))]
+    : [];
+  const wanted = [...new Set(expected.map((tool) => String(tool).trim()).filter(Boolean))];
+  const actualSet = new Set(actual);
+  const wantedSet = new Set(wanted);
+  const missing = wanted.filter((tool) => !actualSet.has(tool));
+  const unexpected = actual.filter((tool) => !wantedSet.has(tool));
+  if (missing.length || unexpected.length) {
+    throw new Error(
+      `server-owned tool catalog mismatch: missing=[${missing.join(", ")}] unexpected=[${unexpected.join(", ")}]`,
+    );
+  }
+  return actual.sort();
+}
+
 export async function selectExample(page, { example = "generic", model = "lightning", tts, tools, reasoning, consent } = {}) {
   const isOmni = /omni/i.test(example);
+  if (!(await waitForDeploymentReady(page))) throw new Error("deployment options did not become ready");
   // 1. Click the example card to open its configuration popup.
   const card = page.locator(".example-card").filter({ hasText: isOmni ? /omni/i : /generic/i }).first();
   if (await card.count()) await card.click();
@@ -131,35 +187,49 @@ export async function selectExample(page, { example = "generic", model = "lightn
   const popup = page.locator(".ex-config");
   await popup.waitFor({ state: "visible", timeout: 8000 });
 
-  // 3. LLM radio (generic only). "super" → Nemotron Super, otherwise Lightning.
-  if (!isOmni && model) {
-    const wanted = model === "super" ? /super/i : /lightning/i;
-    const opt = popup.locator('label.ex-opt', { has: page.locator('input[name="llm"]') }).filter({ hasText: wanted }).first();
-    if (await opt.count()) await opt.locator("input").evaluate((el) => el.click()).catch(() => {});
-    // Let the modal's model-change effect apply the catalog default before a
-    // test requests an explicit reasoning state below.
-    await sleep(300);
+  // 3. Generic model roles are fixed and informational, not selectable.
+  if (!isOmni) {
+    if (model && model !== "lightning") {
+      throw new Error(`Generic model roles are fixed; unsupported requested model: ${model}`);
+    }
+    const roleText = await popup.locator(".ex-config__section").filter({ hasText: /agent model roles/i }).innerText().catch(() => "");
+    if (!/lightning/i.test(roleText) || !/super/i.test(roleText)) {
+      throw new Error("fixed Lightning Talker and Super Thinker roles are not rendered");
+    }
+    if (await popup.locator('input[name="llm"]').count()) {
+      throw new Error("Generic fixed model roles unexpectedly became client-selectable");
+    }
   }
 
   // 4. TTS radio (both examples expose it).
   if (tts) {
     const wanted = tts === "chatterbox" ? /chatterbox/i : /magpie/i;
     const opt = popup.locator('label.ex-opt', { has: page.locator('input[name="tts"]') }).filter({ hasText: wanted }).first();
-    if (await opt.count()) await opt.locator("input").evaluate((el) => el.click()).catch(() => {});
+    // The deployment catalog is loaded asynchronously after the modal opens.
+    // Keep the requested-option check strict, but allow the matching radio to
+    // arrive before treating a missing catalog entry as a hard failure.
+    await opt.waitFor({ state: "visible", timeout: 8000 }).catch(() => {
+      throw new Error(`requested TTS option not found: ${tts}`);
+    });
+    await opt.locator("input").evaluate((el) => el.click());
   }
 
-  // 5. Tools multi-select (generic only): make the enabled set exactly match `tools`.
+  // 5. Visible tools multi-select, only for surfaces that explicitly render it.
   if (!isOmni && Array.isArray(tools)) {
     const want = new Set(tools.map((t) => t.trim().toLowerCase()));
     const labels = popup.locator("label.ex-tool");
     const n = await labels.count();
+    const seen = new Set();
     for (let i = 0; i < n; i++) {
       const lbl = labels.nth(i);
       const txt = (await lbl.locator("span").last().innerText().catch(() => "")).trim().toLowerCase();
       const box = lbl.locator('input[type=checkbox]');
+      seen.add(txt);
       const checked = await box.isChecked().catch(() => false);
       if (checked !== want.has(txt)) await box.evaluate((el) => el.click()).catch(() => {});
     }
+    const missing = [...want].filter((name) => !seen.has(name));
+    if (missing.length) throw new Error(`requested tool option(s) not found: ${missing.join(", ")}`);
   }
 
   // 6. Optional explicit reasoning state, so SQA can qualify both paths.
@@ -183,11 +253,10 @@ export async function selectExample(page, { example = "generic", model = "lightn
   // 7. Consent toggle (inside the popup, may be visually hidden → toggle via the input).
   if (typeof consent === "boolean") {
     const cb = popup.locator(".consent-toggle input[type=checkbox]");
-    if (await cb.count()) {
-      await cb.first().evaluate((el, enabled) => {
-        if (el.checked !== enabled) el.click();
-      }, consent).catch(() => {});
-    }
+    if (await cb.count() !== 1) throw new Error("consent toggle not found or ambiguous");
+    await cb.first().evaluate((el, enabled) => {
+      if (el.checked !== enabled) el.click();
+    }, consent);
   }
   await sleep(750);
   if (typeof reasoning === "boolean" && reasoningToggleCount === 1) {
@@ -291,6 +360,20 @@ export async function readMessages(page) {
     role: el.classList.contains("message-user") ? "user" : "bot",
     text: (el.querySelector(".message-content span:last-child")?.textContent || el.textContent || "").trim(),
   })));
+}
+
+async function waitForUserTranscriptSince(page, fromMessageCount, timeoutMs = 8000) {
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
+  while (Date.now() < deadline) {
+    const messages = (await readMessages(page)).slice(fromMessageCount);
+    const userTexts = messages.filter((message) => message.role === "user").map((message) => message.text).filter(Boolean);
+    if (userTexts.length) {
+      return { received: true, elapsedMs: Date.now() - startedAt, messages: userTexts };
+    }
+    await sleep(100);
+  }
+  return { received: false, elapsedMs: null, messages: [] };
 }
 
 export const latencyText = (page) => page.locator(".conv-latency__value").first().innerText().catch(() => "");
@@ -416,6 +499,7 @@ export async function turn(page, text, name, {
   // Arm the recorder before playing the user WAV. Fast model/TTS responses can
   // otherwise begin before FFmpeg opens the per-browser speaker monitor.
   const capturePromise = captureBot(page, `${name}_bot`, captureOptions);
+  const inputPromise = waitForUserTranscriptSince(page, before);
   await sleep(150);
   await playSpeechWav(outWav, {
     echoToSpk,
@@ -423,6 +507,7 @@ export async function turn(page, text, name, {
     ...(spkDevice ? { spkDevice } : {}),
   });
   const cap = await capturePromise;
+  const input = await inputPromise;
   if (settle) {
     await waitListening(page, { timeoutMs: 15000 });
     await sleep(300);
@@ -436,8 +521,10 @@ export async function turn(page, text, name, {
   const msgs = await readMessages(page);
   const newMsgs = msgs.slice(before);
   const domBot = [...newMsgs].reverse().find((m) => m.role === "bot")?.text || "";
-  const domUser = newMsgs.find((m) => m.role === "user")?.text || "";
-  return { user: text, botSpoke: cap.sawOnset, botAsr, botAsrError, domUser, domBot, newMessages: newMsgs, responseMs: cap.responseMs,
+  const domUserMessages = newMsgs.filter((m) => m.role === "user").map((m) => m.text).filter(Boolean);
+  const domUser = domUserMessages.join(" ").replace(/\\s+/g, " ").trim();
+  return { user: text, inputReceived: input.received, inputReceivedMs: input.elapsedMs,
+           botSpoke: cap.sawOnset, botAsr, botAsrError, domUser, domUserMessages, domBot, newMessages: newMsgs, responseMs: cap.responseMs,
            wallMs, latencyS: parseLatencyS(await latencyText(page)), wav: cap.out };
 }
 

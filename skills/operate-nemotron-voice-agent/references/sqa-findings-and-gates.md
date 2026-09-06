@@ -102,6 +102,11 @@ console errors and WebSocket closures. It uses deterministic `espeak-ng` query a
 writes an ignored JSON report under `tests/sqa/artifacts/captured-session-regressions/`.
 This focused regression suite does not replace any blocking release gate.
 
+The host launcher assigns every suite invocation a UTC `SQA_RUN_ID` and writes
+evidence to `tests/sqa/out/<run-id>/`. Keep each run directory intact until its
+report is adjudicated. Do not reuse one output path across comprehensive phases
+or candidate reruns.
+
 ## Evidence Adjudication
 
 Classify every raw failure before changing product code.

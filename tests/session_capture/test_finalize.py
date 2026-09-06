@@ -67,6 +67,7 @@ def fake_backend(monkeypatch):
     monkeypatch.setattr(ssc, "_backend", backend)
     monkeypatch.setattr(ssc, "_is_s3", False)
     monkeypatch.setattr(settings, "ENABLED", True)
+    monkeypatch.setattr(settings, "UPLOAD_REQUIRED", False)
     monkeypatch.setattr(settings, "NGC_RESOURCE", "")
     monkeypatch.setattr(settings, "MAX_FINALIZE_ATTEMPTS", 2)
     yield backend
@@ -94,6 +95,23 @@ def test_full_happy_path_local_archive_mode(fake_backend) -> None:
         k.audio_key(sid, "asr", 0),
     }
     assert _tar_leak_count() == before_leaks, "no /tmp/*.tar.gz should survive a finalize"
+
+
+def test_required_upload_without_target_retains_evidence(fake_backend, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "UPLOAD_REQUIRED", True)
+    sid = _sid("requiredtargetmissing")
+    state.clear_state(sid)
+    fake_backend.put(k.log_key(sid), b"log")
+    state.mark_pipeline_done(sid)
+    state.mark_consent(sid, consent=True, has_transcript=False)
+
+    capture.maybe_finalize(sid)
+
+    st = state.get(sid)
+    assert st.get("attempts") == "1"
+    assert st.get("last_error") == "ngc_target_missing"
+    assert fake_backend.list(k.session_prefix(sid)) == [k.log_key(sid)]
+    state.clear_state(sid)
 
 
 def test_not_ready_is_a_noop(fake_backend) -> None:
@@ -268,6 +286,23 @@ def test_status_distinguishes_dedicated_ngc_key_from_fallback(monkeypatch) -> No
     assert with_dedicated["ngc_key_present"] is True
     assert with_dedicated["ngc_registry_key_present"] is True
     assert with_dedicated["ngc_key_source"] == "ngc_api_key"
+
+
+def test_required_upload_readiness_is_fail_closed(fake_backend, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "UPLOAD_REQUIRED", True)
+    monkeypatch.setattr(settings, "NGC_RESOURCE", "")
+    monkeypatch.setattr(settings, "NGC_CLI_BIN", "/definitely/does/not/exist")
+    monkeypatch.delenv("NGC_API_KEY", raising=False)
+
+    errors = capture.required_upload_configuration_errors()
+    current = capture.status()
+
+    assert "SESSION_CAPTURE_NGC is empty" in errors
+    assert "shared S3 session store is not active" in errors
+    assert "dedicated NGC_API_KEY is unavailable" in errors
+    assert current["upload_required"] is True
+    assert current["upload_ready"] is False
+    assert current["target_configured"] is False
 
 
 def test_giveup_whose_own_discard_fails_keeps_state_for_retry(fake_backend) -> None:

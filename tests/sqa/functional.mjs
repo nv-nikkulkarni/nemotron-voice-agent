@@ -40,36 +40,34 @@ async function landingChecks(browser) {
   const sig = H.newSignals();
   const { page } = await H.newPage(browser, sig);
   await page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 30000 });
-  await H.sleep(1500);
+  const deploymentReady = await H.waitForDeploymentReady(page);
   try {
     const title = await page.locator(".startview__title").innerText().catch(() => "");
     rec("landing/title", /nemotron/i.test(title), JSON.stringify(title.replace(/\n/g, " ")));
+    rec("landing/deployment-ready", deploymentReady, "example cards rendered");
     const cards = await page.locator(".example-card").count();
     rec("landing/two-cards", cards === 2, `found ${cards}`);
-    const start = page.getByRole("button", { name: /start conversation/i });
-    // By design the app pre-selects deploymentOptions[0], so Start is enabled on load.
-    rec("landing/start-enabled-default-example", await start.isEnabled().catch(() => false), "first example pre-selected by design");
-    rec("landing/consent-checkbox", (await page.locator(".consent-toggle input[type=checkbox]").count()) === 1);
-    rec("landing/record-checkbox", (await page.locator(".record-toggle input[type=checkbox]").count()) >= 1);
+    rec("landing/no-global-start-button", (await page.getByRole("button", { name: /start conversation/i }).count()) === 0);
+    rec("landing/config-controls-hidden", (await page.locator(".consent-toggle, .record-toggle").count()) === 0);
     // Beta badge only on omni
     const betaOnOmni = await page.locator(".example-card").filter({ hasText: /omni/i }).locator(".example-card__beta").count();
     const betaOnGeneric = await page.locator(".example-card").filter({ hasText: /generic/i }).locator(".example-card__beta").count();
     rec("landing/beta-badge-omni-only", betaOnOmni === 1 && betaOnGeneric === 0, `omni=${betaOnOmni} generic=${betaOnGeneric}`);
 
-    // selection enables start
-    await page.locator(".example-card").first().click(); await H.sleep(300);
-    rec("select/start-enabled-after-pick", await start.isEnabled(), "generic selected");
-    // model toggle
-    // Generic is Super-only now (Nano removed): verify Super present + selectable, no Nano button.
-    const superBtn = page.locator(".ex-model-btn", { hasText: "Super" }).first();
-    const nanoCount = await page.locator(".ex-model-btn", { hasText: "Nano" }).count();
-    await superBtn.click(); await H.sleep(200);
-    const superOn = (await superBtn.getAttribute("aria-pressed")) === "true";
-    rec("select/model-super-only", superOn && nanoCount === 0, `super->${superOn} nano-buttons=${nanoCount}`);
+    // Selecting a card opens its per-example configuration modal.
+    await page.locator(".example-card").filter({ hasText: /generic/i }).click(); await H.sleep(300);
+    const popup = page.locator(".ex-config");
+    rec("select/config-modal-visible", await popup.isVisible().catch(() => false));
+    const start = popup.getByRole("button", { name: /start conversation/i });
+    rec("select/start-enabled-after-pick", await start.isEnabled(), "generic configured");
+    const roles = await popup.locator(".ex-config__section").filter({ hasText: /agent model roles/i }).innerText().catch(() => "");
+    rec("select/fixed-model-roles", /lightning/i.test(roles) && /super/i.test(roles), roles.replace(/\n/g, " "));
+    rec("select/no-client-llm-radio", (await popup.locator('input[name="llm"]').count()) === 0);
+    rec("select/record-checkbox", (await popup.locator(".record-toggle input[type=checkbox]").count()) >= 2);
     // consent toggle
     // Consent is opt-out: checked by default. The styled checkbox is hidden and
     // below the fold, so read/toggle it programmatically.
-    const consent = page.locator(".consent-toggle input[type=checkbox]").first();
+    const consent = popup.locator(".consent-toggle input[type=checkbox]").first();
     const initial = await consent.evaluate((el) => el.checked);
     rec("consent/checked-by-default", initial === true, `initial=${initial}`);
     const flipped = await consent.evaluate((el) => { el.click(); return el.checked; });
@@ -81,26 +79,13 @@ async function landingChecks(browser) {
   return page;
 }
 
-async function settingsChecks(page) {
-  try {
-    const gear = page.locator('.icon-btn--settings, [aria-label="Settings"]').first();
-    if (!(await gear.count())) return rec("settings/open", false, "no settings button", false);
-    await gear.click(); await H.sleep(700);
-    const tts = await page.locator(".set-tts-btn").allInnerTexts().catch(() => []);
-    rec("settings/tts-options", tts.length >= 1, tts.join(", ") || "none", false);
-    // close via back/home if present
-    const back = page.locator('.icon-btn--home, [aria-label="Home"], button:has-text("Back")').first();
-    if (await back.count()) { await back.click().catch(() => {}); await H.sleep(400); }
-  } catch (e) { rec("settings/threw", false, String(e).slice(0, 120), false); }
-}
-
 async function lifecycleChecks(browser) {
   const sig = H.newSignals();
   const { page } = await H.newPage(browser, sig);
   await page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 30000 });
   await H.sleep(1200);
   try {
-    await H.selectExample(page, { example: "generic", model: "nano" });
+    await H.selectExample(page, { example: "generic", model: "lightning" });
     const c1 = await H.startConversation(page);
     rec("lifecycle/connect", c1.connected, `${c1.connectMs}ms`);
     const chip = await page.locator(".conv-session-id code").innerText().catch(() => "");
@@ -121,7 +106,7 @@ async function lifecycleChecks(browser) {
     const cardsBack = await page.locator(".example-card").count();
     rec("lifecycle/return-to-landing", cardsBack > 0, `${cardsBack} cards after modal close`);
     // Restart: pick + start a 2nd session
-    if (cardsBack > 0) await H.selectExample(page, { example: "generic", model: "nano" });
+    if (cardsBack > 0) await H.selectExample(page, { example: "generic", model: "lightning" });
     const c2 = await H.startConversation(page);
     rec("lifecycle/restart-connect", c2.connected, `${c2.connectMs}ms (2nd session)`);
     await H.endConversation(page);
@@ -190,7 +175,7 @@ async function visualDiff(browser) {
   const browser = await H.launchBrowser({ headless: false });
   try {
     const landingPage = await landingChecks(browser);
-    await settingsChecks(landingPage);
+    await landingPage.locator(".ex-config__close").click().catch(() => {});
     await lifecycleChecks(browser);
     await uploadChecks(browser);
     await visualDiff(browser);

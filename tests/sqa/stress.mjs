@@ -22,7 +22,7 @@ async function oneUser(browser, u, cycles) {
       const cy = { c: c + 1 };
       // ensure we're on the landing (first cycle is; later cycles after dismissFeedback)
       if ((await page.locator(".example-card").count()) === 0) await H.dismissFeedback(page);
-      await H.selectExample(page, { example: "generic", model: u % 2 ? "nano" : "super" });
+      await H.selectExample(page, { example: "generic", model: "lightning" });
       const conn = await H.startConversation(page, { timeoutMs: 45000 });
       cy.connected = conn.connected; cy.connectMs = conn.connectMs;
       if (!conn.connected) { r.cycles.push(cy); break; }

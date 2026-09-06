@@ -10,7 +10,6 @@ import * as H from "/sqa/lib/harness.mjs";
 const OUT = process.env.SQA_OUT || "/sqa/artifacts/captured-session-regressions";
 const PRIVATE_NARRATION = /(?:<\s*(?:think|analysis)\b|chain[- ]of[- ]thought|\bthe user(?:'s)? (?:message|request|query|utterance)\b|\bi need to (?:ask for clarification|delegate|decide|call|route|determine)\b)/i;
 const SERIALIZED_INTERNAL_CALL = /(?:call_backend|cancel_backend)\s*\(|<\s*(?:tool_call|function|parameter)\b/i;
-const LATEST_2022_CLAIM = /(?:\b(?:latest|most recent)\b[^.?!]{0,120}\b2022\b|\b2022\b[^.?!]{0,120}\b(?:latest|most recent)\b)/i;
 const WEB_TOOL = /(?:web|search)/i;
 
 function safeText(value) {
@@ -32,6 +31,15 @@ function contradictsGroundedYears(groundedAnswer, followupAnswer) {
   if (!grounded.length || !followup.length) return false;
   const newestGrounded = Math.max(...grounded);
   return followup.some((year) => year < newestGrounded) && !followup.includes(newestGrounded);
+}
+
+function olderYearClaimedAsLatest(answer, newestGroundedYear) {
+  if (!newestGroundedYear) return false;
+  return safeText(answer).split(/[.!?]+/).some((sentence) => {
+    if (!/\b(?:latest|most recent|current winner)\b/i.test(sentence)) return false;
+    const claimed = years(sentence);
+    return claimed.some((year) => year < newestGroundedYear) && !claimed.includes(newestGroundedYear);
+  });
 }
 
 async function openSession(browser, signals) {
@@ -66,7 +74,7 @@ async function spokenTurn(page, prompt, evidenceName) {
     // Code-authored filler is progress, not a terminal response. The longer
     // stability window lets the delegated result arrive before the next turn.
     settleStableMs: 12000,
-    speechInstructions: "Speak clearly at a natural pace. Pronounce acronyms as they are commonly spoken.",
+    speechEngine: "espeak-ng",
   });
   const tools = await H.toolWatchSince(page, mark);
   const assistantMessages = turn.newMessages
@@ -159,8 +167,12 @@ async function runStaleDynamicAnswerRegression(browser, signals) {
     const latestDelegated = latest.tools.some((tool) => WEB_TOOL.test(tool));
     const challengeDelegated = challenge.tools.some((tool) => WEB_TOOL.test(tool));
     const refreshDelegated = refresh.tools.some((tool) => WEB_TOOL.test(tool));
+    const groundedYears = [latest, challenge, refresh]
+      .filter((turn) => turn.tools.some((tool) => WEB_TOOL.test(tool)))
+      .flatMap((turn) => years(turn.answer));
+    const newestGroundedYear = groundedYears.length ? Math.max(...groundedYears) : null;
     const staleClaimsAbsent = [fifa, latest, challenge, refresh, verify]
-      .every((turn) => !LATEST_2022_CLAIM.test(turn.answer));
+      .every((turn) => !olderYearClaimedAsLatest(turn.answer, newestGroundedYear));
     const groundedResultNotContradicted = !contradictsGroundedYears(refresh.answer, verify.answer);
     const everyTurnSpoke = turns.every((turn) => turn.botSpoke);
 
@@ -176,6 +188,7 @@ async function runStaleDynamicAnswerRegression(browser, signals) {
         latestDelegated,
         challengeDelegated,
         refreshDelegated,
+        newestGroundedYear,
         staleClaimsAbsent,
         groundedResultNotContradicted,
       },
@@ -190,6 +203,7 @@ async function runStaleDynamicAnswerRegression(browser, signals) {
 
 const report = {
   suite: "captured-session-regressions",
+  runId: H.RUN_ID,
   base: H.BASE,
   startedAt: new Date().toISOString(),
   sourceSessions: ["52f301234e8c", "499162cb3960"],

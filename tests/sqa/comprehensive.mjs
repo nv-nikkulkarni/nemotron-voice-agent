@@ -65,7 +65,7 @@ const CHAT_TURNS = [
   { text: "Repeat the NVIDIA stock price now.", want: /\d|price|dollar|nvidia/i, notWant: /\btokyo\b|\blondon\b|\bweather\b|\bdegrees?\b/i, tool: "get_stock_price", label: "Stock price" },
   { text: "Thanks so much. Goodbye!", want: /bye|welcome|glad|help|day|care/i },
 ];
-const ALL_TOOL_LABELS = TOOL_TURNS.map((t) => t.label); // enable every tool in the popup
+const ALL_TOOL_NAMES = TOOL_TURNS.map((t) => t.tool);
 const GENERIC_PROGRESS_TEXTS = [
   "Let me work that out.",
   "Let me check those details.",
@@ -78,12 +78,18 @@ const GENERIC_PROGRESS_TEXTS = [
 async function phaseA() {
   const sig = H.newSignals(), hangs = [], guard = makeGuard(hangs);
   const rep = { phase: "A", name: "Generic (Lightning) — tool exercise", turns: [], toolTable: {}, hangs, hardFails: [], warns: [] };
-  const browser = await H.launchBrowser({ headless: false });
+  const slot = await H.createAudioSlot(71);
+  const browser = await H.launchBrowser({ headless: false, env: slot.env });
   try {
     const { page } = await H.newPage(browser, sig);
     await guard("goto", 40000, () => page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 30000 }));
     await H.sleep(1500);
-    await guard("selectExample", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie", tools: ALL_TOOL_LABELS }));
+    rep.serverOwnedTools = await guard(
+      "server-owned tool catalog",
+      20000,
+      () => H.assertServerOwnedTools(page, { expected: ALL_TOOL_NAMES }),
+    );
+    await guard("selectExample", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie" }));
     const conn = await guard("connect", 45000, () => H.startConversation(page, { timeoutMs: 40000 }));
     rep.connected = conn?.connected ?? false; rep.connectMs = conn?.connectMs ?? null;
     rep.sessionId = await H.sessionId(page);
@@ -111,6 +117,9 @@ async function phaseA() {
       const before = (await H.readMessages(page)).length;
       const r = await guard(`turnA${i + 1}`, 75000, () => H.turn(
         page, t.text, `A_t${i + 1}`, {
+          micDevice: slot.micSink,
+          spkDevice: slot.spkSink,
+          monitor: slot.spkMonitor,
           settle: true,
           nonTerminalBotTexts: t.tool ? GENERIC_PROGRESS_TEXTS : undefined,
         },
@@ -123,6 +132,7 @@ async function phaseA() {
       const called = t.tool ? fired.includes(t.tool) : fired.length === 0;
       const answered = !!r.botSpoke && (t.want ? t.want.test(answer) : true)
         && !(t.notWant?.test(answer));
+      if (!r.inputReceived) rep.hardFails.push(`turn ${i + 1}: no application user transcript within 8 seconds`);
       const tr = { i: i + 1, text: t.text, tool: t.tool || null, fired, botSpoke: !!r.botSpoke, answer: answer.slice(0, 140), called, answered, latencyS: r.latencyS ?? null };
       rep.turns.push(tr);
       if (!r.botSpoke) rep.hardFails.push(`turn ${i + 1}: bot silent`);
@@ -286,7 +296,7 @@ async function phaseC() {
     await H.sleep(1500);
 
     // C1. Start generic, one turn.
-    await guard("C1.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie", tools: ["Weather"] }));
+    await guard("C1.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie" }));
     const c1 = await guard("C1.connect", 45000, () => H.startConversation(page, { timeoutMs: 40000 }));
     add("generic connects", !!c1?.connected);
     if (!(await guard("C1.welcome", 50000, () => H.waitForSettledWelcome(page)))) {
@@ -327,7 +337,7 @@ async function phaseC() {
     await guard("C3.closeSettings", 8000, () => H.closeOverlay(page));
 
     // C4. Restart the pipeline (generic) → the prompt override should take effect.
-    await guard("C4.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie", tools: ["Weather"] }));
+    await guard("C4.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie" }));
     const c4 = await guard("C4.connect", 45000, () => H.startConversation(page, { timeoutMs: 40000 }));
     add("restart after prompt edit connects", !!c4?.connected);
     const promptSubmission = submittedConfigs[submittedConfigs.length - 1] || {};
@@ -350,7 +360,7 @@ async function phaseC() {
     // C6. NGC session-capture status (this session consented at C1? no — start a consented one).
     await guard("C6.end", 20000, () => H.endConversation(page));
     await guard("C6.dismiss", 8000, () => H.dismissFeedback(page));
-    await guard("C6.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie", tools: ["Weather"], consent: true }));
+    await guard("C6.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie", consent: true }));
     const c6 = await guard("C6.connect", 45000, () => H.startConversation(page, { timeoutMs: 40000 }));
     const capSid = await H.sessionId(page);
     rep.captureSessionId = capSid; // status() no longer exposes per-session file listings to correlate against; kept for manual cross-reference against server logs
@@ -406,7 +416,7 @@ async function oneStream(i) {
     const { page } = await H.newPage(browser, sig, { viewport: { width: 900, height: 700 } });
     await guard("goto", 50000, () => page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 45000 }));
     await H.sleep(600 + i * 150);
-    await guard("select", 15000, () => H.selectExample(page, isOmni ? { example: "omni" } : { example: "generic", model: "lightning", tools: ["Weather"] }));
+    await guard("select", 15000, () => H.selectExample(page, isOmni ? { example: "omni" } : { example: "generic", model: "lightning" }));
     const conn = await guard("connect", 50000, () => H.startConversation(page, { timeoutMs: 45000 }));
     r.connected = !!conn?.connected;
     if (!r.connected) throw new Error("no connect");
@@ -514,7 +524,7 @@ function writeReport(out) {
 (async () => {
   const which = (process.argv[2] || "all").toUpperCase();
   const run = (p) => which === "ALL" || which === p;
-  const out = { base: H.BASE, startedAt: new Date().toISOString(), phases: [] };
+  const out = { runId: H.RUN_ID, phaseSelection: which, base: H.BASE, startedAt: new Date().toISOString(), phases: [] };
   console.log(`\n##### COMPREHENSIVE SQA vs ${H.BASE} (phases: ${which}) #####`);
 
   if (run("A")) { console.log(`\n===== PHASE A: Generic (Lightning) tool exercise =====`); out.phases.push(await phaseA()); }

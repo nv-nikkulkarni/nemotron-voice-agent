@@ -50,7 +50,7 @@ async function oneUser(i, wav) {
     const { page } = await H.newPage(browser, sig, { viewport: { width: 900, height: 700 } });
     await page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 45000 });
     await H.sleep(600 + i * 150);
-    await H.selectExample(page, { example: "generic", model: "super" });
+    await H.selectExample(page, { example: "generic", model: "lightning" });
     const conn = await H.startConversation(page, { timeoutMs: 45000 });
     r.connected = conn.connected;
     if (!conn.connected) throw new Error("no connect");

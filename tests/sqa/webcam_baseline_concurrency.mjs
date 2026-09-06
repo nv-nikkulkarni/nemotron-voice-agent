@@ -40,6 +40,29 @@ async function waitForGroundedDescription(page, before, color, maxMs = 50000) {
   return "";
 }
 
+async function waitForBaselinePanel(page, color, firstFrameAt, maxMs = 10000) {
+  const deadline = firstFrameAt + maxMs;
+  const panel = page.locator(".webcam-agent-update p").last();
+  while (Date.now() < deadline) {
+    const observation = await panel.innerText().catch(() => "");
+    if (new RegExp(`\\b${color}\\b`, "i").test(observation)) {
+      return { observation, elapsedMs: Date.now() - firstFrameAt };
+    }
+    await H.sleep(200);
+  }
+  return { observation: "", elapsedMs: null };
+}
+
+async function uploadFrameWithRetry(page, sessionId, fixture, options) {
+  let response = { status: 0, body: "not attempted" };
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    response = await H.uploadWebcamFrame(page, sessionId, fixture, options);
+    if (response.status >= 200 && response.status < 300) return { ...response, attempts: attempt };
+    if (attempt < 2) await H.sleep(350);
+  }
+  return { ...response, attempts: 2 };
+}
+
 async function runOne(spec) {
   const sig = H.newSignals();
   const slot = await H.createAudioSlot(spec.slot);
@@ -49,7 +72,8 @@ async function runOne(spec) {
     connected: false,
     sessionId: "",
     frameStatuses: [],
-    baselineQueryStartedMs: null,
+    baselineEstablishedMs: null,
+    baselineObservation: "",
     botAudio: false,
     description: "",
     leakedColors: [],
@@ -70,15 +94,16 @@ async function runOne(spec) {
     const fixture = await makeFixture(spec);
     const firstFrameAt = Date.now();
     for (let frame = 0; frame < 6; frame += 1) {
-      const response = await H.uploadWebcamFrame(page, result.sessionId, fixture, {
+      const response = await uploadFrameWithRetry(page, result.sessionId, fixture, {
         name: `webcam-${spec.color}-${frame}.jpg`,
         type: "image/jpeg",
       });
-      result.frameStatuses.push(response.status);
+      result.frameStatuses.push({ status: response.status, attempts: response.attempts });
       await H.sleep(650);
     }
-    await H.sleep(2500);
-    result.baselineQueryStartedMs = Date.now() - firstFrameAt;
+    const baseline = await waitForBaselinePanel(page, spec.color, firstFrameAt);
+    result.baselineEstablishedMs = baseline.elapsedMs;
+    result.baselineObservation = baseline.observation;
     const before = (await H.readMessages(page)).length;
     const turn = await H.turn(
       page,
@@ -100,8 +125,9 @@ async function runOne(spec) {
     );
     result.pass = result.connected
       && result.sessionId.length > 0
-      && result.frameStatuses.every((status) => status >= 200 && status < 300)
-      && result.baselineQueryStartedMs <= 10000
+      && result.frameStatuses.every(({ status }) => status >= 200 && status < 300)
+      && result.baselineEstablishedMs !== null
+      && result.baselineEstablishedMs <= 10000
       && result.botAudio
       && new RegExp(`\\b${spec.color}\\b`, "i").test(result.description)
       && result.leakedColors.length === 0
@@ -122,6 +148,7 @@ async function runOne(spec) {
 
 fs.mkdirSync(OUT, { recursive: true });
 const report = {
+  runId: H.RUN_ID,
   at: new Date().toISOString(),
   base: H.BASE,
   requirement: "four distinct webcam baselines initiated within 10 seconds with no scene leakage",

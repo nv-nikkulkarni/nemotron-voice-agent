@@ -35,6 +35,13 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 | `selftest_audio.mjs`, `probe.mjs`, `diag_mic.mjs` | Layered bring-up checks (audio loopback → single turn → mic routing). |
 | `lib/harness.mjs`, `lib/audio.mjs` | Shared browser + ASR/TTS helpers. |
 
+The Generic Frontend/Backend example owns its five-tool allowlist on the server;
+it does not render client-side tool checkboxes. Release suites assert the exact
+`generic_talker` prompt catalog (`get_weather`, `get_stock_price`, `web_search`,
+`calculate_bmi`, and `generate_random_number`) before exercising native tool
+calls. The harness still fails when a test explicitly requests a visible control
+that the selected UI claims to expose but does not render.
+
 ## Run
 ```bash
 docker build -t sqa-harness -f Dockerfile .
@@ -43,12 +50,20 @@ export SQA_BASE=http://localhost:7862 # default
 ./sqa.sh functional
 ./sqa.sh converse both     # or: generic | omni
 ./sqa.sh captured-sessions
+./sqa.sh repeated-expect-tool
+./sqa.sh corner
+./sqa.sh webcam
+./sqa.sh capture
+./sqa.sh pronunciation
 ./sqa.sh concurrent 4
 ./sqa.sh video
 ./sqa.sh shell             # interactive debug
 ```
 The container needs `--network host` (handled by `sqa.sh`) to reach the local UI.
-Generated reports and screenshots land in ignored local output directories.
+Each invocation receives a UTC run ID and writes reports, screenshots, and audio
+under the ignored `out/<run-id>/` directory. Set `SQA_RUN_ID` only when you need
+a stable external identifier. A later phase or rerun does not overwrite earlier
+evidence.
 Versioned qualification summaries live in `reports/`; older completed runs live in
 `reports/archive/`.
 

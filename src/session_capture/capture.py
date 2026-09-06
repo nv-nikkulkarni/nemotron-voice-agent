@@ -59,6 +59,7 @@ _RETAINED_FAILURES = frozenset(
         "upload_failed",
         "ngc_cli_missing",
         "ngc_key_missing",
+        "ngc_target_missing",
         "no_artifacts",
     }
 )
@@ -303,6 +304,18 @@ def _finalize(sid: str, captured_state: dict[str, str]) -> bool:
                     _add_bytes(tar, f"{sid}/{os.path.basename(key)}", data)
         logger.info(f"session-capture: assembled {tar_path} ({len(audio_keys)} wavs) for {sid}")
 
+        if not settings.NGC_RESOURCE and settings.upload_required():
+            state.set_last_error(sid, "ngc_target_missing")
+            logger.bind(
+                event="session_capture_outcome",
+                outcome="retained_failure",
+                session_id=sid,
+                last_error="ngc_target_missing",
+            ).error(
+                f"session-capture: {sid} requires NGC upload but SESSION_CAPTURE_NGC is unset; "
+                "retaining source objects and diagnostic state"
+            )
+            return False
         if not settings.NGC_RESOURCE:
             logger.info(
                 f"session-capture: upload skipped for {sid} (SESSION_CAPTURE_NGC unset); "
@@ -320,6 +333,13 @@ def _finalize(sid: str, captured_state: dict[str, str]) -> bool:
                 f"{settings.NGC_CLI_BIN} -- upload cannot proceed"
             )
             state.set_last_error(sid, "ngc_cli_missing")
+            return False
+        if settings.upload_required() and not os.environ.get("NGC_API_KEY"):
+            logger.error(
+                f"session-capture: {sid} requires a dedicated NGC_API_KEY but none is available -- "
+                "upload cannot proceed"
+            )
+            state.set_last_error(sid, "ngc_key_missing")
             return False
         if not (os.environ.get("NGC_API_KEY") or os.environ.get("NVIDIA_API_KEY")):
             logger.error(
@@ -413,10 +433,21 @@ def status() -> dict:
     attempt_counts = [int(item.get("attempts", "0") or 0) for item in pending_states]
     dedicated_ngc_key = bool(os.environ.get("NGC_API_KEY"))
     fallback_nvidia_key = bool(os.environ.get("NVIDIA_API_KEY"))
+    target_configured = bool(settings.NGC_RESOURCE)
+    cli_present = os.path.exists(settings.NGC_CLI_BIN)
+    shared_store_active = session_store.is_s3()
+    upload_ready = (
+        target_configured and cli_present and dedicated_ngc_key and shared_store_active
+        if settings.upload_required()
+        else True
+    )
     return {
         "enabled": True,
+        "upload_required": settings.upload_required(),
+        "upload_ready": upload_ready,
+        "target_configured": target_configured,
         "ngc": settings.NGC_RESOURCE,
-        "ngc_cli_present": os.path.exists(settings.NGC_CLI_BIN),
+        "ngc_cli_present": cli_present,
         "ngc_key_present": dedicated_ngc_key,
         "ngc_registry_key_present": dedicated_ngc_key,
         "nvidia_fallback_key_present": fallback_nvidia_key,
@@ -430,6 +461,22 @@ def status() -> dict:
         "pending_last_error_types": last_error_types,
         "pending_max_attempts": max(attempt_counts, default=0),
     }
+
+
+def required_upload_configuration_errors() -> list[str]:
+    """Return non-secret startup errors for a required NGC upload path."""
+    if not settings.upload_required():
+        return []
+    errors: list[str] = []
+    if not settings.NGC_RESOURCE:
+        errors.append("SESSION_CAPTURE_NGC is empty")
+    if not session_store.is_s3():
+        errors.append("shared S3 session store is not active")
+    if not os.path.exists(settings.NGC_CLI_BIN):
+        errors.append(f"NGC CLI is missing at {settings.NGC_CLI_BIN}")
+    if not os.environ.get("NGC_API_KEY"):
+        errors.append("dedicated NGC_API_KEY is unavailable")
+    return errors
 
 
 def install_log_sink(*, level: str = "DEBUG") -> None:

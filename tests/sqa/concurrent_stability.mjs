@@ -138,7 +138,7 @@ async function oneClient(i, wavs, otherCapitals, barrier) {
 
     for (let round = 0; round < ROUNDS; round++) {
       // ---------- GENERIC ----------
-      await H.selectExample(page, { example: "generic", model: "super" });
+      await H.selectExample(page, { example: "generic", model: "lightning" });
       const g = await H.startConversation(page, { timeoutMs: 45000 });
       if (round === 0) rec.connected = g.connected;
       if (!g.connected) { rec.hangs++; finding("connect_stuck", { example: "generic", round }); }

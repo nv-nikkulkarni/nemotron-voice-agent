@@ -29,7 +29,7 @@ async function botLevel(page) { const b = await page.evaluate(() => window.__bot
 async function testBargeIn(browser) {
   const sig = H.newSignals(); const { page } = await H.newPage(browser, sig);
   await page.goto(H.BASE, { waitUntil: "domcontentloaded" }); await H.sleep(1400);
-  await H.selectExample(page, { example: "generic", model: "super" });
+  await H.selectExample(page, { example: "generic", model: "lightning" });
   const conn = await H.startConversation(page); await H.sleep(1500);
   if (!conn.connected) return add({ test: "barge-in", pass: false, why: "no connect" });
   // ask for a long answer
@@ -58,7 +58,7 @@ async function testBargeIn(browser) {
 async function testEndMidSpeech(browser) {
   const sig = H.newSignals(); const { page } = await H.newPage(browser, sig);
   await page.goto(H.BASE, { waitUntil: "domcontentloaded" }); await H.sleep(1400);
-  await H.selectExample(page, { example: "generic", model: "super" });
+  await H.selectExample(page, { example: "generic", model: "lightning" });
   const conn = await H.startConversation(page); await H.sleep(1500);
   if (!conn.connected) return add({ test: "end-mid-speech", pass: false, why: "no connect" });
   await page.evaluate(() => window.__botReset());
@@ -95,7 +95,7 @@ async function testDrop(browser) {
   const sig = H.newSignals(); const { ctx, page } = await H.newPage(browser, sig);
   await ctx.addInitScript(WS_CAPTURE);
   await page.goto(H.BASE, { waitUntil: "domcontentloaded" }); await H.sleep(1400);
-  await H.selectExample(page, { example: "generic", model: "super" });
+  await H.selectExample(page, { example: "generic", model: "lightning" });
   const conn = await H.startConversation(page); await H.sleep(1500);
   if (!conn.connected) return add({ test: "drop", pass: false, why: "no connect" });
   const idBefore = await H.sessionId(page);
