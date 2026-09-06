@@ -28,6 +28,7 @@ import examples_registry
 from examples.frontend_backend_agent.src.barge_in import BargeInState, BargeInTracker
 from examples.frontend_backend_agent.src.domain import DomainBuildContext, resolve_domain_spec
 from examples.frontend_backend_agent.src.reliable_talker import ReliableNvidiaLLMService
+from examples.frontend_backend_agent.src.stage_metrics import StageMetricsCoordinator
 from examples.frontend_backend_agent.src.tool_handlers import build_handlers
 from examples.shared.audio_recorder import create_audio_recorder
 from examples.shared.nemotron_speech_text_filter import NemotronSpeechTextFilter
@@ -60,7 +61,7 @@ CHAT_HISTORY_RECENT_TURNS = parse_env_int("CHAT_HISTORY_RECENT_TURNS", 20)
 THINKER_TOOL_DELAY_MIN_SECONDS = 0.1
 THINKER_TOOL_DELAY_MAX_SECONDS = 0.5
 THINKER_FILLER_THRESHOLD_SECONDS = parse_env_float("THINKER_FILLER_THRESHOLD_SECONDS", 0.3, min_value=0.0)
-THINKER_TOOL_TIMEOUT_SECONDS = parse_env_float("THINKER_TOOL_TIMEOUT_SECONDS", 30.0, min_value=1.0)
+THINKER_TOOL_TIMEOUT_SECONDS = parse_env_float("THINKER_TOOL_TIMEOUT_SECONDS", 45.0, min_value=1.0)
 FRONTEND_BACKEND_VAD_STOP_SECS = parse_env_float("FRONTEND_BACKEND_VAD_STOP_SECS", 0.5, min_value=0.0)
 
 
@@ -111,6 +112,17 @@ async def bot(runner_args: RunnerArguments) -> None:
     body = runner_args.body if isinstance(runner_args.body, dict) else {}
     welcome_enabled = examples_registry.welcome_message_enabled(body.get("pipeline_mode", ""))
     domain = resolve_domain_spec(body.get("domain_profile", "airline"))
+    task: PipelineWorker | None = None
+
+    async def emit_stage_metric(frame) -> None:
+        if task is not None:
+            await task.queue_frame(frame)
+
+    async def emit_stage_server_event(data: dict) -> None:
+        if task is not None:
+            await task.queue_frame(RTVIServerMessageFrame(data=data))
+
+    stage_metrics = StageMetricsCoordinator(emit_stage_metric, emit_stage_server_event)
 
     prompt_key, talker_prompt = resolve_prompt(
         __file__,
@@ -172,6 +184,8 @@ async def bot(runner_args: RunnerArguments) -> None:
         api_key=nvidia_api_key(),
         base_url=base_url,
         settings=llm_settings,
+        stage_metrics=stage_metrics,
+        stage_model_name=model_id,
     )
     logger.info(
         f"Talker LLM: model={model_id}, base_url={base_url}, prompt={prompt_key}, "
@@ -211,6 +225,7 @@ async def bot(runner_args: RunnerArguments) -> None:
     thinker = domain.build_backend(
         DomainBuildContext(
             thinker_llm=thinker_llm,
+            thinker_model_name=thinker_model_id,
             thinker_prompt=thinker_prompt,
             thinker_max_tokens=thinker_max_tokens,
             tool_names=tool_names,
@@ -218,6 +233,7 @@ async def bot(runner_args: RunnerArguments) -> None:
             tool_delay_min_seconds=THINKER_TOOL_DELAY_MIN_SECONDS,
             load_service_entry=load_service_entry,
             on_tool_started=on_internal_tool_started,
+            stage_metrics=stage_metrics,
         )
     )
     logger.info(f"Frontend/Backend domain: {domain.key} ({domain.label})")
@@ -238,6 +254,7 @@ async def bot(runner_args: RunnerArguments) -> None:
         filler_selector=domain.filler_selector,
         interrupted_speech_consumer=barge_in_state.consume_interrupted_speech,
         max_query_chars=domain.max_query_chars,
+        stage_metrics=stage_metrics,
     ).items():
         cancel_on_interruption = name != "call_backend"
         talker_llm.register_function(

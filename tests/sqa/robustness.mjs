@@ -117,7 +117,10 @@ async function testDrop(browser) {
   let reconnectClicked = false;
   let reconnected = false;
   let idAfter = "";
+  let welcomeSettled = false;
+  let welcomeSpoke = false;
   if (reconnectUiSeen) {
+    await page.evaluate(() => window.__botReset());
     await reconnectButton.click();
     reconnectClicked = true;
     for (let i = 0; i < 75; i++) { // up to ~30s
@@ -129,16 +132,22 @@ async function testDrop(browser) {
         break;
       }
     }
+    if (reconnected) {
+      welcomeSettled = await H.waitForSettledWelcome(page);
+      welcomeSpoke = await page.evaluate(() => window.__bot?.onsetMs != null).catch(() => false);
+    }
   }
   H.expectForcedWebSocketClose(sig, false);
   const pass = nSockets > 0 && modalMs !== null && modalLabel === "Session interrupted" &&
     !/thank you/i.test(modalText) && reconnectUiSeen && reconnectClicked && reconnected &&
-    idAfter !== idBefore && sig.consoleErrors.length === 0 && sig.wsClosures.length === 0;
+    idAfter !== idBefore && welcomeSettled && welcomeSpoke &&
+    sig.consoleErrors.length === 0 && sig.wsClosures.length === 0;
   add({ test: "drop", pass, idBefore, idAfter, socketsCaptured: nSockets, dropToModalMs: modalMs,
     showedThankYouModal: /thank you/i.test(modalText), modalLabel, reconnectUiSeen, reconnectClicked, reconnected,
-    uniqueSessionId: Boolean(idAfter && idAfter !== idBefore), expectedForcedCloseDiagnostics: sig.expectedDiagnostics.length,
+    uniqueSessionId: Boolean(idAfter && idAfter !== idBefore), welcomeSettled, welcomeSpoke,
+    expectedForcedCloseDiagnostics: sig.expectedDiagnostics.length,
     unexpectedConsoleErrors: sig.consoleErrors, unexpectedWebSocketErrors: sig.wsClosures,
-    finding: "forced WS close must show Session interrupted, expose Reconnect, and establish a new unique session" });
+    finding: "forced WS close must show Session interrupted, expose Reconnect, establish a new unique session, and speak its welcome" });
   await page.context().close().catch(() => {});
 }
 

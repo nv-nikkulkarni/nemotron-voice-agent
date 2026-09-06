@@ -23,9 +23,13 @@ RUN npm run build
 FROM nvcr.io/nvidia/base/ubuntu:noble-20260610
 
 # Image metadata
+ARG APP_VERSION=unknown
+ARG SOURCE_SHA=unknown
 LABEL maintainer="NVIDIA"
 LABEL description="Nemotron Voice Agent"
-LABEL version="2.1"
+LABEL version=${APP_VERSION}
+LABEL org.opencontainers.image.version=${APP_VERSION}
+LABEL org.opencontainers.image.revision=${SOURCE_SHA}
 
 ENV PYTHONUNBUFFERED=1
 

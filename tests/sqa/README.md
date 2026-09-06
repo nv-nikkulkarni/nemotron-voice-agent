@@ -29,6 +29,7 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 | `repeated_expect_tool_matrix.mjs` | Repeated live-data delegation with independent bot ASR, grounded-result waits, silence checks, and cross-session leakage checks. |
 | `prod_remediation_corner_cases.mjs` | API failures, cancellation, bounded multi-tool speech, and isolated safety/grounding probes. |
 | `robustness.mjs` | Barge-in, graceful End, forced WebSocket close, Reconnect, and unique replacement-session checks. |
+| `test_teardown.mjs` | End and Start without a tab refresh; requires a new session ID plus transcript and audible welcome in the second session. |
 | `webcam_baseline_concurrency.mjs` | Four simultaneous Omni sessions with distinct visual baselines, bot-audio assertions, and scene-leakage detection. |
 | `capture_lifecycle_matrix.mjs` | Twenty consented sessions, five explicit declines, long-session, pagehide, and forced-drop capture acknowledgement evidence. Correlate its session IDs with NGC separately. |
 | `record_video.mjs` | Records a spoken Generic-Assistant conversation to `video/generic_conversation.mp4` (screen + both voices). |
@@ -55,6 +56,7 @@ export SQA_BASE=http://localhost:7862 # default
 ./sqa.sh webcam
 ./sqa.sh capture
 ./sqa.sh pronunciation
+./sqa.sh restart
 ./sqa.sh concurrent 4
 ./sqa.sh video
 ./sqa.sh shell             # interactive debug

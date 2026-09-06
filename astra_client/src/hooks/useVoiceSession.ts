@@ -22,6 +22,7 @@ import {
 import { demoConfig } from "../config";
 import type { PipelinePreset } from "../demo/presets";
 import { DEMO_PROMPT_OVERRIDES } from "../demo/promptOverrides";
+import { advanceBotAudioSession } from "../demo/turnAwareMediaManager";
 
 type StartBotClient = {
   connect: (args: { wsUrl?: string; webrtcUrl?: string }) => Promise<void>;
@@ -215,6 +216,10 @@ export function useVoiceSession() {
         if (app.selectedTransport === "websocket") {
           const sessionId = await createSessionConfig(config);
           const wsProto = globalThis.location.protocol === "https:" ? "wss:" : "ws:";
+          // WavStreamPlayer retains interrupted track IDs across reconnects. A
+          // new session must use a fresh ID or its welcome PCM can be discarded
+          // while later audio starts working after the first user interruption.
+          advanceBotAudioSession();
           app.setCurrentSessionId(sessionId);
           await client.connect({ wsUrl: `${wsProto}//${globalThis.location.host}/api/ws?session_id=${sessionId}` });
         } else {

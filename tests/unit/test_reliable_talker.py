@@ -12,6 +12,7 @@ import unittest
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
 
+from pipecat.processors.aggregators import async_tool_messages
 from pipecat.processors.aggregators.llm_context import LLMContext
 
 from examples.frontend_backend_agent.src.reliable_talker import (
@@ -19,6 +20,7 @@ from examples.frontend_backend_agent.src.reliable_talker import (
     EMPTY_RESPONSE_CORRECTION,
     EMPTY_RESPONSE_FALLBACK,
     REPEAT_SUBJECT_CORRECTION,
+    TOOL_RESULT_CORRECTION,
     ReliableNvidiaLLMService,
 )
 
@@ -58,6 +60,26 @@ async def _collect(talker: _ScriptedTalker, context: LLMContext) -> list:
 
 
 class ReliableTalkerTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _finished_result_context(
+        *,
+        response_text: str = "The current check is temporarily unavailable.",
+        newer_user_text: str | None = None,
+    ) -> LLMContext:
+        result = {
+            "type": "tool_result",
+            "tool": "get_weather",
+            "status": "unavailable",
+            "response_text": response_text,
+        }
+        messages = [
+            {"role": "user", "content": "Check Pune weather."},
+            async_tool_messages.build_final_result_message("call-weather", json.dumps(result)),
+        ]
+        if newer_user_text is not None:
+            messages.append({"role": "user", "content": newer_user_text})
+        return LLMContext(messages, tools=[], tool_choice="auto")
+
     async def test_visible_response_does_not_retry(self) -> None:
         talker = _ScriptedTalker([[_chunk(content="Hello there.")]])
 
@@ -102,6 +124,48 @@ class ReliableTalkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(talker.contexts), 2)
         self.assertEqual(talker.fallbacks, [EMPTY_RESPONSE_FALLBACK])
         self.assertFalse(any(getattr(chunk.choices[0].delta, "tool_calls", None) for chunk in chunks))
+
+    async def test_finished_result_redelegation_retries_as_text_only(self) -> None:
+        context = self._finished_result_context()
+        talker = _ScriptedTalker(
+            [
+                [_tool_chunk("Check Pune weather again.")],
+                [_chunk(content="I could not complete the current weather check.")],
+            ]
+        )
+
+        chunks = await _collect(talker, context)
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(chunks[0].choices[0].delta.content, "I could not complete the current weather check.")
+        self.assertEqual(len(talker.contexts), 2)
+        self.assertEqual(talker.contexts[1].get_messages()[-1]["content"], TOOL_RESULT_CORRECTION)
+        self.assertEqual(talker.fallbacks, [])
+
+    async def test_repeated_invalid_finished_result_uses_trusted_text(self) -> None:
+        trusted = "The current weather check timed out. Please try again."
+        context = self._finished_result_context(response_text=trusted)
+        talker = _ScriptedTalker(
+            [
+                [_tool_chunk("Check Pune weather again.")],
+                [_tool_chunk("Check Pune weather again.")],
+            ]
+        )
+
+        chunks = await _collect(talker, context)
+
+        self.assertEqual(chunks, [])
+        self.assertEqual(talker.fallbacks, [trusted])
+
+    async def test_newer_user_turn_can_delegate_after_finished_result(self) -> None:
+        context = self._finished_result_context(newer_user_text="How about London?")
+        talker = _ScriptedTalker([[_tool_chunk("Get the current weather in London.")]])
+
+        chunks = await _collect(talker, context)
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(len(talker.contexts), 1)
+        self.assertEqual(talker.fallbacks, [])
 
     async def test_cached_backend_replay_is_withheld_and_retried_as_native_tool_call(self) -> None:
         native_call = SimpleNamespace(index=0)

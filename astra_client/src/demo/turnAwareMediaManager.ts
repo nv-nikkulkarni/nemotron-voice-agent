@@ -27,8 +27,18 @@ export class BotAudioTrackEpoch {
   }
 }
 
+// One browser tab owns one Pipecat client/media manager. Keep the active output
+// epoch at module scope so the session lifecycle can rotate it before a new
+// WebSocket begins, even though the transport does not expose its media manager.
+const activeBotAudioTrack = new BotAudioTrackEpoch();
+
+/** Allocate a track ID that has never been used by the previous session. */
+export function advanceBotAudioSession(): string {
+  return activeBotAudioTrack.advance();
+}
+
 export class TurnAwareDailyMediaManager extends DailyMediaManager {
-  private readonly botAudioTrack = new BotAudioTrackEpoch();
+  private readonly botAudioTrack = activeBotAudioTrack;
 
   override async userStartedSpeaking(): Promise<unknown> {
     try {

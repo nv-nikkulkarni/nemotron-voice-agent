@@ -15,6 +15,19 @@ It is a React and TypeScript single-page app built with [Vite](https://vite.dev/
 - **Metrics dashboard**: time-to-first-byte latency charts, token usage, and connection status.
 - **Conversation transcript**: live ASR and bot-response display.
 - **Webcam vision panel**: live webcam input for the multimodal Omni Subagents example.
+- **Safe session restart**: End and Start can create a new WebSocket session in
+  the same tab, with a fresh session ID and audible welcome.
+
+## Session Restart Boundary
+
+WebSocket audio uses a monotonically increasing bot-track epoch. The client
+advances that epoch before every new connection because the Pipecat audio
+player remembers interrupted track IDs and discards late audio for them. This
+prevents the next session's welcome from being mistaken for audio from a
+cancelled turn. The new session ID also remounts the Conversation Orb, clearing
+session-scoped speaking, thinking, tool, and latency state. User-selected
+examples, service preferences, recording choice, and capture consent remain
+unchanged.
 
 ## Getting started
 

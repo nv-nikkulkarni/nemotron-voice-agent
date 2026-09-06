@@ -455,7 +455,7 @@ export function ConversationPanel() {
   return (
     <div className="conv-panel">
       {/* Orb is a fixed header; only the transcript below it scrolls. */}
-      {demoConfig.demoMode && <ConversationOrb />}
+      {demoConfig.demoMode && <ConversationOrb key={currentSessionId || "session-pending"} />}
       <div className="conv-scroll">
         <div className="conv-transcript">
           <ul className="conv-message-list" style={{ listStyle: "none", padding: 0, margin: 0 }}>

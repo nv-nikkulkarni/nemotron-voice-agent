@@ -14,6 +14,7 @@
 #   ./sqa.sh webcam                 # four-session webcam baseline isolation
 #   ./sqa.sh capture                # consent/decline/close/drop lifecycle matrix
 #   ./sqa.sh pronunciation          # Magpie and Chatterbox exact-word probes
+#   ./sqa.sh restart                # no-refresh End/Start welcome-audio regression
 #   ./sqa.sh concurrent [N]        # N simultaneous users
 #   ./sqa.sh video                 # record an mp4 conversation
 #   ./sqa.sh shell                 # interactive debug shell
@@ -40,6 +41,7 @@ declare -A CMD=(
   [concurrent-spoken]="node concurrent_spoken.mjs ${1:-5}"
   [stress]="node stress.mjs ${1:-5} ${2:-3}"
   [robustness]="node robustness.mjs"
+  [restart]="node test_teardown.mjs"
   [video]="node record_video.mjs"
   [shell]="bash"
 )
