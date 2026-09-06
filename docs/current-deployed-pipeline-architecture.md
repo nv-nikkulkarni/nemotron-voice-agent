@@ -234,7 +234,24 @@ isolated `-2` environment now runs `0.1.130`/`2.0.58` under an explicit owner
 override. Its deployment smoke passed, but its complete staging qualification
 and production approval remain pending.
 
-### 2.3 Important Naming Truth: “Live/Prod” Versus Astra `prd`
+### 2.3 Source-Recovery Candidate 0.1.134
+
+The post-SSD recovery branch is
+`dev/nikkulkarni/nvcf-deploy-source-recovery-0.1.134`. It starts from surviving
+commit `25339a7` and restores the `2.0.59` and `2.0.60` runtime source from their
+immutable images before applying separately reviewed evidence-backed fixes.
+The detailed hashes and classification boundary are recorded in the
+[source recovery manifest](recovery/0.1.134-source-recovery-manifest.md).
+
+The candidate restores Talker-authored filler, guarded result modes, correlated
+agent-stage metrics, streamed Thinker time to first token, a fresh WebSocket
+audio epoch on no-refresh session restart, prompt-only current-information
+grounding, and ordered 45/40/18/20-second deadlines. It contains no intent
+router or memory redesign. App/UI `2.0.62` and chart `0.1.134` have not yet been
+built, deployed, or qualified. The active isolated environment remains on
+`0.1.130` and app/UI `2.0.58`.
+
+### 2.4 Important Naming Truth: “Live/Prod” Versus Astra `prd`
 
 The retained UI is called the production app in project operations, and it points to the production NVCF function. It is **not yet an Astra production-environment deployment**.
 
@@ -707,15 +724,18 @@ Raw provider exceptions/status codes are not returned as spoken tool output. Thi
 
 ### 9.7 Generic Frontend/Backend Progress Speech and Barge-In
 
-The selected Generic Frontend/Backend experience owns progress speech in code.
-It ignores model-authored filler and emits at most one delayed phrase while
-delegated work remains active. The capability-specific phrases are:
+The source-recovery candidate moves Generic progress speech into the same
+Talker completion that selects `call_backend`. The optional `filler_text` is
+accepted only when it is short, query-grounded, and makes no result or internal
+implementation claim. An invalid candidate is suppressed without delaying or
+blocking the backend; there is no static fallback. Accepted filler is spoken at
+most once after the configured threshold and is not retained in conversation
+history.
 
-| Capability | Progress Speech |
-|---|---|
-| Weather or forecast | “Let me check the latest weather.” |
-| Stock or share price | “Let me look up the latest price.” |
-| Web search, news, or research | “Let me look that up.” |
+The same candidate exposes direct, hybrid, and Talker result modes. Its release
+setting is `talker`, guarded against post-result redelegation and empty output;
+`direct` remains the emergency rollback. These are candidate behaviors and do
+not describe the still-active `0.1.130` isolated deployment.
 
 The Astra WebSocket client handles audible barge-in through these independent
 paths:

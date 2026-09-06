@@ -50,7 +50,12 @@ correction, and then fails closed if the retry still drifts. Capability matching
 is validation-only: it never infers user intent, selects a domain tool, or writes
 a corrected tool call in Python.
 
-The NVCF Helm chart enables direct tool speech by default with `app.frontendBackendDirectToolResponse: true`. Disable it only when you explicitly want a second Talker inference after a tool result.
+The recovery candidate explicitly sets Talker-authored filler and Talker result
+speech. `FRONTEND_BACKEND_TOOL_RESULT_MODE=direct` remains the low-latency
+rollback that speaks trusted backend text without a second Talker inference.
+`hybrid` uses direct speech for successful results and the Talker for failures
+or clarifications. `talker` sends every speakable result through the guarded
+final Talker pass.
 
 Replay validation buffers a completion only after a direct backend response has been recorded. Initial and pre-tool conversation remains streamed, preserving its existing time-to-first-audio behavior.
 
@@ -157,28 +162,23 @@ The following environment variables bound shared and domain-specific orchestrati
 | --- | --- | --- |
 | `CHAT_HISTORY_RECENT_TURNS` | `20` | Retains this many recent non-prompt messages in the Talker context |
 | `FRONTEND_BACKEND_VAD_STOP_SECS` | `0.5` | Waits for trailing ASR text before finalizing a Frontend/Backend Agent turn; changing it affects latency and fragmented follow-ups |
-| `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` | Disabled when unset; enabled by default in the NVCF Helm chart | Speaks trusted Python-grounded backend text once without a second Talker inference |
+| `FRONTEND_BACKEND_TALKER_FILLER_MODE` | `emit` | Uses `off`, `observe`, or `emit` to suppress, validate-only, or speak an accepted Talker filler |
+| `FRONTEND_BACKEND_TOOL_RESULT_MODE` | `talker` | Uses `direct`, `hybrid`, or `talker` for the grounded post-tool response |
+| `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` | Disabled | Legacy direct-mode rollback used only when the explicit result-mode variable is absent |
 | `THINKER_FILLER_THRESHOLD_SECONDS` | `0.3` | Delays progress speech until delegated work remains active past the threshold |
-| `THINKER_TOOL_TIMEOUT_SECONDS` | `30.0` | Bounds the shared Talker-to-backend function handler |
-| `GENERIC_PLANNER_TIMEOUT_SECONDS` | `15.0` | Bounds generic Thinker planning |
+| `THINKER_TOOL_TIMEOUT_SECONDS` | `45.0` | Bounds the shared Talker-to-backend function handler |
+| `GENERIC_PLANNER_TIMEOUT_SECONDS` | `18.0` | Bounds generic Thinker planning |
 | `GENERIC_BACKEND_TIMEOUT_SECONDS` | `40.0` | Bounds the generic planner and tool execution together |
+| `GENERIC_WEB_SEARCH_TIMEOUT_SECONDS` | `20.0` | Bounds the complete web-search tool execution inside the backend deadline |
 | `AIRLINE_PLANNER_TIMEOUT_SECONDS` | `30.0` | Bounds airline Thinker planning; capped at the overall airline deadline |
 | `AIRLINE_BACKEND_TIMEOUT_SECONDS` | `30.0` | Bounds airline planning and tool execution together |
 
-The generic domain selects delayed progress speech in code. The three
-capability-specific variants are:
-
-| Delegated Request | Spoken Progress Text |
-|---|---|
-| Weather or forecast | “Let me check the latest weather.” |
-| Stock or share price | “Let me look up the latest price.” |
-| Web search, news, or research | “Let me look that up.” |
-
-BMI requests continue to use “Let me work that out.” Composite live-data
-requests use “Let me check those details.” Other delegated requests use “Let me
-check that.” The runtime emits at most one selected filler after the configured
-threshold while backend work remains active. It ignores model-authored filler
-text.
+The Generic Talker supplies `filler_text` in the same native `call_backend`
+selection. The runtime validates that candidate as 3 to 12 words, at most 96
+characters, query-grounded, and free of result claims or internal names. It
+emits an accepted filler at most once after the threshold and never adds it to
+conversation history. A missing or rejected candidate stays silent and never
+blocks the backend; there is no static fallback.
 
 The `generic-frontend-backend-agent` registry entry enables all 5 built-in generic tools. To expose a subset, create or edit a trusted registry entry. Client session data and Talker prompt metadata do not widen that set.
 
@@ -208,7 +208,7 @@ Python plan validation.
 | `runtime_context` | Trusted date, time, or domain context appended to the Talker prompt |
 | `intro_prompt` | Initial Talker instruction when welcome messages are enabled |
 | `tts_text_transform` | Optional domain pronunciation transformation |
-| `filler_policy` and `filler_selector` | Choose code-authored or planner-authored progress speech and provide the trusted selector when required |
+| `filler_policy` and `filler_selector` | Choose Talker-authored, planner-authored, or legacy code-authored progress speech and provide a selector only for the legacy policy |
 | `tool_registry` | Publish the domain's code-owned `ToolSpec` allowlist for registry-selected capabilities |
 | `max_query_chars` | Maximum delegated query length |
 
@@ -291,6 +291,8 @@ The pipeline enforces the following boundaries:
 - Live-data tools read credentials from the process environment. Credentials never enter the Thinker request or tool parameters.
 - Missing credentials, timeouts, invalid responses, and upstream failures return bounded unavailable responses. The generic tools do not substitute fabricated data.
 - Deterministic Python formatters produce TTS-safe result text from validated inputs and returned service data.
-- The generic domain uses deterministic capability-specific progress speech and ignores model-supplied filler text. The airline domain retains planner-authored filler for backward compatibility.
+- The generic domain validates Talker-authored, query-grounded progress speech
+  and has no static fallback. The airline domain retains planner-authored filler
+  for backward compatibility.
 
 After a prompt or domain change, test direct Talker replies, delegation, cancellation, parameter clarification, disabled tools, unavailable credentials, parallel calls, session isolation, and repeated tool-calling behavior.

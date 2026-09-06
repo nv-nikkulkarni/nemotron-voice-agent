@@ -18,7 +18,17 @@ The Talker sees only 2 functions. Internal functions, credentials, backend state
 
 The shared Frontend/Backend Agent pipeline waits `0.5` seconds of voice-activity-detector silence before finalizing a turn. Override this pipeline-scoped value with `FRONTEND_BACKEND_VAD_STOP_SECS` only after real-audio testing. A shorter value can split follow-ups such as “How about Paris?” before the final location transcript arrives; a longer value adds end-of-turn latency. Other examples retain their existing defaults.
 
-Set `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE=true` to speak trusted Python-grounded backend text once without a second Talker inference. The NVCF Helm chart enables this mode by default with `app.frontendBackendDirectToolResponse: true`.
+Use `FRONTEND_BACKEND_TOOL_RESULT_MODE=direct`, `hybrid`, or `talker` to
+control the grounded post-tool response. The recovery release uses `talker`;
+`direct` remains the low-latency rollback, and `hybrid` invokes the Talker only
+for non-success results. `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` is a legacy
+fallback used only when the explicit mode is absent.
+
+The Generic Talker produces an optional `filler_text` in the same
+`call_backend` selection. `FRONTEND_BACKEND_TALKER_FILLER_MODE=off`, `observe`,
+or `emit` controls whether a valid candidate is suppressed, measured only, or
+spoken. Rejected or missing filler never blocks backend work and never receives
+a static replacement.
 
 ## Choose a Built-In Domain
 
@@ -164,8 +174,8 @@ A domain factory returns a frozen `DomainSpec`. The shared pipeline consumes the
 | `runtime_context` | Append trusted date, time, timezone, or domain context |
 | `intro_prompt` | Define the welcome-turn instruction |
 | `tts_text_transform` | Apply optional pronunciation handling |
-| `filler_policy` | Choose code-authored or planner-authored progress speech |
-| `filler_selector` | Select trusted code-authored progress speech when the policy requires it |
+| `filler_policy` | Choose Talker-authored, planner-authored, or legacy code-authored progress speech |
+| `filler_selector` | Select legacy code-authored progress speech only when that policy requires it |
 | `tool_registry` | Publish the domain's code-owned `ToolSpec` allowlist for registry-selected capabilities |
 | `max_query_chars` | Bound delegated input length |
 
@@ -227,12 +237,15 @@ The generic domain applies the following controls:
 - It rejects unknown tools, disabled tools, unexpected parameters, invalid values at the individual tool boundary, and plans with more than 3 calls.
 - It builds the generated available-tool block and runtime `enabled_tools` list from registry-enabled specifications. Python rejects calls outside that subset, and unsupported-request responses name only enabled capabilities.
 - It runs up to 3 validated read-only tools concurrently and preserves planner order in the combined result.
-- It bounds planner, backend, and individual tool execution with timeouts.
+- It bounds the outer function callback, backend, planner, and web tool at 45,
+  40, 18, and 20 seconds by default. This ordering leaves time for the backend
+  to return one grounded timeout response before the outer callback expires.
 - It treats the user request and retrieved webpages as untrusted input.
 - It creates final spoken text from validated arguments and returned service data.
 - It cancels and replaces an unfinished request when the same session sends newer delegated work.
 - It invalidates the active call identifier before cancellation, which suppresses late stale results.
-- It uses code-authored progress speech and ignores model-supplied filler text.
+- It validates short Talker-authored progress speech, emits it at most once,
+  excludes it from conversation context, and uses no static fallback.
 
 The airline backend keeps its stateful booking workflow, booking-server integration, planner-authored filler, and shared call/cancellation contract for backward compatibility. `AIRLINE_PLANNER_TIMEOUT_SECONDS` and `AIRLINE_BACKEND_TIMEOUT_SECONDS` both default to `30.0` seconds. The planner deadline cannot exceed the overall deadline. A newer generation suppresses a superseded call's late result.
 
