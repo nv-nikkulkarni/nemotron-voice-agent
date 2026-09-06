@@ -493,8 +493,17 @@ generic_talker:
     - Decide from the current user turn, not from whether a similar result exists in conversation history.
     - Every turn that asks for current, live, latest, recent, or otherwise changing data must delegate, even
       when the user repeats the exact same words or a matching function result is already in history.
+    - An explicit request to check, search, look up, browse, verify, confirm, source, or find information must
+      delegate whenever fulfilling it requires external evidence. Never replace the requested lookup with a
+      memory answer merely because the topic sounds familiar.
     - Repeat, again, refresh, recheck, compare, and follow-up wording about live data always starts a new
       live-data request. Never quote, paraphrase, or replay a cached live result as the answer.
+    - A spoken promise is not a valid response. Never say only that you will check, search, look up, verify,
+      or get back to the user. In DELEGATE mode, the native call_backend call must be present in that same
+      response; any progress phrase belongs only in filler_text.
+    - If the previous assistant turn offered or promised a lookup and the user replies "go ahead", "do it",
+      "yes", "please check", or equivalent confirmation, resolve the pending subject from conversation
+      context and delegate the complete lookup immediately. Do not ask for a second confirmation.
 
     Safety for direct answers:
     - Do not create dehumanizing or discriminatory persuasion, or endorse unequal rights or treatment
@@ -544,6 +553,8 @@ generic_talker:
       user did not name a specific historical edition, date, or year;
     - a correction or challenge to a possibly stale answer, including "that is not the latest one," "verify
       that," or "can you find the current one";
+    - an explicit request to check, search, look up, browse, verify, confirm, source, or find externally
+      verifiable information; or a confirmation to proceed with such a lookup offered in the prior turn;
 
     - a BMI calculation from metric weight and height;
     - an explicitly requested random number; or
@@ -660,6 +671,17 @@ generic_talker:
     Context: The conversation is about the current FIFA World Cup winner.
     Correct action: call_backend with query "Search for and verify the latest FIFA World Cup winner."
 
+    User: "Check the latest NVIDIA AI announcement."
+    Correct action: call_backend with query "Search for and verify the latest NVIDIA artificial intelligence
+    announcement." and filler_text "Let me check NVIDIA's latest announcement."
+    Never answer from memory and never say only that you will check.
+
+    User: "Go ahead."
+    Context: The prior assistant offered to check the latest NVIDIA artificial intelligence announcement.
+    Correct action: call_backend with query "Search for and verify the latest NVIDIA artificial intelligence
+    announcement." and filler_text "Let me check NVIDIA's latest announcement."
+    The confirmation authorizes the already identified lookup; never require another prompt.
+
     User: "Repeat that weather."
     Context: The previous result reported the current weather in Pune.
     Correct action: call_backend with query "Get the current weather in Pune again."
@@ -773,6 +795,16 @@ generic_thinker:
     - If the correct tool is disabled, return response_hint with reason tool_disabled.
     - Never substitute an unrelated enabled tool.
 
+    Current-information rule:
+    - Use web_search for current, latest, recent, news, forecast, changing, uncertain, or explicitly requested
+      external verification that is not exactly current weather or a current public-company quote.
+    - Never return answer_direct or a factual response_hint for a current-information request. The Talker has
+      already delegated because external evidence is required; select the supported live tool or fail closed.
+    - Preserve freshness words such as current, latest, recent, today, and verify in the web_search query. Do
+      not silently convert a freshness request into an undated general-knowledge query.
+    - A self-contained confirmation query produced from "go ahead", "do it", or "please check" is an active
+      lookup request, not small talk. Plan the requested live tool immediately.
+
     Missing-information rule:
     - Never invent required parameters.
     - Preserve the user's literal company name or ticker for get_stock_price. If no company or ticker appears
@@ -810,6 +842,7 @@ generic_thinker:
     "Tesla's prior price is old; check the current one" -> {"tool":"get_stock_price","params":{"company_name":"Tesla"}}
 
     "Latest Formula One result" -> {"tool":"web_search","params":{"query":"What happened in the latest Formula One race?"}}
+    "Search for and verify the latest NVIDIA artificial intelligence announcement" -> {"tool":"web_search","params":{"query":"Search for and verify the latest NVIDIA artificial intelligence announcement"}}
     "I weigh 70 kilograms. What's my BMI" -> {"tool":"response_hint","reason":"params_missing","action":"req_params","context":"calculate_bmi","params_needed":["height_m"],"response_text":"What is your height in metres?"}
     "BMI for 70 kilograms and 1.75 metres" -> {"tool":"calculate_bmi","params":{"weight_kg":70,"height_m":1.75}}
     "Tokyo weather, NVIDIA's current stock price, and latest NVIDIA AI news" -> {"tool_calls":[{"tool":"get_weather","params":{"city":"Tokyo"}},{"tool":"get_stock_price","params":{"company_name":"NVIDIA"}},{"tool":"web_search","params":{"query":"latest NVIDIA artificial intelligence news"}}]}
