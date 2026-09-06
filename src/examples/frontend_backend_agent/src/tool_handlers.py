@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Protocol
@@ -22,6 +23,43 @@ if TYPE_CHECKING:
     from pipecat.services.llm_service import FunctionCallParams
 
     from examples.frontend_backend_agent.src.domain import FillerPolicy
+    from examples.frontend_backend_agent.src.stage_metrics import StageMetricsCoordinator
+
+
+_FILLER_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’-]*")
+_FILLER_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_FILLER_INTERNAL_RE = re.compile(
+    r"\b(?:backend|function|hidden|llm|model|prompt|reasoning|system|tool)\b|"
+    r"</?(?:think|tool_call|function|parameter)[^>]*>|```|https?://|www\.",
+    re.IGNORECASE,
+)
+_FILLER_RESULT_CLAIM_RE = re.compile(
+    r"\b(?:completed|done|finished|found|got|result|succeeded|successful|shows?|the answer is|turns out)\b",
+    re.IGNORECASE,
+)
+_FILLER_PROGRESS_WORDS = frozenset(
+    {
+        "a",
+        "about",
+        "and",
+        "for",
+        "i",
+        "it",
+        "latest",
+        "let",
+        "look",
+        "me",
+        "please",
+        "that",
+        "the",
+        "those",
+        "to",
+        "up",
+        "verify",
+        "will",
+        "your",
+    }
+)
 
 
 class ThinkerBackend(Protocol):
@@ -51,6 +89,7 @@ def build_handlers(
     filler_selector: Callable[[str], str] | None = None,
     interrupted_speech_consumer: Callable[[], bool] | None = None,
     max_query_chars: int = 4000,
+    stage_metrics: StageMetricsCoordinator | None = None,
 ) -> dict[str, Callable]:
     """Return tool handlers bound to one session-local backend agent."""
 
@@ -70,12 +109,24 @@ def build_handlers(
             )
             return
         try:
-            if filler_policy == "planner_authored":
-                filler_text = str(arguments.get("filler_text", "") or "").strip()
+            if filler_policy == "talker_authored":
+                filler_text = _validated_talker_filler(query, arguments.get("filler_text"))
+            elif filler_policy == "planner_authored":
+                filler_text = " ".join(str(arguments.get("filler_text") or "").split()).strip()
             elif filler_policy == "code_authored":
-                filler_text = filler_selector(query) if filler_selector is not None else "Let me check that."
+                filler_text = filler_selector(query) if filler_selector is not None else ""
             else:
                 raise ValueError(f"Unknown filler policy: {filler_policy}")
+            filler_mode = _talker_filler_mode()
+            if filler_policy == "talker_authored":
+                logger.bind(
+                    event="talker_filler_candidate",
+                    mode=filler_mode,
+                    accepted=bool(filler_text),
+                    word_count=len(_FILLER_WORD_RE.findall(filler_text)),
+                ).info("Processed Talker-authored filler candidate")
+            if filler_mode != "emit":
+                filler_text = ""
             slots = {key: value for key, value in arguments.items() if key not in {"query", "intent", "filler_text"}}
             filler_task: asyncio.Task | None = None
             filler_started = False
@@ -83,7 +134,7 @@ def build_handlers(
             async def emit_filler_after_threshold() -> None:
                 try:
                     await asyncio.sleep(filler_threshold_seconds)
-                    await _emit_talker_response(params.llm, filler_text)
+                    await _emit_talker_response(params.llm, filler_text, append_to_context=False)
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -91,13 +142,15 @@ def build_handlers(
 
             async def schedule_thinker_started_filler(event: ThinkerLifecycleEvent) -> None:
                 nonlocal filler_started, filler_task
+                if stage_metrics is not None:
+                    await stage_metrics.bind_backend_call(params.tool_call_id, event.call_id)
                 if event.marker != "ThinkerStarted" or not filler_text:
                     return
                 if filler_started or (filler_task is not None and not filler_task.done()):
                     return
                 filler_started = True
                 if filler_threshold_seconds <= 0:
-                    await _emit_talker_response(params.llm, filler_text)
+                    await _emit_talker_response(params.llm, filler_text, append_to_context=False)
                     return
                 filler_task = asyncio.create_task(emit_filler_after_threshold())
 
@@ -118,26 +171,19 @@ def build_handlers(
                 },
                 properties=FunctionCallResultProperties(run_llm=False),
             )
+            if stage_metrics is not None:
+                await stage_metrics.cleanup_tool_call(params.tool_call_id)
             return
         except Exception as exc:
             logger.exception(f"call_backend failed before producing a result: {exc}")
-            await params.result_callback(
-                {
-                    "type": "response_hint",
-                    "reason": "tool_error",
-                    "action": "retry",
-                    "response_text": "I could not complete that request right now. Please try again.",
-                    "context": "call_backend",
-                }
-            )
-            return
-        if _direct_tool_response_enabled() and is_speakable_payload(payload):
-            response_text = str(payload.get("response_text") or "")
-            await _emit_talker_response(params.llm, response_text, append_to_context=False)
-            await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
-            _remember_backend_response(params.llm, response_text, payload)
-            return
-        await params.result_callback(payload)
+            payload = {
+                "type": "response_hint",
+                "reason": "tool_error",
+                "action": "retry",
+                "response_text": "I could not complete that request right now. Please try again.",
+                "context": "call_backend",
+            }
+        await _deliver_tool_payload(params, payload, stage_metrics=stage_metrics)
 
     async def handle_cancel_backend(params: FunctionCallParams) -> None:
         cancelled = thinker.cancel_active("user_cancelled")
@@ -162,9 +208,11 @@ def build_handlers(
             "response_text": "Okay, I stopped that." if did_cancel else "There is nothing pending right now.",
             "context": "cancel_backend",
         }
-        if _direct_tool_response_enabled():
+        if _tool_result_mode() == "direct":
             await _emit_talker_response(params.llm, str(payload["response_text"]), append_to_context=False)
             await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
+            if stage_metrics is not None:
+                await stage_metrics.cleanup_tool_call(params.tool_call_id)
             return
         await params.result_callback(payload)
 
@@ -221,6 +269,103 @@ def _normalize_arguments(arguments: dict) -> dict:
 
 def _direct_tool_response_enabled() -> bool:
     return os.getenv("FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+async def _deliver_tool_payload(
+    params: FunctionCallParams,
+    payload: dict[str, Any],
+    *,
+    stage_metrics: StageMetricsCoordinator | None = None,
+) -> None:
+    """Deliver one grounded payload through the configured final-response path."""
+    if not is_speakable_payload(payload):
+        await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
+        if stage_metrics is not None:
+            await stage_metrics.cleanup_tool_call(params.tool_call_id)
+        return
+    response_text = str(payload.get("response_text") or "")
+    _remember_backend_response(params.llm, response_text, payload)
+    if _should_deliver_directly(payload):
+        await _emit_talker_response(params.llm, response_text, append_to_context=False)
+        await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
+        if stage_metrics is not None:
+            await stage_metrics.cleanup_tool_call(params.tool_call_id)
+        return
+    await params.result_callback(
+        _talker_result_projection(payload),
+        properties=FunctionCallResultProperties(run_llm=True),
+    )
+
+
+def _tool_result_mode() -> str:
+    raw = os.getenv("FRONTEND_BACKEND_TOOL_RESULT_MODE", "").strip().lower()
+    if raw in {"direct", "hybrid", "talker"}:
+        return raw
+    return "direct" if _direct_tool_response_enabled() else "talker"
+
+
+def _should_deliver_directly(payload: dict[str, Any]) -> bool:
+    mode = _tool_result_mode()
+    if mode == "direct":
+        return True
+    if mode == "hybrid":
+        return _payload_outcome(payload) == "success"
+    return False
+
+
+def _payload_outcome(payload: dict[str, Any]) -> str:
+    if payload.get("type") == "tool_result":
+        status = str(payload.get("status") or "error")
+        return "success" if status == "success" else "partial" if status == "partial" else "failure"
+    reason = str(payload.get("reason") or "")
+    if reason in {"params_missing", "params_invalid"}:
+        return "needs_input"
+    if reason in {"aborted", "cancelled"}:
+        return "cancelled"
+    return "failure"
+
+
+def _talker_result_projection(payload: dict[str, Any]) -> dict[str, Any]:
+    """Expose only the trusted spoken contract, never raw provider data."""
+    allowed = {
+        "type",
+        "tool",
+        "status",
+        "response_text",
+        "reason",
+        "action",
+        "context",
+        "params_needed",
+        "params_resolved",
+    }
+    return {key: value for key, value in payload.items() if key in allowed}
+
+
+def _talker_filler_mode() -> str:
+    raw = os.getenv("FRONTEND_BACKEND_TALKER_FILLER_MODE", "emit").strip().lower()
+    return raw if raw in {"off", "observe", "emit"} else "emit"
+
+
+def _validated_talker_filler(query: str, raw_filler: object) -> str:
+    """Accept a short grounded progress phrase or suppress it without replacement."""
+    original = str(raw_filler or "")
+    filler = " ".join(original.split()).strip()
+    if not filler or len(filler) > 96 or "\n" in original:
+        return ""
+    words = _FILLER_WORD_RE.findall(filler)
+    if not 3 <= len(words) <= 12:
+        return ""
+    if "?" in filler or len(re.findall(r"[.!]", filler)) > 1:
+        return ""
+    if any(character.isdigit() for character in filler):
+        return ""
+    if _FILLER_INTERNAL_RE.search(filler) or _FILLER_RESULT_CLAIM_RE.search(filler):
+        return ""
+    filler_tokens = set(_FILLER_TOKEN_RE.findall(filler.casefold())) - _FILLER_PROGRESS_WORDS
+    query_tokens = set(_FILLER_TOKEN_RE.findall(query.casefold()))
+    if not filler_tokens or filler_tokens.isdisjoint(query_tokens):
+        return ""
+    return filler
 
 
 def _task_cancellation_requested() -> bool:

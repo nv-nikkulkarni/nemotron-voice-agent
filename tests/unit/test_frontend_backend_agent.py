@@ -897,7 +897,7 @@ class FrontendBackendAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(llm.frames[1], LLMTextFrame)
         self.assertEqual(llm.frames[1].text, "I need to check the live booking tools for that.")
         self.assertIsNone(llm.frames[1].skip_tts)
-        self.assertTrue(llm.frames[1].append_to_context)
+        self.assertFalse(llm.frames[1].append_to_context)
         self.assertIsInstance(llm.frames[2], LLMFullResponseEndFrame)
         self.assertEqual(results[-1][0]["type"], "tool_result")
         markers = [event.marker for event in thinker.state.lifecycle_events]

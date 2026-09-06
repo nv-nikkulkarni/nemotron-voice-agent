@@ -47,6 +47,15 @@ entries:
   "Finnhub": {arpabet: "F IH1 N HH AH2 B", ipa: "ˈfɪnˌhəb", category: platform}
   "WeatherAPI": {arpabet: "W EH1 DH ER0 EY1 P IY1 AY1", ipa: "ˈwɛðɝ eɪ pi aɪ", category: platform}
 
+  # Currency codes, spoken letter by letter
+  "USD": {arpabet: "Y UW1 EH1 S D IY1", ipa: "ju ɛs di", category: currency_code}
+
+  # Financial and accounting terminology
+  "GAAP": {arpabet: "G AE1 P", ipa: "ɡæp", category: financial_term}
+
+  # Time standards, spoken letter by letter
+  "UTC": {arpabet: "Y UW1 T IY1 S IY1", ipa: "ju ti si", category: time_standard}
+
   # Common ticker symbols, spoken letter by letter
   "NVDA": {arpabet: "EH1 N V IY1 D IY1 EY1", ipa: "ɛn vi di eɪ", category: ticker_symbol}
   "AAPL": {arpabet: "EY1 EY1 P IY1 EH1 L", ipa: "eɪ eɪ pi ɛl", category: ticker_symbol}

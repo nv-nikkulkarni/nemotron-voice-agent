@@ -35,6 +35,9 @@ REQUIRED_CATEGORIES = {
     "country",
     "technology_leader",
     "world_leader",
+    "currency_code",
+    "financial_term",
+    "time_standard",
 }
 REQUIRED_TERMS = {
     "NVIDIA",
@@ -46,6 +49,9 @@ REQUIRED_TERMS = {
     "Redis",
     "SeaweedFS",
     "Finnhub",
+    "USD",
+    "GAAP",
+    "UTC",
     "NVDA",
     "AAPL",
     "MSFT",

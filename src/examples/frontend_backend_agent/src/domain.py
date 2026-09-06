@@ -42,7 +42,7 @@ class DomainBuildContext:
     on_tool_started: Callable[[str], Awaitable[None]] | None = None
 
 
-FillerPolicy = Literal["code_authored", "planner_authored"]
+FillerPolicy = Literal["code_authored", "planner_authored", "talker_authored"]
 
 
 @dataclass(slots=True, frozen=True)

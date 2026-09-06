@@ -24,24 +24,6 @@ def _runtime_context() -> str:
     )
 
 
-def select_filler(query: str) -> str:
-    """Choose immutable progress speech; never trust model-authored filler."""
-    normalized = query.casefold()
-    if any(word in normalized for word in ("bmi", "calculate", "calculation")):
-        return "Let me work that out."
-    if " and " in normalized and any(
-        word in normalized for word in ("weather", "stock", "price", "news", "search", "latest", "current")
-    ):
-        return "Let me check those details."
-    if any(word in normalized for word in ("weather", "forecast", "rain", "temperature")):
-        return "Let me check the latest weather."
-    if any(word in normalized for word in ("stock", "ticker", "share price", "trading at")):
-        return "Let me look up the latest price."
-    if any(word in normalized for word in ("web", "search", "news", "research", "latest")):
-        return "Let me look that up."
-    return "Let me check that."
-
-
 def _build_backend(context: DomainBuildContext) -> GenericThinkerBackend:
     enabled_tools = resolve_enabled_tools(context.tool_names)
     enabled_specs = tuple(TOOLS[name] for name in enabled_tools)
@@ -70,8 +52,7 @@ def create_domain_spec() -> DomainSpec:
         talker_tools_schema=TOOLS_SCHEMA,
         build_backend=_build_backend,
         runtime_context=_runtime_context,
-        filler_selector=select_filler,
-        filler_policy="code_authored",
+        filler_policy="talker_authored",
         tool_registry=TOOLS,
         max_query_chars=2000,
     )
