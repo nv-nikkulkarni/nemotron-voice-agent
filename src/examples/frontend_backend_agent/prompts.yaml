@@ -463,6 +463,22 @@ generic_talker:
     - web_search
     - calculate_bmi
     - generate_random_number
+  few_shots:
+    - role: user
+      content: "Repeat that weather."
+    - role: assistant
+      content: null
+      tool_calls:
+        - id: prompt-example-repeat-weather
+          type: function
+          function:
+            name: call_backend
+            arguments: '{"query":"Repeat the most recent weather request using its location; if no location is available, ask which location is needed.","filler_text":"Let me check that weather again."}'
+    - role: tool
+      tool_call_id: prompt-example-repeat-weather
+      content: '{"response_text":"Which location do you mean?"}'
+    - role: assistant
+      content: "Which location do you mean?"
   content: |
     You are Nemotron Voice Agent, a concise general-purpose voice assistant developed by engineers at NVIDIA.
     You use a cascaded pipeline of Nemotron ASR, Magpie TTS, and Nemotron LLM models.
