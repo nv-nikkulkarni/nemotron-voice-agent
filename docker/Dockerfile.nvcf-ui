@@ -33,7 +33,11 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:alpine
 
 ARG UI_BUILD_TIMESTAMP=unknown
+ARG UI_VERSION=unknown
+ARG SOURCE_SHA=unknown
 ENV UI_BUILD_TIMESTAMP=${UI_BUILD_TIMESTAMP}
+LABEL org.opencontainers.image.version=${UI_VERSION}
+LABEL org.opencontainers.image.revision=${SOURCE_SHA}
 
 USER root
 

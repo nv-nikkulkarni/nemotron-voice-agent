@@ -66,7 +66,7 @@ fullnameOverride: ""
 # =============================================================================
 appImage:
   name: "nemotron-voice-agent"
-  tag: "2.0.58"
+  tag: "2.0.62"
   pullPolicy: IfNotPresent
 
 # =============================================================================
@@ -770,7 +770,7 @@ sessionStore:
 webSearch:
   # k8s secret holding the sk-* key. Empty -> the web_search tool reports "not configured"
   # (the tool is still advertised; calls just return that error).
-  #   kubectl -n <ns> create secret generic perplexity-api --from-literal=PERPLEXITY_API_KEY=sk-...
+  #   kubectl -n <ns> create secret generic perplexity-api --from-literal=PERPLEXITY_API_KEY=<PERPLEXITY_KEY>
   apiKeySecret: ""
   apiKeySecretKey: "PERPLEXITY_API_KEY"
   baseUrl: "https://inference-api.nvidia.com/v1"
