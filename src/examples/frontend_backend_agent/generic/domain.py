@@ -32,6 +32,8 @@ def _build_backend(context: DomainBuildContext) -> GenericThinkerBackend:
         system_prompt=context.thinker_prompt,
         enabled_tools=enabled_specs,
         max_tokens=context.thinker_max_tokens,
+        stage_metrics=context.stage_metrics,
+        model_name=context.thinker_model_name,
     )
     return GenericThinkerBackend(
         planner=planner,
@@ -40,6 +42,7 @@ def _build_backend(context: DomainBuildContext) -> GenericThinkerBackend:
         overall_timeout_seconds=parse_env_float("GENERIC_BACKEND_TIMEOUT_SECONDS", 40.0, min_value=1.0),
         planner_timeout_seconds=parse_env_float("GENERIC_PLANNER_TIMEOUT_SECONDS", 15.0, min_value=1.0),
         on_tool_started=context.on_tool_started,
+        stage_metrics=context.stage_metrics,
     )
 
 

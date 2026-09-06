@@ -192,3 +192,19 @@ weighted-averaged across all turns/clients in a run):
 | `vad_smart_turn` | VAD + smart-turn analyzer time |
 | `llm_processing_time` | LLM end-to-end (request → final token) |
 | `llm_tokens_per_sec` | Completion tokens / `llm_processing_time` |
+| `frontend_tool_selection_ttft` | Initial Talker dispatch → first native tool-call token |
+| `frontend_tool_selection_processing_time` | Initial Talker dispatch → completed native tool call and arguments |
+| `backend_llm_ttft` | Streamed Thinker dispatch → first reasoning or answer token |
+| `backend_llm_processing_time` | Streamed Thinker dispatch → final Thinker token |
+| `backend_tool_call_latency` | Internal allowlisted tool start → success, timeout, error, or cancellation |
+| `frontend_final_response_ttft` | Post-result Talker dispatch → first visible answer token |
+| `frontend_final_response_processing_time` | Post-result Talker dispatch → final answer token |
+
+All latency and processing columns use seconds. The benchmark recognizes the
+stage processor names before the generic LLM classifier, so stage samples do
+not inflate `llm_ttft` or `llm_processing_time`.
+
+`frontend_final_response_ttft` and
+`frontend_final_response_processing_time` are unavailable in `direct` result
+mode. In `hybrid` mode, they appear only for non-success results that use the
+Talker final-response pass.

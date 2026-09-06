@@ -15,6 +15,7 @@ import re
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import yaml
@@ -56,6 +57,20 @@ class _InferenceLLM:
     async def run_inference(self, context, max_tokens=None) -> str:
         self.messages = list(context.get_messages())
         return '{"tool":"generate_random_number","params":{}}'
+
+    async def get_chat_completions(self, context):
+        self.messages = list(context.get_messages())
+
+        async def stream():
+            delta = SimpleNamespace(
+                content='{"tool":"generate_random_number","params":{}}',
+                reasoning_content=None,
+                reasoning=None,
+                tool_calls=None,
+            )
+            yield SimpleNamespace(choices=[SimpleNamespace(delta=delta)])
+
+        return stream()
 
 
 class _BlockingPlanner:

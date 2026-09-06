@@ -40,6 +40,8 @@ class DomainBuildContext:
     tool_delay_min_seconds: float
     load_service_entry: Callable[[str, str], dict]
     on_tool_started: Callable[[str], Awaitable[None]] | None = None
+    stage_metrics: Any = None
+    thinker_model_name: str = ""
 
 
 FillerPolicy = Literal["code_authored", "planner_authored", "talker_authored"]

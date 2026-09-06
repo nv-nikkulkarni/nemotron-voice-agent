@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from openai import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
@@ -19,6 +19,9 @@ from examples.frontend_backend_agent.generic.result_formatters import planner_fa
 from examples.frontend_backend_agent.generic.state import GenericThinkerSessionState
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent
 from examples.frontend_backend_agent.src.tools import ToolSpec
+
+if TYPE_CHECKING:
+    from examples.frontend_backend_agent.src.stage_metrics import StageMetricsCoordinator
 
 _PLANNER_MAX_ATTEMPTS = 2
 _PLANNER_RETRY_BACKOFF_SECONDS = 0.2
@@ -38,6 +41,7 @@ class GenericThinkerBackend:
         planner_timeout_seconds: float = 15.0,
         state: GenericThinkerSessionState | None = None,
         on_tool_started: Callable[[str], Awaitable[None]] | None = None,
+        stage_metrics: StageMetricsCoordinator | None = None,
     ) -> None:
         """Create a backend with bounded planner and end-to-end deadlines."""
         self._planner = planner
@@ -46,6 +50,7 @@ class GenericThinkerBackend:
         self._overall_timeout_seconds = max(1.0, overall_timeout_seconds)
         self._planner_timeout_seconds = min(max(1.0, planner_timeout_seconds), self._overall_timeout_seconds)
         self._on_tool_started = on_tool_started
+        self._stage_metrics = stage_metrics
         self.state = state or GenericThinkerSessionState()
 
     async def call(
@@ -116,7 +121,10 @@ class GenericThinkerBackend:
         for attempt in range(1, _PLANNER_MAX_ATTEMPTS + 1):
             try:
                 return await asyncio.wait_for(
-                    self._planner.plan(query=query, state={"active_call_id": call_id}),
+                    self._planner.plan(
+                        query=query,
+                        state={"active_call_id": call_id, "planner_attempt": attempt},
+                    ),
                     timeout=self._planner_timeout_seconds,
                 )
             except asyncio.CancelledError:
@@ -141,6 +149,8 @@ class GenericThinkerBackend:
                     self._enabled_tools,
                     source_query=query,
                     on_tool_started=self._on_tool_started,
+                    stage_metrics=self._stage_metrics,
+                    backend_call_id=call_id,
                 )
         except asyncio.CancelledError:
             raise

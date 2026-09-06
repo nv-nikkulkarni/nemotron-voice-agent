@@ -9,7 +9,7 @@ import asyncio
 import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -22,6 +22,9 @@ from examples.frontend_backend_agent.generic.result_formatters import (
     unsupported_request,
 )
 from examples.frontend_backend_agent.src.tools import ToolContext, ToolSpec, validate_arguments
+
+if TYPE_CHECKING:
+    from examples.frontend_backend_agent.src.stage_metrics import StageMetricsCoordinator
 
 MAX_PARALLEL_TOOL_CALLS = 3
 _WORD_RE = re.compile(r"[a-z0-9]+")
@@ -102,15 +105,28 @@ async def _execute(
     spec: ToolSpec,
     tool_context: ToolContext,
     on_tool_started: Callable[[str], Awaitable[None]] | None,
+    stage_metrics: StageMetricsCoordinator | None,
+    backend_call_id: str,
+    ordinal: int,
 ) -> dict[str, Any]:
+    span = (
+        await stage_metrics.start_tool(backend_call_id, tool_name=call.name, ordinal=ordinal)
+        if stage_metrics is not None
+        else None
+    )
+    outcome = "success"
     try:
-        if on_tool_started:
+        if on_tool_started and stage_metrics is None:
             await on_tool_started(call.name)
         data = await asyncio.wait_for(spec.run(call.arguments, tool_context), timeout=spec.timeout_s)
+        if str(data.get("status") or "success") not in {"success", "not_found"}:
+            outcome = "error"
         return format_tool_result(spec, call.arguments, data)
     except asyncio.CancelledError:
+        outcome = "cancelled"
         raise
     except TimeoutError:
+        outcome = "timeout"
         logger.warning(f"generic domain tool {call.name} timed out")
         return format_tool_result(
             spec,
@@ -118,14 +134,19 @@ async def _execute(
             {"status": "unavailable", "assistant_should_say": "That check timed out. Would you like me to retry?"},
         )
     except (TypeError, ValueError):
+        outcome = "error"
         return invalid_parameters(call.name)
     except Exception as exc:  # noqa: BLE001 - fail closed at the tool boundary
+        outcome = "error"
         logger.warning(f"generic domain tool {call.name} failed: {type(exc).__name__}")
         return format_tool_result(
             spec,
             call.arguments,
             {"status": "unavailable", "assistant_should_say": "I couldn't complete that check right now."},
         )
+    finally:
+        if stage_metrics is not None and span is not None:
+            await stage_metrics.finish_tool(span, outcome)
 
 
 def _response_hint(
@@ -164,6 +185,8 @@ async def dispatch_plan(
     source_query: str | None = None,
     tool_context: ToolContext | None = None,
     on_tool_started: Callable[[str], Awaitable[None]] | None = None,
+    stage_metrics: StageMetricsCoordinator | None = None,
+    backend_call_id: str = "unbound",
 ) -> dict[str, Any]:
     """Validate atomically, serialize mutating tools, and preserve planner order."""
     enabled = frozenset(enabled_tools)
@@ -203,7 +226,15 @@ async def dispatch_plan(
     payloads: list[dict[str, Any] | None] = [None] * len(calls)
 
     async def run_one(index: int, call: ValidatedToolCall) -> None:
-        payloads[index] = await _execute(call, tools[call.name], context, on_tool_started)
+        payloads[index] = await _execute(
+            call,
+            tools[call.name],
+            context,
+            on_tool_started,
+            stage_metrics,
+            backend_call_id,
+            index,
+        )
 
     async def run_mutating_chain(items: list[tuple[int, ValidatedToolCall]]) -> None:
         for index, call in items:
