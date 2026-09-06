@@ -38,6 +38,8 @@ TALKER_CASES = (
     Case("forecast", "Will it rain in Pune tomorrow?", ("call_backend",)),
     Case("stock", "What is NVIDIA trading at right now?", ("call_backend",)),
     Case("latest_web", "What is the latest verified NVIDIA news?", ("call_backend",)),
+    Case("explicit_lookup", "Check the latest NVIDIA AI announcement using current sources.", ("call_backend",)),
+    Case("stale_challenge", "That answer is old. Check the current one.", ("call_backend",)),
     Case("bmi", "I weigh 70 kilograms and am 1.75 metres tall. What is my BMI?", ("call_backend",)),
     Case("random", "Give me one random integer from 20 through 40.", ("call_backend",)),
     Case("stable_direct", "Briefly explain photosynthesis.", ("direct",)),
@@ -83,10 +85,17 @@ def validate_talker(message: dict[str, Any], expected: tuple[str, ...]) -> tuple
         if fn.get("name") == "cancel_backend" and not _semantically_empty(args):
             return False, "cancel_backend arguments must be empty"
         if fn.get("name") == "call_backend":
-            if set(args) - {"query"}:
-                return False, f"unexpected call_backend fields: {sorted(set(args) - {'query'})}"
+            allowed = {"query", "filler_text"}
+            if set(args) - allowed:
+                return False, f"unexpected call_backend fields: {sorted(set(args) - allowed)}"
             if not isinstance(args.get("query"), str) or not args["query"].strip():
                 return False, "call_backend query is empty"
+            filler = str(args.get("filler_text") or "").strip()
+            if not filler:
+                return False, "call_backend filler_text is empty"
+            words = filler.split()
+            if not 3 <= len(words) <= 12 or len(filler) > 96:
+                return False, f"call_backend filler_text is not short: {filler!r}"
     return True, "ok"
 
 
@@ -139,7 +148,7 @@ async def run_talker(args: argparse.Namespace, system_prompt: str) -> list[tuple
                 "tools": [CALL_BACKEND_TOOL, CANCEL_BACKEND_TOOL],
                 "tool_choice": "auto",
                 "max_tokens": 512,
-                "temperature": 0.2,
+                "temperature": 0.0,
                 "repetition_penalty": 1.05,
                 "chat_template_kwargs": {"enable_thinking": args.talker_reasoning},
             }
