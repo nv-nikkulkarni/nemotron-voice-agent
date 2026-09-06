@@ -71,6 +71,15 @@ End -> thank-you modal ; Settings TTS switch [Magpie, Chatterbox] present + togg
 regression gate: it flags the error on the old UI bundle and goes green once the
 rebuilt UI ships.
 
+**A second real bug (source fixed; Viking rerun pending):** comprehensive Phase D
+showed valid server TTS and bot lifecycle events while the browser Pulse monitor
+remained near silence after an interruption. The WebSocket transport remembers
+interrupted player IDs, but every later PCM response previously reused
+`"default"`. `TurnAwareDailyMediaManager` now assigns one `bot-turn-N` ID per
+turn and advances it after interruption. The focused regression verifies that
+the response after barge-in reaches a fresh player track; Phase D remains the
+required runtime gate.
+
 ## Notes / extend
 - **Barge-in matters**: if the utterance overlaps the greeting the turn won't
   complete cleanly. `prep_mics.py` pads a long lead (>greeting) + long trail.

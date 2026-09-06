@@ -16,6 +16,9 @@ import httpx
 from loguru import logger
 
 _FINNHUB_TIMEOUT = httpx.Timeout(12.0)
+_FINNHUB_MAX_ATTEMPTS = 2
+_FINNHUB_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+_FINNHUB_RETRY_BACKOFF_SECONDS = 0.25
 _WEATHER_TIMEOUT = httpx.Timeout(12.0)
 _WEB_SEARCH_TIMEOUT = httpx.Timeout(18.0)
 _WEB_SEARCH_MAX_ATTEMPTS = 2
@@ -207,6 +210,7 @@ async def get_stock_price(arguments: Mapping[str, Any]) -> dict[str, Any]:
     known_symbol = _COMPANY_SYMBOLS.get(company.casefold())
     symbol = known_symbol or (upper if _TICKER_RE.fullmatch(upper) else "")
     display_name = company
+    response: httpx.Response | None = None
     try:
         async with httpx.AsyncClient(timeout=_FINNHUB_TIMEOUT) as client:
             if not symbol:
@@ -214,13 +218,27 @@ async def get_stock_price(arguments: Mapping[str, Any]) -> dict[str, Any]:
                 if resolved is None:
                     return {"status": "not_found", "message": f"I couldn't find a public stock matching {company}."}
                 symbol, display_name = resolved
-            response = await client.get(
-                f"{base_url}/quote",
-                params={"symbol": symbol, "token": api_key},
-                headers={"Accept": "application/json"},
-            )
+            for attempt in range(1, _FINNHUB_MAX_ATTEMPTS + 1):
+                try:
+                    response = await client.get(
+                        f"{base_url}/quote",
+                        params={"symbol": symbol, "token": api_key},
+                        headers={"Accept": "application/json"},
+                    )
+                except httpx.HTTPError:
+                    if attempt >= _FINNHUB_MAX_ATTEMPTS:
+                        raise
+                    logger.warning("generic domain stock transient request failure; retrying once")
+                    await asyncio.sleep(_FINNHUB_RETRY_BACKOFF_SECONDS)
+                    continue
+                if response.status_code not in _FINNHUB_RETRY_STATUSES or attempt >= _FINNHUB_MAX_ATTEMPTS:
+                    break
+                logger.warning(f"generic domain stock returned transient HTTP {response.status_code}; retrying once")
+                await asyncio.sleep(_FINNHUB_RETRY_BACKOFF_SECONDS)
     except httpx.HTTPError as exc:
         logger.warning(f"generic domain stock request failed: {type(exc).__name__}")
+        return unavailable("get the stock price")
+    if response is None:
         return unavailable("get the stock price")
     if response.status_code != 200:
         logger.warning(f"generic domain stock returned HTTP {response.status_code}")

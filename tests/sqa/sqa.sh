@@ -8,6 +8,7 @@
 #   ./sqa.sh functional            # exhaustive DOM/functional checks
 #   ./sqa.sh converse [generic|omni|both]
 #   ./sqa.sh comprehensive [all|A|B|C|D]  # full E2E: tools, omni, UI, concurrency
+#   ./sqa.sh captured-sessions      # reconstructed production-session regressions
 #   ./sqa.sh concurrent [N]        # N simultaneous users
 #   ./sqa.sh video                 # record an mp4 conversation
 #   ./sqa.sh shell                 # interactive debug shell
@@ -21,6 +22,7 @@ declare -A CMD=(
   [functional]="node functional.mjs"
   [converse]="node converse.mjs ${1:-both}"
   [comprehensive]="node comprehensive.mjs ${1:-all}"
+  [captured-sessions]="node captured_session_regressions.mjs"
   [concurrent]="node concurrent.mjs ${1:-4}"
   [concurrent-spoken]="node concurrent_spoken.mjs ${1:-5}"
   [stress]="node stress.mjs ${1:-5} ${2:-3}"

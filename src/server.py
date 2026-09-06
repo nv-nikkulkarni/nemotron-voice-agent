@@ -271,6 +271,7 @@ def _sanitize_session_config(data: dict, fallback_example_key: str = "") -> dict
         raise ValueError("session config must be a JSON object")
     example = _bind_example_context_by_key(str(data.get("pipeline_mode", "")) or fallback_example_key)
     config = dict(data)
+    config["pipeline_mode"] = example["key"]
     # Registry-owned: a client cannot pair a prompt catalog with another domain backend.
     config["domain_profile"] = example.get("domain_profile", "")
     config["thinker_prompt"] = example.get("thinker_prompt", "")
@@ -279,7 +280,9 @@ def _sanitize_session_config(data: dict, fallback_example_key: str = "") -> dict
         config.pop("tools_available", None)
 
     _bind_registry_prompt(example, config)
-    return filter_session_config(config)
+    sanitized = filter_session_config(config)
+    sanitized["_session_capabilities"] = list(example.get("capabilities") or ())
+    return sanitized
 
 
 def _bind_registry_prompt(example: dict, config: dict) -> None:
@@ -425,10 +428,25 @@ def _session_capability_error(session_id: str, capability: str) -> JSONResponse 
         or _session_configs.get(cleaned_session_id)
         or _load_session(cleaned_session_id)
     )
-    if not cleaned_session_id or config is None:
+    if not cleaned_session_id or not config:
+        logger.warning(
+            f"session-capability: missing config (session_id={cleaned_session_id[:8]}..., capability={capability})"
+        )
         return JSONResponse(status_code=404, content={"detail": "session not found"})
-    example = examples_registry.metadata(examples_registry.find(config.get("pipeline_mode", "")))
-    if capability not in set(example.get("capabilities") or []):
+
+    raw_capabilities = config.get("_session_capabilities")
+    if isinstance(raw_capabilities, list) and all(isinstance(item, str) for item in raw_capabilities):
+        capabilities = set(raw_capabilities)
+    else:
+        example = examples_registry.metadata(examples_registry.find(config.get("pipeline_mode", "")))
+        capabilities = set(example.get("capabilities") or [])
+
+    if capability not in capabilities:
+        logger.warning(
+            "session-capability: unsupported "
+            f"(session_id={cleaned_session_id[:8]}..., "
+            f"pipeline_mode={config.get('pipeline_mode', '')!r}, capability={capability})"
+        )
         return JSONResponse(status_code=403, content={"detail": f"session does not support {capability}"})
     return None
 

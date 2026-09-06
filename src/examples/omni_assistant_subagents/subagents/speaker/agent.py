@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import Any
@@ -54,10 +55,51 @@ _EMPTY_AUDIO_TRANSCRIPT_CORRECTION = (
     "yourself under the existing rules, and do not answer from webcam state or earlier conversation instead."
 )
 _EMPTY_AUDIO_TRANSCRIPT_FALLBACK = "I didn't catch that clearly. Please say it again."
+_OMNI_TRANSIENT_MAX_ATTEMPTS = 2
+_OMNI_TRANSIENT_RETRY_DELAY_SECONDS = 0.75
+_OMNI_TRANSIENT_STATUS_CODES = frozenset({408, 409, 429, 500, 502, 503, 504})
+_OMNI_TRANSIENT_FALLBACK = "I could not reach the voice model right now. Please try again."
 _ATTACHMENT_REQUEST_WORDS = frozenset({"analyse", "analyze", "describe", "identify", "look", "read", "tell", "what"})
 _ATTACHMENT_REFERENCE_WORDS = frozenset(
     {"file", "image", "it", "media", "photo", "picture", "sent", "shared", "this", "upload"}
 )
+
+
+def _chunk_has_raw_content(chunk: ChatCompletionChunk) -> bool:
+    choices = getattr(chunk, "choices", None)
+    if not choices:
+        return False
+    delta = getattr(choices[0], "delta", None)
+    content = getattr(delta, "content", None) if delta is not None else None
+    return bool(isinstance(content, str) and content)
+
+
+def _is_transient_omni_error(exc: Exception) -> bool:
+    """Recognize endpoint capacity/transport failures without masking contract bugs."""
+    messages: list[str] = []
+    current: BaseException | None = exc
+    for _ in range(4):
+        if current is None:
+            break
+        status = getattr(current, "status_code", None)
+        if isinstance(status, int) and status in _OMNI_TRANSIENT_STATUS_CODES:
+            return True
+        messages.append(f"{type(current).__name__}: {current}".casefold())
+        current = current.__cause__ or current.__context__
+    combined = " ".join(messages)
+    return any(
+        marker in combined
+        for marker in (
+            "resourceexhausted",
+            "resource_exhausted",
+            "total request limit",
+            "rate limit",
+            "temporarily unavailable",
+            "apitimeouterror",
+            "apiconnectionerror",
+            "internalservererror",
+        )
+    )
 
 
 class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
@@ -188,17 +230,44 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
         return params
 
     async def get_chat_completions(self, context: LLMContext) -> AsyncIterator[ChatCompletionChunk]:
-        """Layer the action-envelope parser over the reasoning-filtered stream.
+        """Parse the envelope with one bounded retry before any model content."""
+        return self._stream_action_envelope_with_liveness(context)
 
-        Args:
-            context: The LLM context for the completion request.
+    async def _start_omni_completion_stream(self, context: LLMContext) -> AsyncIterator[ChatCompletionChunk]:
+        """Start one endpoint request; isolated as a deterministic test seam."""
+        return await super().get_chat_completions(context)
 
-        Returns:
-            An async iterator whose visible content is only the envelope's
-            spoken ``response`` field.
-        """
-        stream = await super().get_chat_completions(context)
-        return self._stream_action_envelope(stream)
+    async def _stream_action_envelope_with_liveness(self, context: LLMContext) -> AsyncIterator[ChatCompletionChunk]:
+        for attempt in range(1, _OMNI_TRANSIENT_MAX_ATTEMPTS + 1):
+            raw_started = False
+            try:
+                stream = await self._start_omni_completion_stream(context)
+
+                async def tracked_stream(
+                    source_stream: AsyncIterator[ChatCompletionChunk] = stream,
+                ) -> AsyncIterator[ChatCompletionChunk]:
+                    nonlocal raw_started
+                    async for chunk in source_stream:
+                        raw_started = raw_started or _chunk_has_raw_content(chunk)
+                        yield chunk
+
+                async for chunk in self._stream_action_envelope(tracked_stream()):
+                    yield chunk
+                return
+            except Exception as exc:
+                if raw_started or not _is_transient_omni_error(exc):
+                    raise
+                if attempt < _OMNI_TRANSIENT_MAX_ATTEMPTS:
+                    logger.bind(event="omni_transient_retry", attempt=attempt, outcome="retrying").warning(
+                        f"Speaker Omni endpoint failed before output ({type(exc).__name__}); retrying once"
+                    )
+                    await asyncio.sleep(_OMNI_TRANSIENT_RETRY_DELAY_SECONDS)
+                    continue
+                logger.bind(event="omni_terminal_fallback", attempts=attempt, outcome="fallback").error(
+                    f"Speaker Omni endpoint remained unavailable ({type(exc).__name__}); speaking fallback"
+                )
+                await self._push_llm_text(_OMNI_TRANSIENT_FALLBACK)
+                return
 
     async def _stream_action_envelope(
         self, stream: AsyncIterator[ChatCompletionChunk]

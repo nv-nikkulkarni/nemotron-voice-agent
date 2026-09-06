@@ -11,7 +11,7 @@ llm:
 
   nemotron-lightning-talker:
     name: "Nemotron 3.5 Lightning — Fast Talker"
-    model_id: "nvidia/nemotron-3.5-lightning"
+    model_id: "nvidia/nemotron-3.5-lightning-30b-a3b"
     base_url: "https://integrate.api.nvidia.com/v1"
     system_prompt: ""
     max_tokens: 512

@@ -12,7 +12,7 @@ ngcImageRegistryPath: "0491162300748285"
 # The app image is the team's private build (not in the public catalog) — it is
 # built from source and loaded onto the node; tagged distinctly, pulled locally.
 appImage:
-  tag: "2.0.51"
+  tag: "2.0.57"
   pullPolicy: IfNotPresent
 
 # Phoenix trace collector image lives in the private org (inaccessible) — off.

@@ -15,7 +15,7 @@ import re
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import yaml
 from pipecat.frames.frames import LLMTextFrame
@@ -61,6 +61,19 @@ class _BlockingPlanner:
         if query == "first":
             self.first_started.set()
             await asyncio.sleep(10)
+        return {"tool": "generate_random_number", "params": {"min": 5, "max": 5}}
+
+
+class _TransientPlanner:
+    def __init__(self, failures: int) -> None:
+        self.failures = failures
+        self.calls = 0
+
+    async def plan(self, *, query: str, state: dict) -> dict:
+        del query, state
+        self.calls += 1
+        if self.calls <= self.failures:
+            raise TimeoutError
         return {"tool": "generate_random_number", "params": {"min": 5, "max": 5}}
 
 
@@ -238,6 +251,8 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
         talker = catalog["llm"]["nemotron-lightning-talker"]
         thinker = catalog["thinker-llm"]["nemotron-super-reasoning"]
 
+        self.assertEqual(talker["model_id"], "nvidia/nemotron-3.5-lightning-30b-a3b")
+
         local_catalog = yaml.safe_load(Path("src/examples/frontend_backend_agent/services.local.yaml").read_text())[
             "server"
         ]
@@ -391,6 +406,48 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
         self.assertIn("Never call call_backend or cancel_backend again", talker)
         self.assertIn("latest NVIDIA artificial intelligence news", thinker)
         self.assertIn('"tool":"web_search"', thinker)
+        self.assertIn('User: "What is the stock price of?"', talker)
+        self.assertIn("Never add NVIDIA, NVDA, Tesla", talker)
+        self.assertIn('User: "Who is the winner of the World Cup?"', talker)
+        self.assertIn('User: "This is the latest one."', talker)
+        self.assertIn('User: "Okay. Looks like this is not the latest one."', talker)
+        self.assertIn('User: "Can you find it? Looks like this is not the latest one."', talker)
+        self.assertIn("return params_missing for company_name", thinker)
+        self.assertIn('"Who is the winner of the World Cup" -> {"tool":"web_search"', thinker)
+        self.assertIn("Recheck the latest FIFA World Cup winner", thinker)
+        self.assertIn("Search for and verify the latest FIFA World Cup winner", thinker)
+
+    def test_session_capabilities_are_server_owned_and_immutable(self) -> None:
+        config = server._sanitize_session_config(
+            {
+                "pipeline_mode": "omni-assistant-subagents",
+                "_session_capabilities": ["forged"],
+            }
+        )
+
+        self.assertEqual(config["pipeline_mode"], "omni-assistant-subagents")
+        self.assertEqual(config["_session_capabilities"], ["attachments", "webcam"])
+
+    def test_session_capability_validation_uses_the_stored_snapshot(self) -> None:
+        session_id = "capability01"
+        config = server._sanitize_session_config({"pipeline_mode": "omni-assistant-subagents"})
+        with (
+            patch.object(server, "_load_session", return_value=config),
+            patch.object(server.examples_registry, "find", side_effect=AssertionError("registry re-resolved")),
+        ):
+            self.assertIsNone(server._session_capability_error(session_id, "attachments"))
+            response = server._session_capability_error(session_id, "unsupported")
+        self.assertEqual(response.status_code, 403)
+
+    def test_missing_cross_replica_session_returns_not_found(self) -> None:
+        session_id = "missingcfg01"
+        server._session_configs.pop(session_id, None)
+        server._active_session_configs.pop(session_id, None)
+
+        with patch.object(server, "_load_session", return_value={}):
+            response = server._session_capability_error(session_id, "attachments")
+
+        self.assertEqual(response.status_code, 404)
 
 
 class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
@@ -476,6 +533,80 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(calls, 0)
         self.assertEqual(payload["params_needed"], ["height_m"])
+
+    async def test_planner_cannot_invent_stock_subject_absent_from_source_query(self) -> None:
+        calls = 0
+
+        async def should_not_run(arguments):
+            nonlocal calls
+            calls += 1
+            return {"status": "success"}
+
+        tools = _tool_registry(get_stock_price=should_not_run)
+        payload = await dispatcher.dispatch_plan(
+            {"tool": "get_stock_price", "params": {"company_name": "NVIDIA"}},
+            tools,
+            ("get_stock_price",),
+            source_query="What is the stock price of?",
+        )
+
+        self.assertEqual(calls, 0)
+        self.assertEqual(payload["reason"], "params_missing")
+        self.assertEqual(payload["params_needed"], ["company_name"])
+
+    async def test_stock_subject_grounding_accepts_literal_company_or_ticker(self) -> None:
+        calls: list[str] = []
+
+        async def fixed_stock(arguments):
+            calls.append(arguments["company_name"])
+            return {
+                "status": "success",
+                "company": arguments["company_name"],
+                "symbol": arguments["company_name"],
+                "price": 100,
+                "currency": "USD",
+            }
+
+        tools = _tool_registry(get_stock_price=fixed_stock)
+        for company, query in (
+            ("NVIDIA", "Get NVIDIA's stock price."),
+            ("NVDA", "What is NVDA trading at?"),
+            ("A", "What is A trading at?"),
+        ):
+            payload = await dispatcher.dispatch_plan(
+                {"tool": "get_stock_price", "params": {"company_name": company}},
+                tools,
+                ("get_stock_price",),
+                source_query=query,
+            )
+            self.assertEqual(payload["status"], "success")
+
+        self.assertEqual(calls, ["NVIDIA", "NVDA", "A"])
+
+    async def test_ungrounded_stock_member_rejects_multi_tool_plan_before_execution(self) -> None:
+        calls = 0
+
+        async def should_not_run(arguments):
+            nonlocal calls
+            calls += 1
+            return {"status": "success"}
+
+        tools = _tool_registry(get_weather=should_not_run, get_stock_price=should_not_run)
+        payload = await dispatcher.dispatch_plan(
+            {
+                "tool_calls": [
+                    {"tool": "get_weather", "params": {"city": "Pune"}},
+                    {"tool": "get_stock_price", "params": {"company_name": "NVIDIA"}},
+                ]
+            },
+            tools,
+            ("get_weather", "get_stock_price"),
+            source_query="Check Pune weather and the stock price of?",
+        )
+
+        self.assertEqual(calls, 0)
+        self.assertEqual(payload["reason"], "params_missing")
+        self.assertEqual(payload["params_needed"], ["company_name"])
 
     def test_more_than_three_calls_is_rejected(self) -> None:
         plan = {
@@ -565,6 +696,48 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(second["status"], "success")
         self.assertIn("5", second["response_text"])
+
+    async def test_transient_planner_failure_retries_once_and_succeeds(self) -> None:
+        planner = _TransientPlanner(failures=1)
+
+        async def fixed_random(arguments):
+            return {"status": "success", "result": 5, "min": 5, "max": 5}
+
+        backend = GenericThinkerBackend(
+            planner=planner,
+            tools=_tool_registry(generate_random_number=fixed_random),
+            enabled_tools=("generate_random_number",),
+            overall_timeout_seconds=3,
+            planner_timeout_seconds=1,
+        )
+        with patch("examples.frontend_backend_agent.generic.backend._PLANNER_RETRY_BACKOFF_SECONDS", 0):
+            payload = await backend.call("Generate a random number.")
+
+        self.assertEqual(planner.calls, 2)
+        self.assertEqual(payload["status"], "success")
+
+    async def test_exhausted_planner_retry_returns_safe_timeout(self) -> None:
+        planner = _TransientPlanner(failures=2)
+        service_calls = 0
+
+        async def should_not_run(arguments):
+            nonlocal service_calls
+            service_calls += 1
+            return {"status": "success"}
+
+        backend = GenericThinkerBackend(
+            planner=planner,
+            tools=_tool_registry(generate_random_number=should_not_run),
+            enabled_tools=("generate_random_number",),
+            overall_timeout_seconds=3,
+            planner_timeout_seconds=1,
+        )
+        with patch("examples.frontend_backend_agent.generic.backend._PLANNER_RETRY_BACKOFF_SECONDS", 0):
+            payload = await backend.call("Generate a random number.")
+
+        self.assertEqual(planner.calls, 2)
+        self.assertEqual(service_calls, 0)
+        self.assertEqual(payload["reason"], "timeout")
 
     async def test_generic_filler_is_runtime_owned_and_model_filler_is_ignored(self) -> None:
         handler = build_handlers(
@@ -661,6 +834,45 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(weather["error_code"], "invalid_response")
         self.assertEqual(stock["status"], "unavailable")
         self.assertEqual(stock["error_code"], "invalid_response")
+
+    async def test_stock_retries_one_transient_503_then_returns_grounded_quote(self) -> None:
+        class FakeResponse:
+            def __init__(self, status_code: int, payload: dict) -> None:
+                self.status_code = status_code
+                self.payload = payload
+
+            def json(self):
+                return self.payload
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.responses = [
+                    FakeResponse(503, {}),
+                    FakeResponse(200, {"c": 123.45, "pc": 120.0, "h": 124.0, "l": 119.0}),
+                ]
+                self.calls = 0
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> None:
+                return None
+
+            async def get(self, *args, **kwargs):
+                self.calls += 1
+                return self.responses.pop(0)
+
+        client = FakeClient()
+        with (
+            patch.dict(os.environ, {"FINNHUB_API_KEY": "configured"}),
+            patch.object(services.httpx, "AsyncClient", return_value=client),
+            patch.object(services.asyncio, "sleep", new_callable=AsyncMock) as sleep,
+        ):
+            stock = await services.get_stock_price({"company_name": "NVIDIA"})
+
+        self.assertEqual((stock["status"], stock["symbol"], stock["price"]), ("success", "NVDA", 123.45))
+        self.assertEqual(client.calls, 2)
+        sleep.assert_awaited_once()
 
     async def test_grounded_formatter_preserves_exact_stock_values(self) -> None:
         payload = format_tool_result(

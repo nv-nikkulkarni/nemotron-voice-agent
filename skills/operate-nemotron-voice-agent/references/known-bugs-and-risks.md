@@ -19,7 +19,7 @@ before reporting live status.
 |---|---|---|
 | Retained production was not fully SQA-green | chart `0.1.103` had three P0 defects | qualify a newer exact artifact through every gate |
 | Isolated `-2` staging is rejected | recorded deployment remained on `0.1.115` | deploy only a fully Viking-qualified candidate and rerun staging |
-| Latest checked-in source is not deployed | `0.1.122`/`2.0.51` was built but unqualified | Viking full qualification, then staging |
+| Latest checked-in source is not deployed | `0.1.123`/`2.0.51` updates both TTS NIMs but is unbuilt and unqualified | package the chart, then run Viking full qualification before staging |
 | One matrix pass can be overstated | `0.1.120` passed repeated-tool and automated pronunciation only | complete comprehensive, corner, barge-in, failure, safety, webcam, capture, reconnect, and listening |
 | True Astra production does not exist | retained live UI used Astra `stg` infrastructure | create a separate Astra `prd` deployment with required governance |
 

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -23,6 +24,11 @@ from examples.frontend_backend_agent.generic.result_formatters import (
 from examples.frontend_backend_agent.src.tools import ToolContext, ToolSpec, validate_arguments
 
 MAX_PARALLEL_TOOL_CALLS = 3
+_WORD_RE = re.compile(r"[a-z0-9]+")
+_CORPORATE_DECORATION_WORDS = frozenset(
+    {"company", "corp", "corporation", "inc", "incorporated", "limited", "ltd", "plc", "the"}
+)
+_SOURCE_GROUNDED_PARAMS: dict[str, tuple[str, ...]] = {"get_stock_price": ("company_name",)}
 
 
 @dataclass(slots=True, frozen=True)
@@ -35,6 +41,23 @@ class ValidatedToolCall:
 
 class PlanValidationError(ValueError):
     """A rejected model plan; no tool may execute after this exception."""
+
+
+def _distinctive_words(value: object) -> set[str]:
+    """Return literal subject words without optional corporate decorations."""
+    return set(_WORD_RE.findall(str(value or "").casefold())) - _CORPORATE_DECORATION_WORDS
+
+
+def _source_grounding_missing(call: ValidatedToolCall, source_query: str) -> list[str]:
+    """Reject planner-authored subjects that are absent from the delegated request."""
+    required = _SOURCE_GROUNDED_PARAMS.get(call.name, ())
+    query_words = set(_WORD_RE.findall(source_query.casefold()))
+    missing: list[str] = []
+    for name in required:
+        argument_words = _distinctive_words(call.arguments.get(name))
+        if not argument_words or query_words.isdisjoint(argument_words):
+            missing.append(name)
+    return missing
 
 
 def _raw_calls(plan: dict[str, Any]) -> list[dict[str, Any]]:
@@ -138,6 +161,7 @@ async def dispatch_plan(
     tools: Mapping[str, ToolSpec],
     enabled_tools: tuple[str, ...],
     *,
+    source_query: str | None = None,
     tool_context: ToolContext | None = None,
     on_tool_started: Callable[[str], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
@@ -160,6 +184,14 @@ async def dispatch_plan(
     # a multi-tool plan prevents all other members from running.
     for call in calls:
         spec = tools[call.name]
+        if source_query is not None:
+            ungrounded = _source_grounding_missing(call, source_query)
+            if ungrounded:
+                logger.warning(
+                    "generic domain rejected planner-authored subject absent from source query: "
+                    f"tool={call.name} params={','.join(ungrounded)}"
+                )
+                return missing_parameters(spec, ungrounded)
         try:
             missing = validate_arguments(spec, call.arguments)
         except (TypeError, ValueError):

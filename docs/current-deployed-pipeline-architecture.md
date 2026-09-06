@@ -216,8 +216,12 @@ requires a fresh immutable candidate and a clean rerun of the blocking matrix.
 The active isolated staging environment remains on rejected candidate
 `0.1.115`. Candidate `0.1.116` ran only on Viking and was also rejected.
 Chart `0.1.120` with app/UI `2.0.49` passed its strict repeated-tool matrix and
-automated exact-pronunciation probe. Chart `0.1.122` with app/UI `2.0.51` is
-built and pushed, but it is not deployed or qualified. The active isolated
+automated exact-pronunciation probe. Chart `0.1.122` with app/UI `2.0.51` was
+built and pushed, but it was not deployed or qualified. Chart `0.1.123` keeps
+app/UI `2.0.51` and updates the two TTS NIMs. It is locally packaged,
+secret-scanned, and published to the NGC Helm chart registry with
+`UPLOAD_COMPLETE`. It has not been deployed or qualified on Viking.
+The active isolated
 `-2` environment remains on rejected candidate `0.1.115`, and no candidate has
 staging or production approval.
 
@@ -555,6 +559,13 @@ When `/api/ws?session_id=...` lands elsewhere, the target pod checks its local d
 
 Attachment and webcam endpoints resolve the session config and inspect the selected example’s declared capabilities. A Generic session receives `403` for Omni-only media operations. Unknown sessions receive `404`. Upload bodies are bounded at 50 MiB; webcam frames have an additional 5,000,000-byte bound. Uploaded images must pass extension and JPEG/PNG magic-byte checks.
 
+Sanitization also canonicalizes `pipeline_mode` and persists a server-owned
+`_session_capabilities` snapshot with the Redis session config. Capability
+endpoints prefer this snapshot, which prevents another replica from widening
+access by reinterpreting client fields. Older stored sessions fall back to
+registry resolution. An empty or missing cross-replica config returns `404`
+instead of the misleading capability `403`.
+
 ---
 
 ## 8. Example and service selection
@@ -702,6 +713,10 @@ paths:
 
 1. The public user-speaking callback calls
    `DailyMediaManager.userStartedSpeaking()` and clears buffered browser audio.
+   `TurnAwareDailyMediaManager` sends Pulse-code modulation (PCM) through one
+   stable `bot-turn-N` ID per bot turn, then advances the ID after interruption.
+   This preserves late-frame rejection without blacklisting every later response
+   through the transport's `"default"` ID.
 2. The raw protobuf interruption frame remains a compatibility no-op because
    the generated client schema does not expose that field.
 3. A transparent server `BargeInTracker` records whether the user started while
@@ -904,6 +919,13 @@ Capacity must therefore be established by SQA/concurrency tests, not inferred fr
 ### 11.4 Rollout behavior
 
 With the router disabled, the app `Deployment` uses `strategy: Recreate` because WebSocket sessions are stateful per process. A same-version in-place chart rollout can interrupt active calls. The safer managed pattern is a new immutable NVCF function version, qualify it, then cut over/remove the old deployment.
+
+Do not leave two function versions serving one stateful Astra endpoint after
+cutover. Each version owns a separate Redis and SeaweedFS deployment, so
+`/api/session-config` and later attachment, webcam, or capture requests can
+reach different state stores. Keep the old version available while the new
+version starts and warms, perform a controlled cutover, and retire the old
+version before stateful qualification.
 
 ---
 
@@ -1294,6 +1316,8 @@ Production chart versions `0.1.91`–`0.1.103` added webcam and capture teardown
 | `/api/ws` returns `200` instead of `101` or browser gets `1006` | WS sent to invocation URL, missing function-id, or stale NVCF cookie | separate streaming-gateway location; strip cookies both ways | inspect rendered nginx config/env names and gateway route |
 | App pods stuck before Python | Redis or SeaweedFS unavailable | hard startup gates | inspect those deployments/services first |
 | Session starts with wrong/default example | config POST and WS hit different pods without Redis/config expired | Redis `sb:cfg` | verify Redis connected, key TTL, session ID propagation |
+| Bot speaks, then later browser turns remain silent after barge-in | interrupted `"default"` player track remains blacklisted | turn-scoped `bot-turn-N` playback IDs | rebuild the UI and rerun real-audio Phase D with acoustic output checks |
+| One Omni session alternates attachment or webcam `200` and `403` | multiple active function versions route requests into isolated Redis stores | server-owned capability snapshot and truthful missing-session `404` | verify active versions; after an authorized cutover, retire the stale version before stateful SQA |
 | Attachment upload succeeds but voice worker never notices | Redis stream/listener failure | XREAD from `0`, timeout/error retry | inspect Redis health, listener warnings, `sb:att:<sid>` |
 | Webcam says camera off despite `200` uploads | control-state/listener/session mismatch or stale voice worker state | fresh-frame upload can infer camera enabled; shared Redis stream | verify same session ID, webcam-state RTVI event, stream entries, current board state |
 | Media bytes cause Redis eviction | 256 MiB `allkeys-lru`, large/concurrent uploads | stream length + TTL | reduce payload/ring/concurrency or increase Redis memory; watch config/capture eviction risk |
@@ -1657,7 +1681,49 @@ isolated `nemotron-voice-agent-2` NVCF function and
 `0.1.115`. The isolated rollout is waiting for Fusion reauthentication. Do not
 update that environment until the candidate passes the required Viking gates.
 
-### 19.3 True Astra production promotion
+### 19.3 TTS NIM Upgrade Candidate 0.1.123
+
+Chart source `0.1.123` keeps app/UI `2.0.51` and changes only the TTS deployment inputs:
+
+| Service | Candidate Image | Profile |
+|---|---|---|
+| Magpie TTS Multilingual | `nvcr.io/nim/nvidia/magpie-tts-multilingual:1.10.0` | `batch_size=8` |
+| Chatterbox TTS Multilingual | `nvcr.io/nim/nvidia/chatterbox-tts-multilingual:1.1.0` | `batch_size=8` |
+
+Magpie now resolves directly from the public NIM repository instead of assuming the new
+tag exists in the organization mirror. The existing NGC image pull secret remains the
+authentication boundary for both public repositories.
+
+The locally packaged candidate record is:
+
+| Artifact or Gate | Identity or Status |
+|---|---|
+| Package source | `eb59ac2b28549db90361bc99c8b14a5c19c70249` |
+| Reused app image | `nvcr.io/0491162300748285/nemotron-voice-agent:2.0.51` (`sha256:fe57f3e9a44b66cc19ee8c3ae48e3bf3542a636461cd152a54ecf69df6e397b5`) |
+| Reused UI image | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.51-541af46e` (`sha256:b370d8e50c41a4eb2197c2c95a51a13bdc824cce3f63706451d57d662cd651a8`) |
+| Local chart package | `nemotron-voice-agent-0.1.123.tgz` (`sha256:0b362cf0a0311a1367fab47ebccc6ce72e5de58cd20670f9fe24ea4a25205e90`) |
+| Package checks | Locally packaged and secret-scanned |
+| NGC Helm chart | `0491162300748285/nemotron-voice-agent:0.1.123`, pushed with `ngc registry chart push` |
+| NGC upload status | `UPLOAD_COMPLETE`; `createdDate=2026-08-30T19:15:58.797Z`; 1 file; 33,435 bytes |
+| Published-copy verification | `ngc registry chart pull` returned an archive matching `sha256:0b362cf0a0311a1367fab47ebccc6ce72e5de58cd20670f9fe24ea4a25205e90` exactly |
+| Initial registry authentication | The active key was initially scoped only to `nv-cloud-functions`; registry-capable authentication resolved this separate access issue |
+| Redundant generic resource | The old private resource was absent, then mistakenly recreated and uploaded by following an incorrect historical resource path; not used by NVCF; retained pending explicit deletion authorization |
+| Viking | Not deployed and not qualified |
+
+This candidate does not prove image access, model readiness, voice compatibility, custom
+pronunciation behavior, streaming latency, or concurrency. Qualify those boundaries in
+Viking before staging. The reused app and UI digests are historical `0.1.122` artifacts;
+they were not rebuilt from the `0.1.123` package source. The initial key-scope issue
+blocked chart-registry access but was separate from the artifact-type error. After
+registry-capable authentication, `ngc registry chart push` published the authoritative
+Helm chart, and `ngc registry chart pull` verified its checksum.
+
+The generic NGC resource was mistakenly recreated and uploaded because an incorrect
+historical resource path was followed. It is redundant, is not consumed by NVCF
+deployment, and remains retained until deletion is explicitly authorized. Neither chart
+publication nor checksum verification qualifies the chart on Viking.
+
+### 19.4 True Astra production promotion
 
 Required boundary:
 

@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from loguru import logger
+from openai import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
 
 from examples.frontend_backend_agent.generic.dispatcher import PlanValidationError, dispatch_plan
 from examples.frontend_backend_agent.generic.planner import GenericPlanner
@@ -18,6 +19,10 @@ from examples.frontend_backend_agent.generic.result_formatters import planner_fa
 from examples.frontend_backend_agent.generic.state import GenericThinkerSessionState
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent
 from examples.frontend_backend_agent.src.tools import ToolSpec
+
+_PLANNER_MAX_ATTEMPTS = 2
+_PLANNER_RETRY_BACKOFF_SECONDS = 0.2
+_RETRIABLE_PLANNER_EXCEPTIONS = (TimeoutError, APIConnectionError, APITimeoutError, InternalServerError, RateLimitError)
 
 
 class GenericThinkerBackend:
@@ -106,22 +111,41 @@ class GenericThinkerBackend:
         """Retain compatibility with older shared-handler test doubles."""
         return self.cancel_pending_work()
 
-    async def _run_call(self, call_id: str, query: str) -> dict[str, Any]:
-        try:
-            async with asyncio.timeout(self._overall_timeout_seconds):
-                plan = await asyncio.wait_for(
+    async def _plan_with_retry(self, call_id: str, query: str) -> dict[str, Any]:
+        """Retry one transient planner failure inside the existing overall deadline."""
+        for attempt in range(1, _PLANNER_MAX_ATTEMPTS + 1):
+            try:
+                return await asyncio.wait_for(
                     self._planner.plan(query=query, state={"active_call_id": call_id}),
                     timeout=self._planner_timeout_seconds,
                 )
+            except asyncio.CancelledError:
+                raise
+            except _RETRIABLE_PLANNER_EXCEPTIONS as exc:
+                if attempt >= _PLANNER_MAX_ATTEMPTS:
+                    raise
+                logger.warning(
+                    f"Generic Thinker planner transient failure: attempt={attempt}/{_PLANNER_MAX_ATTEMPTS} "
+                    f"error={type(exc).__name__}; retrying once"
+                )
+                await asyncio.sleep(_PLANNER_RETRY_BACKOFF_SECONDS)
+        raise AssertionError("planner retry loop exited unexpectedly")
+
+    async def _run_call(self, call_id: str, query: str) -> dict[str, Any]:
+        try:
+            async with asyncio.timeout(self._overall_timeout_seconds):
+                plan = await self._plan_with_retry(call_id, query)
                 payload = await dispatch_plan(
                     plan,
                     self._tools,
                     self._enabled_tools,
+                    source_query=query,
                     on_tool_started=self._on_tool_started,
                 )
         except asyncio.CancelledError:
             raise
         except TimeoutError:
+            logger.warning("Generic Thinker exhausted its bounded planner/overall deadline")
             payload = timeout_failure()
         except PlanValidationError:
             payload = planner_failure()

@@ -63,6 +63,7 @@ Each turn should record:
 | `functional.mjs` | landing, selectors, settings, lifecycle, upload validation, visual checks |
 | `converse.mjs` | spoken multi-turn Generic and Omni conversation |
 | `comprehensive.mjs` | Generic tools, Omni voice/media/webcam, UI, eight mixed sessions |
+| `captured_session_regressions.mjs` | real-audio replays of private-narration and stale-dynamic-answer failures |
 | `repeated_expect_tool_matrix.mjs` | repeated live-data calls, grounding, audio, isolation |
 | `prod_remediation_corner_cases.mjs` | failure, cancellation, composite work, safety, grounding |
 | `robustness.mjs` | barge-in, End, forced WebSocket close, reconnect |
@@ -85,6 +86,21 @@ The comprehensive suite phases are:
 - B: Omni voice, attachment, and webcam.
 - C: UI settings, lifecycle, prompt submission, and capture status.
 - D: eight simultaneous mixed sessions.
+
+The `captured-sessions` launcher runs `captured_session_regressions.mjs` against 2 source
+sessions:
+
+- `52f301234e8c`: an incomplete stock-price request must produce audible clarification
+  without private narration or serialized internal calls.
+- `499162cb3960`: the latest-answer challenge sequence must preserve application-ASR
+  meaning, produce audio on every turn, invoke web or search for all 3 challenge turns,
+  avoid presenting 2022 as the latest result, and avoid contradicting a newer grounded
+  year on the final verification.
+
+The suite exits successfully only when both scenarios pass with zero unexpected browser
+console errors and WebSocket closures. It uses deterministic `espeak-ng` query audio and
+writes an ignored JSON report under `tests/sqa/artifacts/captured-session-regressions/`.
+This focused regression suite does not replace any blocking release gate.
 
 ## Evidence Adjudication
 
@@ -340,6 +356,16 @@ artifacts were built and pushed. At the last recorded status, it had not been de
 Viking or qualified and the `-2` environment still served rejected `0.1.115`.
 
 Do not infer a later deployment from checked-in version numbers. Query live state.
+
+### Candidate 0.1.123
+
+This source-only chart candidate updates Magpie TTS Multilingual from `1.8.0` to `1.10.0`
+and Chatterbox TTS Multilingual from `1.0.0` to `1.1.0`. Both services select the public
+`batch_size=8` profile. App/UI remains `2.0.51`.
+
+The candidate is not packaged, deployed, or qualified. Run image-pull, readiness,
+pronunciation, voice-catalog, streaming, latency, and concurrency gates in Viking before
+creating an NVCF/Astra staging version.
 
 ## Pronunciation Qualification
 

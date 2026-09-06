@@ -5,7 +5,8 @@ import { useMemo, useState, type ComponentProps } from "react";
 import { PipecatClient } from "@pipecat-ai/client-js";
 import { PipecatClientProvider, PipecatClientAudio } from "@pipecat-ai/client-react";
 import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
-import { DailyMediaManager, WebSocketTransport } from "@pipecat-ai/websocket-transport";
+import { WebSocketTransport } from "@pipecat-ai/websocket-transport";
+import { TurnAwareDailyMediaManager } from "./demo/turnAwareMediaManager";
 import { SafeProtobufFrameSerializer } from "./demo/safeSerializer";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient, useDeployment, useIceServers } from "./api";
@@ -44,7 +45,7 @@ function AppInner() {
   const client = useMemo(() => {
     if (selectedTransport === "websocket") {
       if (!deploymentLoaded) return null;
-      const mediaManager = new DailyMediaManager(
+      const mediaManager = new TurnAwareDailyMediaManager(
         true,
         true,
         undefined,
