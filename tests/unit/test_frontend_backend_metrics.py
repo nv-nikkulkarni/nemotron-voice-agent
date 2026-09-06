@@ -49,6 +49,44 @@ class _StreamingLLM:
         return self.stream
 
 
+class _Adapter:
+    def get_llm_invocation_params(self, context, *, system_instruction, convert_developer_to_user):
+        return {
+            "context": context,
+            "system_instruction": system_instruction,
+            "convert_developer_to_user": convert_developer_to_user,
+        }
+
+
+class _Completions:
+    def __init__(self, stream: _TestStream) -> None:
+        self.stream = stream
+        self.params: dict | None = None
+
+    async def create(self, **params):
+        self.params = params
+        return self.stream
+
+
+class _OutOfBandLLM:
+    def __init__(self, stream: _TestStream) -> None:
+        self._settings = SimpleNamespace(system_instruction="hidden system")
+        self.completions = _Completions(stream)
+        self._client = SimpleNamespace(chat=SimpleNamespace(completions=self.completions))
+        self.supports_developer_role = True
+        self.pipeline_stream_called = False
+
+    def get_llm_adapter(self):
+        return _Adapter()
+
+    def build_chat_completion_params(self, invocation_params):
+        return {"model": "thinker", "max_completion_tokens": 999, "invocation": invocation_params}
+
+    async def get_chat_completions(self, context):
+        self.pipeline_stream_called = True
+        raise AssertionError("out-of-band Thinker inference must bypass pipeline stream processing")
+
+
 def _chunk(*, content: str | None = None, reasoning_content: str | None = None):
     delta = SimpleNamespace(content=content, reasoning_content=reasoning_content, reasoning=None, tool_calls=None)
     return SimpleNamespace(choices=[SimpleNamespace(delta=delta)])
@@ -141,6 +179,20 @@ class FrontendBackendStageMetricsTests(unittest.IsolatedAsyncioTestCase):
             ["backend_thinker_llm", "backend_thinker_llm"],
         )
         self.assertEqual([metric.metric for metric in metrics], ["ttft", "processing"])
+
+    async def test_out_of_band_stream_bypasses_pipeline_side_effects_and_bounds_tokens(self) -> None:
+        stream = _TestStream([_chunk(content='{"tool":"web_search"}')])
+        llm = _OutOfBandLLM(stream)
+        context = LLMContext([{"role": "user", "content": "Plan this request."}])
+
+        result = await run_streamed_inference(llm, context, None, max_tokens=256)
+
+        self.assertEqual(result, '{"tool":"web_search"}')
+        self.assertFalse(llm.pipeline_stream_called)
+        self.assertTrue(stream.closed)
+        self.assertIsNotNone(llm.completions.params)
+        self.assertTrue(llm.completions.params["stream"])
+        self.assertEqual(llm.completions.params["max_completion_tokens"], 256)
 
 
 def test_scaling_benchmark_exports_all_recovered_stage_columns() -> None:

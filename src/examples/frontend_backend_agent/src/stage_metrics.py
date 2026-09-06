@@ -283,9 +283,11 @@ async def run_streamed_inference(
     llm,
     context: LLMContext,
     span: StageSpan | None,
+    *,
+    max_tokens: int | None = None,
 ) -> str:
     """Collect an out-of-pipeline streamed response while measuring true TTFT."""
-    stream = await llm.get_chat_completions(context)
+    stream = await _open_out_of_band_stream(llm, context, max_tokens=max_tokens)
     parts: list[str] = []
     outcome: MetricOutcome = "success"
     try:
@@ -309,6 +311,28 @@ async def run_streamed_inference(
             await span.finish(outcome)
         await _close_stream(stream)
     return "".join(parts)
+
+
+async def _open_out_of_band_stream(llm, context: LLMContext, *, max_tokens: int | None):
+    """Open a stream without invoking pipeline-only reasoning-frame side effects."""
+    adapter_getter = getattr(llm, "get_llm_adapter", None)
+    settings = getattr(llm, "_settings", None)
+    client = getattr(llm, "_client", None)
+    if adapter_getter is None or settings is None or client is None:
+        return await llm.get_chat_completions(context)
+
+    adapter = adapter_getter()
+    invocation_params = adapter.get_llm_invocation_params(
+        context,
+        system_instruction=settings.system_instruction,
+        convert_developer_to_user=not llm.supports_developer_role,
+    )
+    params = llm.build_chat_completion_params(invocation_params)
+    params["stream"] = True
+    if max_tokens is not None:
+        token_key = "max_completion_tokens" if "max_completion_tokens" in params else "max_tokens"
+        params[token_key] = max_tokens
+    return await client.chat.completions.create(**params)
 
 
 def _chunk_has_semantic_token(chunk: ChatCompletionChunk) -> bool:
