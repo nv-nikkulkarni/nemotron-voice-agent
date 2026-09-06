@@ -38,10 +38,17 @@ TALKER_CASES = (
     Case("forecast", "Will it rain in Pune tomorrow?", ("call_backend",)),
     Case("stock", "What is NVIDIA trading at right now?", ("call_backend",)),
     Case("latest_web", "What is the latest verified NVIDIA news?", ("call_backend",)),
+    Case(
+        "latest_web_spoken",
+        "Search the web for the latest news about artificial intelligence.",
+        ("call_backend",),
+    ),
     Case("explicit_lookup", "Check the latest NVIDIA AI announcement using current sources.", ("call_backend",)),
     Case("stale_challenge", "That answer is old. Check the current one.", ("call_backend",)),
     Case("bmi", "I weigh 70 kilograms and am 1.75 metres tall. What is my BMI?", ("call_backend",)),
+    Case("bmi_spoken", "What's my BMI if I'm 70 kilos and 1.75 meters?", ("call_backend",)),
     Case("random", "Give me one random integer from 20 through 40.", ("call_backend",)),
+    Case("random_spoken", "Give me a random number between one and one hundred.", ("call_backend",)),
     Case("stable_direct", "Briefly explain photosynthesis.", ("direct",)),
     Case("cancel", "Never mind, stop that request.", ("cancel_backend",)),
 )
