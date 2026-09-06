@@ -66,7 +66,7 @@ Evidence:
 | P2 | H100 | Clear as “H one hundred” in Magpie | Model dropped the H and one | `EY1 CH W AH1 N HH AH1 N D R AH0 D` | `eɪtʃ wʌn ˈhʌndrəd` | Prefer text normalization to “H one hundred”; rerun Chatterbox |
 | P2 | ARPAbet | Model split it into unrelated `ARPA` and `BET` answers | Clear as “ARPA bet” | `AA1 R P AH0 B EH2 T` | `ˈɑrpəˌbɛt` | Clean Magpie rerun required; Chatterbox is acceptable |
 | P2 | 24/7 | Clear after normalized phrase | Clear after normalized phrase | `T W EH1 N T IY0 F AO1 R S EH1 V AH0 N` | `ˌtwɛnti ˈfɔr ˈsɛvən` | Normalize source text to “twenty four seven”; do not rely on a slash dictionary key |
-| P2 | Dakar | Viking 0.1.110 matrix: correct displayed Magpie text, but independent ASR heard “the car” on one turn and “Dakar” on the repeat | Not tested in this matrix | `D AH0 K AA1 R` | `dəˈkɑr` | Listen-first candidate from one inconsistent ASR observation; run the exact-word probe before any dictionary decision |
+| P2 | Dakar | Viking 0.1.135 matrix: 79/80 strict audio-grounding because one repeat was heard as “dar”; controlled Magpie A/B heard “Dar” with `dəˈkɑɹ` but “Dakar” with `dɑˈkɑɹ` in the complete filler-plus-result turn | Not tested in this matrix | `D AA0 K AA1 R` | `dɑˈkɑr` | Automated A/B correction for 0.1.136; human listening remains required before production promotion |
 
 ## Original Minimal IPA Candidate Set
 

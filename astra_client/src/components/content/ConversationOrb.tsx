@@ -95,7 +95,14 @@ export function ConversationOrb() {
       if (message?.type === "user-bot-latency") setLatencyMs((message.latency ?? 0) * 1000);
       else if (message?.type === "latency-breakdown") setBreakdown(parseBreakdown(message.events || []));
       // `tool-call` : the LLM chose a tool and is about to call it (show the box).
-      else if (message?.type === "tool-call") setActiveTool(message.tool ?? null);
+      // Also mirror the existing RTVI event as a browser event for automation. A
+      // tool can start and finish inside one React render batch, so the visible
+      // badge alone is not a reliable event log for a Playwright assertion.
+      else if (message?.type === "tool-call") {
+        const tool = message.tool ?? null;
+        setActiveTool(tool);
+        if (tool) window.dispatchEvent(new CustomEvent("nva:tool-call", { detail: { tool } }));
+      }
       else if (message?.type === "tool-call-done") setActiveTool(null);
     }, []),
   );

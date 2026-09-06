@@ -31,6 +31,7 @@ class Case:
     name: str
     user: str
     expected: tuple[str, ...]
+    history: tuple[dict[str, Any], ...] = ()
 
 
 TALKER_CASES = (
@@ -38,10 +39,37 @@ TALKER_CASES = (
     Case("forecast", "Will it rain in Pune tomorrow?", ("call_backend",)),
     Case("stock", "What is NVIDIA trading at right now?", ("call_backend",)),
     Case("latest_web", "What is the latest verified NVIDIA news?", ("call_backend",)),
+    Case(
+        "latest_web_spoken",
+        "Search the web for the latest news about artificial intelligence.",
+        ("call_backend",),
+    ),
     Case("explicit_lookup", "Check the latest NVIDIA AI announcement using current sources.", ("call_backend",)),
     Case("stale_challenge", "That answer is old. Check the current one.", ("call_backend",)),
     Case("bmi", "I weigh 70 kilograms and am 1.75 metres tall. What is my BMI?", ("call_backend",)),
+    Case("bmi_spoken", "What's my BMI if I'm 70 kilos and 1.75 meters?", ("call_backend",)),
     Case("random", "Give me one random integer from 20 through 40.", ("call_backend",)),
+    Case("random_spoken", "Give me a random number between one and one hundred.", ("call_backend",)),
+    Case(
+        "repeat_weather_after_progress_history",
+        "Repeat that weather.",
+        ("call_backend",),
+        history=(
+            {"role": "user", "content": "How about Nairobi?"},
+            {"role": "assistant", "content": "Let me check Nairobi's current weather."},
+            {
+                "role": "developer",
+                "content": json.dumps(
+                    {
+                        "type": "async_tool",
+                        "status": "finished",
+                        "result": {"response_text": "In Nairobi, it is 17.4 degrees C."},
+                    }
+                ),
+            },
+            {"role": "assistant", "content": "In Nairobi, it is 17.4 degrees C with cloudy skies."},
+        ),
+    ),
     Case("stable_direct", "Briefly explain photosynthesis.", ("direct",)),
     Case("cancel", "Never mind, stop that request.", ("cancel_backend",)),
 )
@@ -61,6 +89,13 @@ THINKER_CASES = (
 def prompts() -> dict[str, str]:
     data = yaml.safe_load(PROMPTS_PATH.read_text(encoding="utf-8"))
     return {key: value["content"] for key, value in data.items()}
+
+
+def prompt_few_shots(key: str) -> tuple[dict[str, Any], ...]:
+    data = yaml.safe_load(PROMPTS_PATH.read_text(encoding="utf-8"))
+    entry = data.get(key, {})
+    raw_messages = entry.get("few_shots", ()) if isinstance(entry, dict) else ()
+    return tuple(dict(message) for message in raw_messages)
 
 
 def tool_names(message: dict[str, Any]) -> tuple[str, ...]:
@@ -136,7 +171,11 @@ async def post(client: httpx.AsyncClient, url: str, body: dict[str, Any]) -> dic
     return response.json()["choices"][0]["message"]
 
 
-async def run_talker(args: argparse.Namespace, system_prompt: str) -> list[tuple[str, bool, str]]:
+async def run_talker(
+    args: argparse.Namespace,
+    system_prompt: str,
+    few_shots: tuple[dict[str, Any], ...] = (),
+) -> list[tuple[str, bool, str]]:
     semaphore = asyncio.Semaphore(args.concurrency)
     url = f"{args.lightning_url.rstrip('/')}/v1/chat/completions"
 
@@ -144,7 +183,12 @@ async def run_talker(args: argparse.Namespace, system_prompt: str) -> list[tuple
         async with semaphore, httpx.AsyncClient(timeout=args.timeout) as client:
             body = {
                 "model": args.lightning_model,
-                "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": case.user}],
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    *few_shots,
+                    *case.history,
+                    {"role": "user", "content": case.user},
+                ],
                 "tools": [CALL_BACKEND_TOOL, CANCEL_BACKEND_TOOL],
                 "tool_choice": "auto",
                 "max_tokens": 512,
@@ -231,7 +275,7 @@ async def main_async(args: argparse.Namespace) -> int:
     prompt_map = prompts()
     results: list[tuple[str, bool, str]] = []
     if args.component in {"talker", "all"}:
-        results.extend(await run_talker(args, prompt_map["generic_talker"]))
+        results.extend(await run_talker(args, prompt_map["generic_talker"], prompt_few_shots("generic_talker")))
     if args.component in {"thinker", "all"}:
         results.extend(await run_thinker(args, prompt_map["generic_thinker"]))
     return 0 if report(results) else 1

@@ -12,8 +12,8 @@ CHART = ROOT / "nvcf_helm" / "Chart.yaml"
 VALUES = ROOT / "nvcf_helm" / "values.yaml"
 VIKING_VALUES = ROOT / "nvcf_helm" / "values-viking.yaml"
 
-EXPECTED_CHART_VERSION = "0.1.134"
-EXPECTED_APP_VERSION = "2.0.62"
+EXPECTED_CHART_VERSION = "0.1.136"
+EXPECTED_APP_VERSION = "2.0.64"
 EXPECTED_MAGPIE_IMAGE = "nvcr.io/nim/nvidia/magpie-tts-multilingual:1.10.0"
 EXPECTED_CHATTERBOX_IMAGE = "nvcr.io/nim/nvidia/chatterbox-tts-multilingual:1.1.0"
 

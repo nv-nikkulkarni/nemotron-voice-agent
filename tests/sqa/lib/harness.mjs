@@ -285,23 +285,31 @@ export async function startConversation(page, { timeoutMs = 30000 } = {}) {
   return { connected: false, connectMs: null };
 }
 
-// Latch every tool name the transient .conv-tool box shows. That box is rendered
-// only between the pipeline's `tool-call` and `tool-call-done` events, so a
-// MutationObserver is the reliable way to see short-lived tool calls. Install once
-// the conversation is live; mark before a turn and read what fired since.
+// Latch every tool name from the UI's mirrored RTVI `tool-call` event. Keep the
+// transient .conv-tool box observer as a compatibility fallback for older UIs.
+// The event is authoritative because a fast tool can start and finish inside one
+// React render batch without ever presenting a visible DOM badge to Playwright.
+// Install once the conversation is live; mark before a turn and read what fired.
 export async function installToolWatch(page) {
   await page.evaluate(() => {
     if (window.__toolWatchInstalled) return;
     window.__toolWatchInstalled = true;
     window.__tools = [];
     window.__activeToolNames = new Set();
+    window.__rtviToolEventsSeen = false;
+    window.addEventListener("nva:tool-call", (event) => {
+      const name = String(event?.detail?.tool || "").trim();
+      if (!name) return;
+      window.__rtviToolEventsSeen = true;
+      window.__tools.push(name);
+    });
     const grab = () => {
       const visible = new Set();
       document.querySelectorAll(".conv-tool__name").forEach((node) => {
         const name = (node.textContent || "").trim();
         if (!name) return;
         visible.add(name);
-        if (!window.__activeToolNames.has(name)) window.__tools.push(name);
+        if (!window.__rtviToolEventsSeen && !window.__activeToolNames.has(name)) window.__tools.push(name);
       });
       window.__activeToolNames = visible;
     };
