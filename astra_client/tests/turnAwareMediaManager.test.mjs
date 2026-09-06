@@ -9,7 +9,9 @@ import { DailyMediaManager } from "@pipecat-ai/websocket-transport";
 const compiledPath = process.env.TURN_AWARE_MEDIA_MANAGER_MODULE;
 if (!compiledPath) throw new Error("TURN_AWARE_MEDIA_MANAGER_MODULE must point to compiled turnAwareMediaManager.js");
 
-const { BotAudioTrackEpoch, TurnAwareDailyMediaManager } = await import(pathToFileURL(compiledPath).href);
+const { advanceBotAudioSession, BotAudioTrackEpoch, TurnAwareDailyMediaManager } = await import(
+  pathToFileURL(compiledPath).href
+);
 
 test("keeps one track ID within a bot turn", () => {
   const tracks = new BotAudioTrackEpoch();
@@ -24,6 +26,15 @@ test("allocates a fresh track ID after every interruption", () => {
   assert.equal(tracks.advance(), "bot-turn-1");
   assert.equal(tracks.advance(), "bot-turn-2");
   assert.equal(tracks.trackId, "bot-turn-2");
+});
+
+test("allocates a fresh active track ID at every WebSocket session boundary", () => {
+  const firstSession = advanceBotAudioSession();
+  const secondSession = advanceBotAudioSession();
+
+  assert.notEqual(firstSession, secondSession);
+  assert.match(firstSession, /^bot-turn-\d+$/);
+  assert.match(secondSession, /^bot-turn-\d+$/);
 });
 
 test("routes audio through a fresh player track after interruption", async () => {
