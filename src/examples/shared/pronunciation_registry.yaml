@@ -181,7 +181,7 @@ entries:
   "Reykjavik": {arpabet: "R EY1 K Y AH0 V IH2 K", ipa: "ˈɹeɪkjəˌvɪk", category: global_city}
   "Nairobi": {arpabet: "N AY2 R OW1 B IY0", ipa: "ˌnaɪˈɹoʊbi", category: global_city}
   "Johannesburg": {arpabet: "JH OW0 HH AE1 N AH0 S B ER2 G", ipa: "dʒoʊˈhænəsˌbɝɡ", category: global_city}
-  "Dakar": {arpabet: "D AH0 K AA1 R", ipa: "dəˈkɑɹ", category: global_city}
+  "Dakar": {arpabet: "D AA0 K AA1 R", ipa: "dɑˈkɑɹ", category: global_city}
   "Lagos": {arpabet: "L EY1 G AA0 S", ipa: "ˈleɪɡɑs", category: global_city}
   "Melbourne": {arpabet: "M EH1 L B ER0 N", ipa: "ˈmɛlbɝn", category: global_city}
   "Montreal": {arpabet: "M AA2 N T R IY0 AO1 L", ipa: "ˌmɑntɹiˈɔl", category: global_city}

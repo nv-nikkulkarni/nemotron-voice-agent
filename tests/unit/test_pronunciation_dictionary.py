@@ -108,6 +108,13 @@ def test_shipped_registry_is_versioned_complete_and_duplicate_free() -> None:
         assert all(isinstance(alias, str) and alias.strip() for alias in aliases)
 
 
+def test_dakar_uses_the_viking_qualified_magpie_mapping() -> None:
+    entry = _registry()["entries"]["Dakar"]
+
+    assert entry["arpabet"] == "D AA0 K AA1 R"
+    assert entry["ipa"] == "dɑˈkɑɹ"
+
+
 def test_rich_registry_extracts_only_ipa_and_aliases_for_magpie() -> None:
     with tempfile.TemporaryDirectory() as temporary_directory:
         registry = Path(temporary_directory) / "pronunciations.yaml"
