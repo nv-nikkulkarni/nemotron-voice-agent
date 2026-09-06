@@ -391,6 +391,27 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
         )
         self.assertEqual(resolved, ("web_search", "get_weather"))
 
+    def test_generic_default_deadlines_leave_room_for_grounded_outer_fallback(self) -> None:
+        spec = resolve_domain_spec("generic")
+        backend = spec.build_backend(
+            DomainBuildContext(
+                thinker_llm=_InferenceLLM(),
+                thinker_prompt="Return JSON only.",
+                thinker_max_tokens=256,
+                tool_names=("web_search",),
+                tool_delay_seconds=0,
+                tool_delay_min_seconds=0,
+                load_service_entry=lambda _category, _entry_id: {},
+            )
+        )
+
+        self.assertEqual(backend._overall_timeout_seconds, 40.0)
+        self.assertEqual(backend._planner_timeout_seconds, 18.0)
+        self.assertEqual(TOOLS["web_search"].timeout_s, 20.0)
+        self.assertGreater(45.0, backend._overall_timeout_seconds)
+        self.assertGreater(backend._overall_timeout_seconds, backend._planner_timeout_seconds)
+        self.assertGreater(backend._overall_timeout_seconds, TOOLS["web_search"].timeout_s)
+
     def test_prompts_have_separate_grounding_and_json_contracts(self) -> None:
         catalog = yaml.safe_load(Path("src/examples/frontend_backend_agent/prompts.yaml").read_text())
         talker = catalog["generic_talker"]["content"]

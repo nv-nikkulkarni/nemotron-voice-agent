@@ -34,11 +34,34 @@ def test_release_metadata_and_environment_overlays_use_exact_app_artifact() -> N
     assert str(viking_values["appImage"]["tag"]) == EXPECTED_APP_VERSION
 
 
-def test_frontend_backend_uses_single_grounded_post_tool_response_by_default() -> None:
-    """Prevent a second Talker inference from re-delegating completed work."""
+def test_frontend_backend_uses_release_modes_and_ordered_deadlines() -> None:
+    """Keep filler/result behavior explicit and leave room for grounded timeout speech."""
     values = _load(VALUES)
+    app = values["app"]
 
-    assert values["app"]["frontendBackendDirectToolResponse"] is True
+    assert app["frontendBackendTalkerFillerMode"] == "emit"
+    assert app["frontendBackendToolResultMode"] == "talker"
+    assert app["frontendBackendDirectToolResponse"] is False
+    outer = float(app["thinkerToolTimeoutSeconds"])
+    overall = float(app["genericBackendTimeoutSeconds"])
+    planner = float(app["genericPlannerTimeoutSeconds"])
+    web = float(app["genericWebSearchTimeoutSeconds"])
+    assert outer == 45.0
+    assert overall == 40.0
+    assert planner == 18.0
+    assert web == 20.0
+    assert outer > overall > max(planner, web)
+
+    template = (ROOT / "nvcf_helm" / "templates" / "deployment-app.yaml").read_text()
+    for name in (
+        "FRONTEND_BACKEND_TALKER_FILLER_MODE",
+        "FRONTEND_BACKEND_TOOL_RESULT_MODE",
+        "THINKER_TOOL_TIMEOUT_SECONDS",
+        "GENERIC_BACKEND_TIMEOUT_SECONDS",
+        "GENERIC_PLANNER_TIMEOUT_SECONDS",
+        "GENERIC_WEB_SEARCH_TIMEOUT_SECONDS",
+    ):
+        assert name in template
 
 
 def test_tts_nims_use_pinned_public_release_inputs() -> None:

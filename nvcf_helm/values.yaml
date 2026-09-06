@@ -205,10 +205,17 @@ app:
   prewarmTimeoutSecs: ""
   uvicornWorkers: ""
   chatHistoryRecentTurns: ""
-  # Speak the trusted, Python-grounded response_text directly and suppress a
-  # second Talker inference. This keeps every successful backend result to one
-  # spoken completion and prevents repeated delegation after an async result.
-  frontendBackendDirectToolResponse: true
+  # Generic Frontend/Backend orchestration. The explicit release settings use
+  # Talker-authored progress and one grounded final Talker pass. `off` and
+  # `direct` are the emergency rollback values; the legacy boolean remains false
+  # so it cannot override these explicit modes.
+  frontendBackendTalkerFillerMode: "emit"
+  frontendBackendToolResultMode: "talker"
+  frontendBackendDirectToolResponse: false
+  thinkerToolTimeoutSeconds: "45"
+  genericBackendTimeoutSeconds: "40"
+  genericPlannerTimeoutSeconds: "18"
+  genericWebSearchTimeoutSeconds: "20"
   # Built-in reviewed pronunciation registry. The app extracts IPA for Magpie
   # requests and suppresses the dictionary for unsupported models such as
   # Chatterbox. The file is packaged under src/ in the immutable app image.

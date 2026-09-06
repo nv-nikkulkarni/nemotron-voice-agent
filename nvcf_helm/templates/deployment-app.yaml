@@ -190,9 +190,33 @@ spec:
             - name: CHAT_HISTORY_RECENT_TURNS
               value: {{ .Values.app.chatHistoryRecentTurns | quote }}
             {{- end }}
+            {{- with .Values.app.frontendBackendTalkerFillerMode }}
+            - name: FRONTEND_BACKEND_TALKER_FILLER_MODE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.frontendBackendToolResultMode }}
+            - name: FRONTEND_BACKEND_TOOL_RESULT_MODE
+              value: {{ . | quote }}
+            {{- end }}
             {{- if .Values.app.frontendBackendDirectToolResponse }}
             - name: FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE
               value: "true"
+            {{- end }}
+            {{- with .Values.app.thinkerToolTimeoutSeconds }}
+            - name: THINKER_TOOL_TIMEOUT_SECONDS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.genericBackendTimeoutSeconds }}
+            - name: GENERIC_BACKEND_TIMEOUT_SECONDS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.genericPlannerTimeoutSeconds }}
+            - name: GENERIC_PLANNER_TIMEOUT_SECONDS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.genericWebSearchTimeoutSeconds }}
+            - name: GENERIC_WEB_SEARCH_TIMEOUT_SECONDS
+              value: {{ . | quote }}
             {{- end }}
             {{- if .Values.app.ttsPronunciationPath }}
             - name: TTS_IPA_FILE_PATH

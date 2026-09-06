@@ -38,7 +38,7 @@ class GenericThinkerBackend:
         enabled_tools: tuple[str, ...],
         tools: Mapping[str, ToolSpec],
         overall_timeout_seconds: float = 40.0,
-        planner_timeout_seconds: float = 15.0,
+        planner_timeout_seconds: float = 18.0,
         state: GenericThinkerSessionState | None = None,
         on_tool_started: Callable[[str], Awaitable[None]] | None = None,
         stage_metrics: StageMetricsCoordinator | None = None,
