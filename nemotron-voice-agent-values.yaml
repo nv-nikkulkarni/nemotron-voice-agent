@@ -41,13 +41,13 @@ fusionv12:
       - name: astra-jfrog-docker-pullsecret
       image:
         repository: artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui
-        tag: "2.0.73-56e7738"
+        tag: "2.0.74-178e45b"
       port: 7860
       env:
         LOG_LEVEL: INFO
         APP_NAME: nemotron-voice-agent
         ENVIRONMENT: stg
-        UI_BUILD_TIMESTAMP: "2026-09-07T16:50:25Z"
+        UI_BUILD_TIMESTAMP: "2026-09-07T20:47:12Z"
         DEMO_MODE: "true"
         DEMO_SESSION_SECONDS: "600"
         DEMO_EXAMPLES: generic-frontend-backend-agent,omni-assistant-subagents
