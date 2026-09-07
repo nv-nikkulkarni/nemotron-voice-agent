@@ -41,7 +41,7 @@ fi
 # Curated demo behavior is tuned per-deployment via DEMO_* env vars; unset vars
 # fall back to the values baked into the client build.
 DEMO_MODE="${DEMO_MODE:-true}"
-DEMO_SESSION_SECONDS="${DEMO_SESSION_SECONDS:-300}"
+DEMO_SESSION_SECONDS="${DEMO_SESSION_SECONDS:-600}"
 DEMO_EXAMPLES="${DEMO_EXAMPLES:-generic-frontend-backend-agent,omni-assistant-subagents}"
 DEMO_SELF_HOSTED_ONLY="${DEMO_SELF_HOSTED_ONLY:-true}"
 DEMO_RECORD_ENABLED="${DEMO_RECORD_ENABLED:-true}"
