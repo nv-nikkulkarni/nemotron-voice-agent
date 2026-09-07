@@ -42,10 +42,15 @@ async function landingChecks(browser) {
   await page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 30000 });
   const deploymentReady = await H.waitForDeploymentReady(page);
   try {
-    const tour = page.locator(".tour-popover");
-    const tourVisible = await tour.isVisible().catch(() => false);
-    rec("landing/tour-opens-on-load", tourVisible);
-    if (tourVisible) await tour.getByRole("button", { name: /skip tour/i }).click();
+    const invitation = page.locator('.tour-invite[aria-label="Interface tour invitation"]');
+    const tour = page.locator('.tour-popover[aria-label="Interface introduction"]');
+    const invitationVisible = await invitation.isVisible().catch(() => false);
+    rec("landing/tour-invitation-opens", invitationVisible);
+    rec("landing/no-animation-before-consent", !(await tour.isVisible().catch(() => false)));
+    if (invitationVisible) await invitation.getByRole("button", { name: /Yes/i }).click();
+    await tour.waitFor({ state: "visible", timeout: 3000 }).catch(() => {});
+    rec("landing/tour-starts-after-yes", await tour.isVisible().catch(() => false));
+    if (await tour.isVisible().catch(() => false)) await tour.getByRole("button", { name: /skip tour/i }).click();
     const title = await page.locator(".startview__title").innerText().catch(() => "");
     rec("landing/title", /nemotron/i.test(title), JSON.stringify(title.replace(/\n/g, " ")));
     rec("landing/deployment-ready", deploymentReady, "example cards rendered");
@@ -97,9 +102,14 @@ async function lifecycleChecks(browser) {
     await H.selectExample(page, { example: "generic", model: "lightning" });
     const c1 = await H.startConversation(page, { dismissConversationTour: false });
     rec("lifecycle/connect", c1.connected, `${c1.connectMs}ms`);
+    const liveInvitation = page.locator('.tour-invite[aria-label="Conversation tour invitation"]');
     const liveTour = page.locator('.tour-popover[aria-label="Conversation feature introduction"]');
+    await liveInvitation.waitFor({ state: "visible", timeout: 3000 }).catch(() => {});
+    rec("lifecycle/conversation-tour-invitation", await liveInvitation.isVisible().catch(() => false));
+    rec("lifecycle/no-conversation-animation-before-consent", !(await liveTour.isVisible().catch(() => false)));
+    await liveInvitation.getByRole("button", { name: /Yes/i }).evaluate((element) => element.click()).catch(() => {});
     await liveTour.waitFor({ state: "visible", timeout: 3000 }).catch(() => {});
-    rec("lifecycle/conversation-tour", await liveTour.isVisible().catch(() => false));
+    rec("lifecycle/conversation-tour-after-yes", await liveTour.isVisible().catch(() => false));
     const firstTourTitle = await liveTour.locator("h2").innerText().catch(() => "");
     rec("lifecycle/tour-tool-label", /tool call/i.test(firstTourTitle), firstTourTitle);
     await liveTour.getByRole("button", { name: /^next$/i }).evaluate((element) => element.click()).catch(() => {});
@@ -109,6 +119,9 @@ async function lifecycleChecks(browser) {
     const replay = page.getByRole("button", { name: /open conversation guide/i });
     rec("lifecycle/tour-replay-control", await replay.isVisible().catch(() => false));
     await replay.evaluate((element) => element.click()).catch(() => {});
+    await liveInvitation.waitFor({ state: "visible", timeout: 1500 }).catch(() => {});
+    rec("lifecycle/tour-replay-invitation", await liveInvitation.isVisible().catch(() => false));
+    await liveInvitation.getByRole("button", { name: /Yes/i }).evaluate((element) => element.click()).catch(() => {});
     await liveTour.waitFor({ state: "visible", timeout: 1500 }).catch(() => {});
     rec("lifecycle/tour-reopens", await liveTour.isVisible().catch(() => false));
     await liveTour.getByRole("button", { name: /skip tour/i }).evaluate((element) => element.click()).catch(() => {});

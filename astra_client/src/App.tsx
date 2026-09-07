@@ -21,7 +21,7 @@ import { PipelineInfo } from "./components/demo/PipelineInfo";
 import { SessionControls } from "./components/demo/SessionControls";
 import { SessionLifecycleProvider } from "./hooks/useSessionLifecycle";
 import { StoppingOverlayHost } from "./components/demo/StoppingOverlay";
-import { ConversationTour, IntroductionTour } from "./components/demo/IntroductionTour";
+import { ConversationTour, IntroductionTour, TourInvitation } from "./components/demo/IntroductionTour";
 // Legacy full app (non-demo builds only).
 import { Header } from "./components/Header";
 import { StatusPanel } from "./components/status-panel";
@@ -33,7 +33,7 @@ const DEFAULT_AUDIO_INPUT_SAMPLE_RATE = 16000;
 const DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE = 22050;
 type ProviderClient = ComponentProps<typeof PipecatClientProvider>["client"];
 type View = "main" | "settings" | "pipeline";
-type Tour = "introduction" | "conversation" | null;
+type Tour = "introduction-prompt" | "introduction" | "conversation-prompt" | "conversation" | null;
 
 function AppInner() {
   const { selectedTransport } = useApp();
@@ -43,11 +43,11 @@ function AppInner() {
   const recorderSampleRate = deployment?.audio?.input_sample_rate ?? DEFAULT_AUDIO_INPUT_SAMPLE_RATE;
   const playerSampleRate = deployment?.audio?.output_sample_rate ?? DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE;
   const [view, setView] = useState<View>("main");
-  const [tour, setTour] = useState<Tour>("introduction");
+  const [tour, setTour] = useState<Tour>("introduction-prompt");
   const handleLiveChange = useCallback((live: boolean) => {
     setTour((current) => {
-      if (live) return current === "conversation" ? current : "conversation";
-      return current === "conversation" ? null : current;
+      if (live) return current === "conversation" ? current : "conversation-prompt";
+      return current === "conversation" || current === "conversation-prompt" ? null : current;
     });
   }, []);
 
@@ -123,7 +123,7 @@ function AppInner() {
             onPipeline={() => setView("pipeline")}
             onTour={(active) => {
               setView("main");
-              setTour(active ? "conversation" : "introduction");
+              setTour(active ? "conversation-prompt" : "introduction-prompt");
             }}
           />
           <main className="clean-main">
@@ -136,6 +136,20 @@ function AppInner() {
         <StoppingOverlayHost />
         {view === "settings" && <SettingsPage onClose={() => setView("main")} />}
         {view === "pipeline" && <PipelineInfo onClose={() => setView("main")} />}
+        {tour === "introduction-prompt" && (
+          <TourInvitation
+            context="introduction"
+            onAccept={() => setTour("introduction")}
+            onDecline={() => setTour(null)}
+          />
+        )}
+        {tour === "conversation-prompt" && (
+          <TourInvitation
+            context="conversation"
+            onAccept={() => setTour("conversation")}
+            onDecline={() => setTour(null)}
+          />
+        )}
         {tour === "introduction" && <IntroductionTour onClose={() => setTour(null)} />}
         {tour === "conversation" && <ConversationTour onClose={() => setTour(null)} />}
       </SessionLifecycleProvider>

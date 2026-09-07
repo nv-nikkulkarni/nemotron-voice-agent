@@ -5041,6 +5041,29 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
 .startview__selection strong { overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; }
 .tool-selector__status { margin: 0; color: var(--text-muted); font-size: var(--text-sm); }
 
+// A quiet opt-in prompt appears before either animated guide. Until the user
+// chooses Yes, there is no spotlight, target motion, or guided-step animation.
+.tour-invite-layer {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
+  padding: var(--space-4); background: rgba(0,0,0,0.48); backdrop-filter: blur(3px);
+}
+.tour-invite {
+  width: min(390px, 100%); padding: var(--space-5); color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-elevated) 96%, #0d1605);
+  border: 1px solid color-mix(in srgb, var(--nvidia-green) 42%, transparent);
+  border-radius: var(--radius-xl); box-shadow: 0 24px 70px rgba(0,0,0,0.58);
+}
+.tour-invite__eyebrow {
+  margin: 0 0 5px; color: var(--nvidia-green); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+.tour-invite h2 { margin: 0; font-size: var(--text-xl); }
+.tour-invite > p:not(.tour-invite__eyebrow) {
+  margin: var(--space-2) 0 var(--space-5); color: var(--text-secondary);
+  font-size: var(--text-sm); line-height: 1.55;
+}
+.tour-invite__actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
 // Replayable guided introduction. The spotlight dims the page while the guide
 // owns interaction until the user completes or skips it.
 .tour-layer { position: fixed; inset: 0; z-index: 100; pointer-events: auto; }

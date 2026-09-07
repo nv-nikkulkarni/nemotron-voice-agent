@@ -210,6 +210,40 @@ function GuidedTour({ steps, ariaLabel, onClose }: Readonly<GuidedTourProps>) {
   );
 }
 
+export function TourInvitation({
+  context,
+  onAccept,
+  onDecline,
+}: Readonly<{
+  context: "introduction" | "conversation";
+  onAccept: () => void;
+  onDecline: () => void;
+}>) {
+  const conversation = context === "conversation";
+  return (
+    <div className="tour-invite-layer">
+      <section
+        className="tour-invite"
+        role="dialog"
+        aria-modal="true"
+        aria-label={conversation ? "Conversation tour invitation" : "Interface tour invitation"}
+      >
+        <p className="tour-invite__eyebrow">Optional guide</p>
+        <h2>Take a tour?</h2>
+        <p>
+          {conversation
+            ? "Would you like a quick tour of live tool-call labels and the latency breakdown?"
+            : "Would you like a quick tour of the examples, configuration, and session controls?"}
+        </p>
+        <div className="tour-invite__actions">
+          <button type="button" className="btn-secondary" onClick={onDecline}>No</button>
+          <button type="button" className="btn-primary btn-bubbly" onClick={onAccept}>Yes</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function IntroductionTour({ onClose }: Readonly<{ onClose: () => void }>) {
   return (
     <GuidedTour

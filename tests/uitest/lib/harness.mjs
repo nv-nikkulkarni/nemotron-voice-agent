@@ -96,6 +96,8 @@ export async function newPage(browser, sig, { viewport = { width: 1280, height: 
 //   consent : check the "Store my audio…" toggle inside the popup.
 export async function selectExample(page, { example = "generic", model = "lightning", tts, tools, reasoning, consent = false } = {}) {
   const isOmni = /omni/i.test(example);
+  const declineTour = page.getByRole("button", { name: /No/i });
+  if (await declineTour.isVisible().catch(() => false)) await declineTour.click();
   const skipTour = page.getByRole("button", { name: /skip tour/i });
   if (await skipTour.isVisible().catch(() => false)) await skipTour.click();
   // 1. Select with the full card, then open configuration from the launch bar.
@@ -195,8 +197,12 @@ export async function startConversation(page, { timeoutMs = 30000, dismissConver
     await sleep(700);
     const cap = await orbCaption(page);
     if (/connected|listening|speaking|thinking/i.test(cap)) {
+      const invitation = page.locator('.tour-invite[aria-label="Conversation tour invitation"]');
+      await invitation.waitFor({ state: "visible", timeout: 1500 }).catch(() => {});
+      if (dismissConversationTour && await invitation.isVisible().catch(() => false)) {
+        await invitation.getByRole("button", { name: /No/i }).evaluate((element) => element.click());
+      }
       const tour = page.locator('.tour-popover[aria-label="Conversation feature introduction"]');
-      await tour.waitFor({ state: "visible", timeout: 1500 }).catch(() => {});
       if (dismissConversationTour && await tour.isVisible().catch(() => false)) {
         await tour.getByRole("button", { name: /skip tour/i }).evaluate((element) => element.click());
       }
