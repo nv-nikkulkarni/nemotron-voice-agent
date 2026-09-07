@@ -72,7 +72,7 @@ The retained experience is a two-platform system:
 5. **Redis and SeaweedFS solve different concurrency problems.** Redis carries small live coordination/configuration and media streams; SeaweedFS is the shared S3-compatible staging store for capture artifacts. Both are required for replica-safe session capture.
 6. **Session capture is entirely in the app process.** Pipeline teardown and browser consent are independent signals recorded in Redis. Exactly one replica wins a token-owned lock, reads artifacts from SeaweedFS, builds a tarball, and publishes an NGC resource version named with the session ID.
 7. **The two selectable experiences are Generic Assistant and Nemotron Omni Assistant Subagents.** Generic is a cascaded ASR → text LLM → tools → TTS pipeline. Omni uses an audio-capable model plus a Pipecat worker bus with Speaker, Media Analyzer, Webcam, and Thinker roles, followed by external TTS.
-8. **The owner directed an unqualified main production rollout after Viking smoke testing.** The main NVCF function runs chart `0.1.138` and app `2.0.66`; the main Astra app runs UI `2.0.68`. The isolated `-2` function remains on `0.1.130`. Neither Astra app is a true Astra `prd` deployment.
+8. **The owner directed an unqualified main production rollout after Viking smoke testing.** The main NVCF function runs chart `0.1.138` and app `2.0.66`; the main Astra app runs UI `2.0.70`. The isolated `-2` function remains on `0.1.130`. Neither Astra app is a true Astra `prd` deployment.
 
 ### 1.1 One-screen architecture
 
@@ -173,18 +173,18 @@ flowchart TB
 | Failed rollout version | `d5d70d49-2e25-47cf-9ccf-974216c51958`, `INACTIVE` | Live-verified |
 | Astra app | `nemotron-voice-agent-deploy` | Fusion update succeeded |
 | Astra URL | `https://nemotron-voice-agent-deploy-backend.stg.astra.nvidia.com` | Live-verified |
-| Astra state and revision | `Synced` and `Healthy`; Argo revision `f6a34cc1`; update completed in 45 seconds | Live-verified |
-| Astra UI image | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.68-5694d32e`; OCI digest `sha256:9719c4a27cefc64ec51bbc4b9118ddaa75f04b3be423c50e8e5cb9f0b3f4abf4` | Live-verified from Fusion export |
-| Previous UI rollback | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.67-2b07f747`; NGC copy `nvcr.io/0491162300748285/nemotron-voice-agent-ui:2.0.67-2b07f747`; OCI digest `sha256:85c8c93d72325271cfe8df49c7ad599a590623f6e7731c09140238ac1f8caf0c` | Retained rollback artifact |
-| UI source | `5694d32e3e625f07817fe5ea79d25ac1f88d93da` | Immutable UI behavior source |
-| Deployment-values source | `9aef2aa` | GitHub source commit for the values submitted through Fusion |
-| UI build timestamp | `2026-09-07T09:38:39Z` | Live-verified from Fusion export and public `config.js` |
+| Astra state and revision | `Synced` and `Healthy`; Argo revision `16ec23fa`; update completed in 16 seconds | Live-verified |
+| Astra UI image | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.70-fbc6e683`; OCI digest `sha256:93bb056d14d821d1028fee4db24f46ce4ec4bec96a651ee60b0d6fbb8fd24002` | Live-verified from Fusion export |
+| Previous UI rollback | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.68-5694d32e`; OCI digest `sha256:9719c4a27cefc64ec51bbc4b9118ddaa75f04b3be423c50e8e5cb9f0b3f4abf4` | Retained rollback artifact |
+| UI source | `fbc6e6833f8ea1f31bfeb9e81ed066ae7f0f9ae5` | Immutable UI behavior source |
+| Deployment-values source | `13d118c` | GitHub source commit for the values submitted through Fusion |
+| UI build timestamp | `2026-09-07T10:38:24Z` | Live-verified from Fusion export and public `config.js` |
 | Astra infrastructure environment | Operational production UI in physical `stg` infrastructure | Live-verified |
 | NVCF staging | Isolated `nemotron-voice-agent-2` remains active on chart `0.1.130`; refer to [Isolated Staging Candidate](#22-isolated-staging-candidate) | Live-verified |
 | Capture status | Enabled, upload required, upload ready, target and key present, CLI present, S3 backend | Live-verified through Astra |
 | Public runtime config | `sessionSeconds=300`; Generic Frontend/Backend Agent and Omni Assistant Subagents enabled | Live-verified from `config.js` |
-| Public bundles | Cache-busted root loaded `index-DAyBm5q0.js` and `index-Dn_kzYVj.css` | Live-verified |
-| Public smoke | Landing tour, two semantic button cards, full-card Generic and Omni selection without a modal, five Generic tool checkboxes, live two-step tour, `?` replay, `05:00` timer, no console errors, and clean End with feedback modal passed | Focused Playwright smoke |
+| Public bundles | Cache-busted root loaded `index-Cwscad-N.js` and `index-BsDLeRLG.css` | Live-verified |
+| Public smoke | Landing and live-session tour invitations, no animation before consent, Yes and No paths, `?` replay, full-card Generic and Omni selection, five Generic tool checkboxes, square top-right `05:00` timer, right-side downward-expanding latency card, clean End, and zero console errors passed | Focused Playwright smoke |
 | Qualification decision | **OWNER-DIRECTED ROLLOUT; SMOKE GREEN; FULL SQA NOT RUN; UNQUALIFIED** | Owner authorization, not an SQA pass |
 
 The first `0.1.138` version used `--json-secret-file`, which created one
@@ -194,12 +194,14 @@ failed. The corrected active version uses six individual secret names:
 `FINNHUB_API_KEY`, `PERPLEXITY_API_KEY`, `NGC_API_KEY`, `NVIDIA_API_KEY`,
 `SESSION_CAPTURE_NGC`, and `WEATHERAPI_KEY`. No secret values are recorded.
 
-UI `2.0.68` supersedes UI-only `2.0.67`, which corrected the earlier
-noninteractive card call to action. The current UI makes each entire example
-card one button and keeps Configure and Start in the launch bar. It also adds
-the automatic landing and live-session tours and the five-minute session timer.
-The UI rollout did not change the NVCF chart, app image, or active function
-version. UI `2.0.67` remains available as rollback.
+UI `2.0.70` supersedes UI-only `2.0.68`. The current UI keeps each example
+card fully selectable, moves the five-minute timer into a compact square at the
+top right, and places the downward-expanding latency breakdown in a bounded
+card beside the orb. Landing and live-session tours now require Yes at a small
+invitation before any spotlight animation; No dismisses without animation. UI
+`2.0.69` was built and pushed but superseded before deployment. This rollout
+did not change the NVCF chart, app image, or active function version. UI
+`2.0.68` remains the immediate rollback artifact.
 
 ### 2.2 Isolated Staging Candidate
 
@@ -314,8 +316,8 @@ and `FINNHUB_API_KEY`.
 The Viking evidence does not qualify the candidate. No audio request,
 conversation query, or SQA suite ran there. The owner later authorized the main
 NVCF and Astra rollout recorded in section 2.1 despite that qualification gap.
-Chart `0.1.138`, app `2.0.66`, and UI `2.0.68` remain **unqualified**. UI
-`2.0.68` supersedes the previous UI on Astra without changing NVCF. The
+Chart `0.1.138`, app `2.0.66`, and UI `2.0.70` remain **unqualified**. UI
+`2.0.70` supersedes the previous UI on Astra without changing NVCF. The
 isolated environment remains on `0.1.130` and app/UI `2.0.58`.
 
 ### 2.4 Important Naming Truth: “Live/Prod” Versus Astra `prd`
