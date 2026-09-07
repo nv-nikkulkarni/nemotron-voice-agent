@@ -3,9 +3,9 @@
 
 // The live-session hero band: a greenish turbulent orb whose shell reacts to the
 // mic input intensity, a caption reflecting who is speaking, and a small
-// end-to-end latency readout. Clicking the readout expands a bounded side panel
-// showing where the time went (end-of-utterance detection + each server stage),
-// parsed from pipecat's `latency-breakdown` server message.
+// end-to-end latency readout. Clicking it opens a breakdown panel in the open
+// space beside the orb, showing where the time went for each server stage.
+// The data is parsed from Pipecat's `latency-breakdown` server message.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RTVIEvent } from "@pipecat-ai/client-js";
