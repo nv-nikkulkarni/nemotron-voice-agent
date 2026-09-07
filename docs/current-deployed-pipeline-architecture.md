@@ -16,9 +16,11 @@ reports.
 
 **Current release source:** `82697e8f45c6de3dbc5565962113933c8c0ae951`
 
-**UI behavior source:** `b7dc2ac891063e96e156884fef692ec4f1c853d4`
+**UI behavior source:** `56e7738c523dd4148622083c8df0c7508cb6a3e5`
 
-**Astra Argo revision:** `7d6ca30f`
+**UI deployment-values source:** `dca49b42133b8bb1d50c226fb0b7b5d961ba5304`
+
+**Astra Argo revision:** `43c9ce45b9d8`
 
 **Scope:** browser UI, Astra proxy, NVCF function, Helm workloads, Pipecat pipelines, model services, Redis, SeaweedFS, capture-to-NGC, concurrency, secrets, operations, and promotion
 
@@ -74,7 +76,7 @@ The retained experience is a two-platform system:
 5. **Redis and SeaweedFS solve different concurrency problems.** Redis carries small live coordination/configuration and media streams; SeaweedFS is the shared S3-compatible staging store for capture artifacts. Both are required for replica-safe session capture.
 6. **Session capture is entirely in the app process.** Pipeline teardown and browser consent are independent signals recorded in Redis. Exactly one replica wins a token-owned lock, reads artifacts from SeaweedFS, builds a tarball, and publishes an NGC resource version named with the session ID.
 7. **The two selectable experiences are Generic Assistant and Nemotron Omni Assistant Subagents.** Generic is a cascaded ASR → text LLM → tools → TTS pipeline. Omni uses an audio-capable model plus a Pipecat worker bus with Speaker, Media Analyzer, Webcam, and Thinker roles, followed by external TTS.
-8. **The owner directed an unqualified main production rollout.** The main NVCF function runs chart `0.1.139` and app `2.0.67` as the only ACTIVE project deployment; `0.1.138` is its sole INACTIVE rollback. The isolated `-2` function and all its versions were deleted after graceful undeploy. The main Astra app runs UI `2.0.72` in physical `stg` infrastructure, not a true Astra `prd` deployment.
+8. **The owner directed an unqualified main production rollout.** The main NVCF function runs chart `0.1.139` and app `2.0.67` as the only ACTIVE project deployment; `0.1.138` is its sole INACTIVE rollback. The isolated `-2` function and all its versions were deleted after graceful undeploy. The main Astra app runs UI `2.0.73` in physical `stg` infrastructure, not a true Astra `prd` deployment.
 
 ### 1.1 One-screen architecture
 
@@ -175,20 +177,23 @@ flowchart TB
 | Deleted main versions | `453e2bce-d59b-4683-9d20-74e56c021003` (`0.1.103`) and failed `d5d70d49-2e25-47cf-9ccf-974216c51958` (`0.1.138`) | Deleted during cleanup |
 | Astra app | `nemotron-voice-agent-deploy` | Fusion update succeeded |
 | Astra URL | `https://nemotron-voice-agent-deploy-backend.stg.astra.nvidia.com` | Live-verified |
-| Astra state and revision | `Synced` and `Healthy`; Argo revision `7d6ca30f`; update completed in 53 seconds | Live-verified |
-| Astra UI image | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.72-b7dc2ac`; OCI index `sha256:a298adde05e3a9cc74ff5b0220be11a94ac3b4e8fda64bac1ee44406b965c8e0`; AMD64 manifest `sha256:56a788491b04f8ca6248a70cd95297df15a7607e975608d37889333287210c84` | Live-verified from Fusion export |
-| Previous UI rollback | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.71-c7ef9c4`; OCI index `sha256:7925e36be15930c7054c5d6640a30cc69df4195ba9185e0ae2479f9c1b801aca` | Immediate rollback artifact |
+| Astra state and revision | `Synced` and `Healthy`; Argo revision `43c9ce45b9d8`; update completed in 25 seconds | Live-verified |
+| Astra UI image | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.73-56e7738`; OCI index `sha256:92070edbd42e90a0b5d796ede42e797f66b7f3e93531ebe4bbd7865ae963a638`; AMD64 manifest `sha256:6d9ad5589e75690fb2b72de52e74d1821a343ffbc480615303f31ffd9c806394` | Live-verified from Fusion export |
+| Immediate UI rollback | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.72-b7dc2ac`; OCI index `sha256:a298adde05e3a9cc74ff5b0220be11a94ac3b4e8fda64bac1ee44406b965c8e0`; AMD64 manifest `sha256:56a788491b04f8ca6248a70cd95297df15a7607e975608d37889333287210c84` | Previous deployed UI artifact |
+| Earlier UI rollback | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.71-c7ef9c4`; OCI index `sha256:7925e36be15930c7054c5d6640a30cc69df4195ba9185e0ae2479f9c1b801aca` | Earlier deployed UI artifact |
 | Older UI rollback | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.70-fbc6e683`; OCI index `sha256:93bb056d14d821d1028fee4db24f46ce4ec4bec96a651ee60b0d6fbb8fd24002` | Older deployed UI artifact |
 | Historical UI artifact | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.68-5694d32e`; OCI index `sha256:9719c4a27cefc64ec51bbc4b9118ddaa75f04b3be423c50e8e5cb9f0b3f4abf4` | Historical deployed UI artifact |
-| UI source | `b7dc2ac891063e96e156884fef692ec4f1c853d4` | Immutable UI behavior source |
+| UI source | `56e7738c523dd4148622083c8df0c7508cb6a3e5` | Immutable UI behavior and documentation source |
+| UI deployment-values source | `dca49b42133b8bb1d50c226fb0b7b5d961ba5304` | GitHub deployment-values commit |
 | Deployment source | `dev/nikkulkarni/nvcf-deploy-rebased` at `82697e8f45c6de3dbc5565962113933c8c0ae951` | Pushed and current |
-| UI build timestamp | `2026-09-07T14:02:33Z` | Live-verified from Fusion export and public `config.js` |
+| UI build timestamp | `2026-09-07T16:50:25Z` | Live-verified from Fusion export and public `config.js` |
 | Astra infrastructure environment | Operational production UI in physical `stg` infrastructure | Live-verified |
 | Isolated `-2` NVCF | No function in current project inventory; versions `0.1.115`, `0.1.123`, `0.1.129`, and `0.1.130` were deleted after graceful undeploy | Live-verified cleanup |
 | Capture status | Enabled, upload required, upload ready, and zero pending items | Live-verified through Astra |
 | Public runtime config | `sessionSeconds=600`; Generic Frontend/Backend Agent and Omni Assistant Subagents enabled | Live-verified from `config.js` |
-| Public bundles | Cache-busted root loaded `index-ANgghAFG.js` and `index-CSBaJkEn.css` | Live-verified |
-| Public smoke | `/health`, `/config.js`, `/api/deployment`, and `/api/session-capture/status` returned HTTP 200; capture reported upload ready with zero pending items | Focused public endpoint smoke |
+| Public bundles | Stable root loaded `index-Bd5qr2vN.js` and `index-x3EL2rJ4.css` | Live-verified |
+| Public smoke | The public root, `config.js`, and stable bundle assets returned HTTP 200; bundle strings contain the new critical-path and asynchronous-lane headings | Focused UI smoke |
+| UI validation | Unit tests, scoped lint, and production build passed | Predeployment validation; not full SQA |
 | Behavior validation | Exact BMI replay 10/10; full Talker live matrix 140/140; focused unit tests 7/7; related agent and Helm suite 136 passed | Targeted tests and live model evaluation |
 | Formal SQA phase status | A and B failed; C and D are formal passes | Preserved formal phase results |
 | Qualification decision | **OWNER-DIRECTED ROLLOUT; A/B FAILED; C/D FORMAL PASS; UNQUALIFIED** | The release has no complete green SQA qualification |
@@ -211,7 +216,8 @@ failed. The corrected `0.1.138` version, now the INACTIVE rollback, uses six ind
 `FINNHUB_API_KEY`, `PERPLEXITY_API_KEY`, `NGC_API_KEY`, `NVIDIA_API_KEY`,
 `SESSION_CAPTURE_NGC`, and `WEATHERAPI_KEY`. No secret values are recorded.
 
-UI `2.0.72` supersedes UI-only `2.0.71`. The current UI keeps each example
+This UI-only rollout left NVCF chart `0.1.139` and app `2.0.67` unchanged.
+UI `2.0.73` supersedes UI-only `2.0.72`. The current UI keeps each example
 card fully selectable and gives a live session a ten-minute `TIME LEFT`
 countdown. A brief landing hint points to the `?` button, which starts the
 landing tour. The button and tour are absent during an active session. The
@@ -220,9 +226,12 @@ first-token timing and are not additive. The compact latency trigger stays
 centered below the orb. On wide screens, its expanded breakdown is independently
 anchored in the blank area to the right and expands downward. The responsive
 fallback places the breakdown below the trigger. UI `2.0.69` was built and
-pushed but superseded before deployment. UI `2.0.71` is the immediate
-rollback artifact; UI `2.0.70` and UI `2.0.68` preserve older deployment
-history.
+pushed but superseded before deployment. The latency breakdown now separates
+the critical path to first audio from asynchronous delegated work, shows
+first-token timing within each model total, and suppresses duplicate generic
+LLM rows. Its waterfall offsets are browser-observed approximations. UI
+`2.0.72` is the immediate rollback artifact; UI `2.0.71`, UI `2.0.70`, and UI
+`2.0.68` preserve older deployment history.
 
 ### 2.2 Historical Isolated Staging Candidate
 
@@ -341,9 +350,9 @@ conversation query, or SQA suite ran there. The owner later authorized the main
 NVCF and Astra rollout recorded in section 2.1 despite that qualification gap.
 At this historical checkpoint, chart `0.1.138`, app `2.0.66`, and UI
 `2.0.71` remained **unqualified**. The current main deployment supersedes
-them with chart `0.1.139`, app `2.0.67`, and UI `2.0.72`, which also remain
+them with chart `0.1.139`, app `2.0.67`, and UI `2.0.73`, which also remain
 unqualified because the full SQA suite has not run. The isolated environment
-remains on `0.1.130` and app/UI `2.0.58`.
+was later gracefully undeployed and removed from the project inventory.
 
 ### 2.4 Important Naming Truth: “Live/Prod” Versus Astra `prd`
 
