@@ -8,19 +8,24 @@ for durable architecture, deployment, SQA, incident, and risk knowledge. Query N
 Astra before reporting current status, and keep exact candidate outcomes in versioned SQA
 reports.
 
-**Production snapshot verified:** August 25, 2026 (Asia/Kolkata)
+**Production snapshot verified:** September 7, 2026 (Asia/Kolkata)
 
 **Isolated staging candidate verified:** August 27, 2026 (Asia/Kolkata)
 
-**Deployed source branch/HEAD:** `dev/nikkulkarni/nvcf-deploy-rebased` / `21e353fe8ce3b83127abe6a8768053ada907f51b`
+**Deployed source branch:** `dev/nikkulkarni/nvcf-deploy-rebased`
+
+**Backend release source:** `479e0f538818df8ca27ac36e547e913a37d3fe64`
+
+**UI hotfix source / Astra values:** `2b07f74789e5f3642a25244407224b6f59127912` / `1fc2acd`
 
 **Scope:** browser UI, Astra proxy, NVCF function, Helm workloads, Pipecat pipelines, model services, Redis, SeaweedFS, capture-to-NGC, concurrency, secrets, operations, and promotion
 
 > This document distinguishes four kinds of claims:
 >
-> - **Live-verified** means the production qualification on August 25, 2026, returned the stated result.
-> - **Rendered** means the result comes from chart `0.1.103` at the recorded deployed source HEAD.
->   The active NVCF function version reports this chart.
+> - **Live-verified** means the current platform or public endpoint returned the
+>   stated result. It does not imply that the full SQA suite passed.
+> - **Rendered** means the result comes from chart `0.1.138` at source commit
+>   `479e0f538818df8ca27ac36e547e913a37d3fe64`.
 > - **Candidate** means a newer checked-in chart change that is not yet part of the
 >   live-verified production snapshot.
 > - **Historical** means the statement is preserved from qualification reports or chart history and is explicitly labelled as such.
@@ -67,7 +72,7 @@ The retained experience is a two-platform system:
 5. **Redis and SeaweedFS solve different concurrency problems.** Redis carries small live coordination/configuration and media streams; SeaweedFS is the shared S3-compatible staging store for capture artifacts. Both are required for replica-safe session capture.
 6. **Session capture is entirely in the app process.** Pipeline teardown and browser consent are independent signals recorded in Redis. Exactly one replica wins a token-owned lock, reads artifacts from SeaweedFS, builds a tarball, and publishes an NGC resource version named with the session ID.
 7. **The two selectable experiences are Generic Assistant and Nemotron Omni Assistant Subagents.** Generic is a cascaded ASR → text LLM → tools → TTS pipeline. Omni uses an audio-capable model plus a Pipecat worker bus with Speaker, Media Analyzer, Webcam, and Thinker roles, followed by external TTS.
-8. **Production remains active, and an isolated `-2` staging candidate is also deployed.** The retained live UI still targets production. The separate `nemotron-voice-agent-2` NVCF function and `nemotron-voice-agent-2-deploy` Astra app host rejected candidate `0.1.115` for remediation and requalification. Neither Astra app is a true Astra `prd` deployment.
+8. **The owner directed an unqualified main production rollout after Viking smoke testing.** The main NVCF function runs chart `0.1.138` and app `2.0.66`; the main Astra app runs the UI-only `2.0.67` hotfix. The isolated `-2` function remains on `0.1.130`. Neither Astra app is a true Astra `prd` deployment.
 
 ### 1.1 One-screen architecture
 
@@ -88,7 +93,7 @@ flowchart TB
       WS["grpc.nvcf.nvidia.com<br/>WSS /api/ws<br/>function-id routed"]
     end
 
-    subgraph NVCF["NVCF production function — chart 0.1.103"]
+    subgraph NVCF["NVCF production function — chart 0.1.138"]
       SVC["Service nemotron-voice-agent :7860<br/>ordinary load balancing; router disabled"]
       A1["App replica 1"]
       A2["App replica 2"]
@@ -153,22 +158,49 @@ flowchart TB
 |---|---|---|
 | NVCF function name | `nemotron-voice-agent` | Live-verified |
 | NVCF function ID | `81862ff8-4931-4f1e-9655-caa5b0bc5911` | Live-verified |
-| Active function version | `453e2bce-d59b-4683-9d20-74e56c021003` | Live-verified |
-| NVCF state | `ACTIVE` | Live-verified |
-| NVCF backend | `nvcf-dgxc-k8s-oci-nrt-prd12-1` | Live-verified |
+| Active function version | `013cb57e-76b7-4567-a3f3-513461ea11da` | Live-verified |
+| NVCF deployment ID | `616a55a8-135b-45bf-b90f-d7452f42081f` | Live-verified |
+| NVCF lifecycle | Created `2026-09-07T06:40:29Z`; `ACTIVE` at `2026-09-07T06:46:18Z` | Live-verified |
+| NVCF backend | H100 OCI `prd12` | Live-verified |
+| NVCF instance | `sr-03fd3e3e-d64d-4535-b85a-634ce9fefd98-miniservice` | Live-verified |
 | NVCF instance type | `OCI.GPU.H100_8x` / `H100` | Live-verified |
 | NVCF scale | min `1`, max `1` instance | Live-verified |
 | NVCF max request concurrency | `100` | Live-verified; platform setting, not a proof of end-to-end capacity |
-| Helm chart | `nemotron-voice-agent:0.1.103` | Live-verified |
-| App image | `nvcr.io/0491162300748285/nemotron-voice-agent:2.0.32` | Rendered from active chart |
-| Astra app | `nemotron-voice-agent-deploy` | Checked-in deployment identity and prior live Fusion verification |
-| Astra URL | `https://nemotron-voice-agent-deploy-backend.stg.astra.nvidia.com` | Live-verified: root, `/health`, and `/api/deployment` returned `200` |
-| Astra UI image | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:21de471` | Checked-in retained values |
-| UI build timestamp | `2026-08-18T07:37:09Z` | Live-verified from `/config.js` |
-| Astra infrastructure environment | `stg`, cluster/role path `astrastg01-ocp-pdx04` | Checked-in values |
-| Astra preview | removed; former preview DNS no longer resolved | Live-verified |
-| NVCF staging | isolated `nemotron-voice-agent-2` candidate is active; see [Isolated Staging Candidate](#22-isolated-staging-candidate) | Live-verified |
-| Capture status | enabled, consent required, S3 backend, dedicated NGC key present, `pending_sessions=0`, no pending errors | Live-verified |
+| Helm chart | `nemotron-voice-agent:0.1.138` | Live-verified |
+| App image | `nvcr.io/0491162300748285/nemotron-voice-agent:2.0.66`; OCI digest `sha256:23b7828a23972c78251b7fc99c397eb48a0be05715acd89a9e8af1e08cec7bf1` | Published artifact and active chart |
+| App source | `479e0f538818df8ca27ac36e547e913a37d3fe64` | Immutable release source |
+| Retained rollback version | `453e2bce-d59b-4683-9d20-74e56c021003`, chart `0.1.103`, `INACTIVE` | Live-verified |
+| Failed rollout version | `d5d70d49-2e25-47cf-9ccf-974216c51958`, `INACTIVE` | Live-verified |
+| Astra app | `nemotron-voice-agent-deploy` | Fusion update succeeded |
+| Astra URL | `https://nemotron-voice-agent-deploy-backend.stg.astra.nvidia.com` | Live-verified |
+| Astra UI image | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.67-2b07f747` | Live-verified from Fusion export |
+| Recoverable UI copy | `nvcr.io/0491162300748285/nemotron-voice-agent-ui:2.0.67-2b07f747`; OCI digest `sha256:85c8c93d72325271cfe8df49c7ad599a590623f6e7731c09140238ac1f8caf0c` | Published artifact |
+| UI source | `2b07f74789e5f3642a25244407224b6f59127912` | UI-only hotfix source |
+| Astra values commit | `1fc2acd` | Deployed Fusion values |
+| UI build timestamp | `2026-09-07T06:58:56Z` | Live-verified from Fusion export and public `config.js` |
+| Astra infrastructure environment | Operational production UI in physical `stg` infrastructure | Live-verified |
+| NVCF staging | Isolated `nemotron-voice-agent-2` remains active on chart `0.1.130`; refer to [Isolated Staging Candidate](#22-isolated-staging-candidate) | Live-verified |
+| Capture status | Enabled, upload required, upload ready, target and key present, CLI present, S3 backend | Live-verified through Astra |
+| Public smoke | Root, `/api/deployment`, and `/api/session-capture/status` returned HTTP 200; valid-nonce WebSocket returned HTTP 101; Omni selection smoke passed | Live-verified |
+| Qualification decision | **OWNER-DIRECTED ROLLOUT; SMOKE GREEN; FULL SQA NOT RUN; UNQUALIFIED** | Owner authorization, not an SQA pass |
+
+The first `0.1.138` version used `--json-secret-file`, which created one
+nested secret named `secrets`. Required startup checks could not resolve the
+individual keys, and all five app pods restarted. Two deployment attempts
+failed. The corrected active version uses six individual secret names:
+`FINNHUB_API_KEY`, `PERPLEXITY_API_KEY`, `NGC_API_KEY`, `NVIDIA_API_KEY`,
+`SESSION_CAPTURE_NGC`, and `WEATHERAPI_KEY`. No secret values are recorded.
+
+After the backend rollout, public UI testing exposed an independent client bug.
+The visible **Select example** call to action was a noninteractive `span`; only
+the upper part of each card selected an example. UI-only commit `2b07f747`
+renders a real button. Focused local and public Playwright smoke checks confirm
+that the visible button selects Nemotron Omni Assistant Subagents. The backend
+chart and app image did not change for this UI hotfix.
+
+Local container `nva-ui-local-2-0-67-2b07f747` serves the hotfix on
+`0.0.0.0:7860`. The stopped `2.0.66` local container remains available as a
+rollback.
 
 ### 2.2 Isolated Staging Candidate
 
@@ -280,10 +312,12 @@ recorded in the repository. The chart references the key names
 `NVIDIA_API_KEY`, `NGC_API_KEY`, `PERPLEXITY_API_KEY`, `WEATHERAPI_KEY`,
 and `FINNHUB_API_KEY`.
 
-This evidence does not qualify the candidate. No audio request, conversation
-query, or SQA suite ran. Chart `0.1.138` and app/UI `2.0.66` remain
-**unqualified**, and no Astra or NVCF deployment was changed. The active
-isolated environment remains on `0.1.130` and app/UI `2.0.58`.
+The Viking evidence does not qualify the candidate. No audio request,
+conversation query, or SQA suite ran there. The owner later authorized the main
+NVCF and Astra rollout recorded in section 2.1 despite that qualification gap.
+Chart `0.1.138` and app `2.0.66` remain **unqualified**. The UI-only `2.0.67`
+hotfix supersedes UI `2.0.66` on Astra and the local host. The isolated
+environment remains on `0.1.130` and app/UI `2.0.58`.
 
 ### 2.4 Important Naming Truth: “Live/Prod” Versus Astra `prd`
 
@@ -488,7 +522,7 @@ The REST and WebSocket requests may hit different pods by design. Redis closes t
 
 ### 6.1 Rendered workloads
 
-Chart `0.1.103` renders ten `Deployment` objects:
+Chart `0.1.138` renders ten `Deployment` objects:
 
 1. five-replica application deployment,
 2. ASR,
@@ -507,13 +541,13 @@ It renders ClusterIP services for the app, ASR, both LLM families, Omni, Redis, 
 
 | Workload | Image |
 |---|---|
-| app and prewarmer | `nvcr.io/0491162300748285/nemotron-voice-agent:2.0.32` |
+| app and prewarmer | `nvcr.io/0491162300748285/nemotron-voice-agent:2.0.66` |
 | ASR | `nvcr.io/0491162300748285/nemotron-asr-streaming:1.2.0` |
 | Lightning | `nvcr.io/nim/nvidia/nemotron-3.5-lightning-30b-a3b:2.0.9-variant` |
 | Super | `nvcr.io/nim/nvidia/nemotron-3-super-120b-a12b:2.0.5` |
 | Omni | `nvcr.io/0491162300748285/vllm-omni:v0.20.0-cu130-r2` |
-| Magpie | `nvcr.io/0491162300748285/magpie-tts-multilingual:1.8.0` |
-| Chatterbox | `nvcr.io/nim/nvidia/chatterbox-tts-multilingual:1.0.0` |
+| Magpie | `nvcr.io/nim/nvidia/magpie-tts-multilingual:1.10.0` |
+| Chatterbox | `nvcr.io/nim/nvidia/chatterbox-tts-multilingual:1.1.0` |
 | Redis | `nvcr.io/0491162300748285/redis:7.2.4-debian-12-r12` |
 | SeaweedFS | `nvcr.io/0491162300748285/seaweedfs:4.41` |
 
@@ -543,7 +577,7 @@ Internal fixed service names form the runtime contract:
 
 #### 6.3.1 Omni Model Name Contract
 
-**Deployed (chart `0.1.103`):** The Omni vLLM deployment separates the model
+**Deployed (chart `0.1.138`):** The Omni vLLM deployment separates the model
 repository from the model name that clients use:
 
 - `omni.model` identifies the Hugging Face repository that vLLM downloads.
