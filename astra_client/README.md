@@ -23,8 +23,8 @@ It is a React and TypeScript single-page app built with [Vite](https://vite.dev/
   Both remain replayable from the header.
 - **Streamlined example selection**: select an example through its full card,
   then use the launch bar to configure or start it.
-- **Five-minute session timer**: a visible countdown gracefully ends a live
-  session at zero through the standard capture, teardown, and feedback flow.
+- **Five-minute session timer**: a compact square countdown stays fixed at the
+  top right and gracefully ends a live session at zero.
 - **Per-example tools**: enable or disable tools for the Generic
   Frontend/Backend Agent from its configuration popup or from **Settings**.
 
@@ -44,11 +44,12 @@ want to choose a text-to-speech engine, change capture preferences, or adjust
 other supported options. Start the conversation directly when the defaults are
 suitable.
 
-A live session starts with a visible `05:00` countdown based on an absolute
-deadline. The timer enters its low state during the final 60 seconds and its
-critical state during the final 15 seconds. At zero, the client requests the
-existing timeout end path once. Normal graceful teardown, capture reporting,
-and feedback then run. The timer appears only while the session is live.
+A live session starts with a compact square `05:00` countdown fixed at the top
+right. It uses an absolute deadline, enters its low state during the final 60
+seconds, and enters its critical state during the final 15 seconds. At zero,
+the client requests the existing timeout end path once. Normal graceful
+teardown, capture reporting, and feedback then run. The timer appears only
+while the session is live.
 
 The default and checked-in Astra runtime values set the limit to 300 seconds.
 Deployments can override the limit with `DEMO_SESSION_SECONDS`.
@@ -74,8 +75,11 @@ change from bypassing the deployment configuration.
 
 ## Inspect Frontend/Backend Latency
 
-When a Frontend/Backend turn emits stage metrics, select
-**End-to-end latency** below the Conversation Orb. The breakdown consumes
+The latency summary appears in a bounded card to the right of the Conversation
+Orb on wide layouts. Select **End-to-end latency** to expand the breakdown
+downward inside the same card. The panel stays height-bounded and scrolls when
+needed instead of opening upward over the conversation. On narrower layouts,
+the complete card moves below the orb. The breakdown consumes
 `RTVIEvent.Metrics` and separates agent stages from the real-time voice pipeline.
 
 The breakdown can show the following seven metric types:
