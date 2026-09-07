@@ -40,7 +40,7 @@ def test_frontend_backend_uses_release_modes_and_ordered_deadlines() -> None:
     app = values["app"]
 
     assert app["frontendBackendTalkerFillerMode"] == "emit"
-    assert app["frontendBackendToolResultMode"] == "talker"
+    assert app["frontendBackendToolResultMode"] == "direct"
     assert app["frontendBackendDirectToolResponse"] is False
     outer = float(app["thinkerToolTimeoutSeconds"])
     overall = float(app["genericBackendTimeoutSeconds"])
