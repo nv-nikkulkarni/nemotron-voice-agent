@@ -15,6 +15,9 @@ deployments such as `generic-assistant/server-perf`.
 protocol the server uses to push per-turn timing breakdowns (LLM / TTS /
 ASR sub-latencies) to the client over the same WebSocket as the audio.
 The benchmark parses those frames alongside the audio stream.
+It accepts nested `server-message` envelopes from the wire and already-unwrapped
+metrics payloads delivered by an RTVI software development kit (SDK) callback.
+Both forms feed the same metric collector.
 
 ## Layout
 
@@ -157,6 +160,21 @@ results_<timestamp>/
     ├── result_<id>.json         # per-client metrics, parsed back by aggregation
     └── audio_output_<id>.wav    # bot audio captured by this client (unless --no-save-audio)
 ```
+
+Each per-client `result_<id>.json` includes
+`server_metrics.stage_events`. This list retains each observed Frontend/Backend
+metric before aggregation.
+
+Each event stores `key`, `value`, `metric`, and `processor`, plus `stage`,
+`turn_id`, `invocation_id`, `parent_invocation_id`, `attempt`, `outcome`, and
+`tool_name` when supplied by the server. Event values use seconds. The
+correlation fields let you reconstruct retries, individual tool invocations,
+and a turn's Talker-to-Thinker sequence.
+
+The aggregate text, tab-separated value (TSV), and JSON reports still expose
+the same seven Frontend/Backend stage columns. Use `stage_events` when you need
+per-invocation evidence; raw `rtvi_messages` remain available in the per-client
+result for broader transport analysis.
 
 Multi-level sweep (`--clients "1 4 16"`):
 

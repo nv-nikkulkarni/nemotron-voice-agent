@@ -12,7 +12,8 @@ It is a React and TypeScript single-page app built with [Vite](https://vite.dev/
 - **Prompt management**: pick a built-in persona or write a custom system prompt.
 - **Voice selection**: browse and preview TTS voices with language filtering.
 - **Audio visualizers**: real-time input and output waveform display.
-- **Metrics dashboard**: time-to-first-byte latency charts, token usage, and connection status.
+- **Metrics dashboard**: time-to-first-byte latency charts, token usage,
+  connection status, and Frontend/Backend agent stage metrics grouped by turn.
 - **Conversation transcript**: live ASR and bot-response display.
 - **Webcam vision panel**: live webcam input for the multimodal Omni Subagents example.
 - **Safe session restart**: End and Start can create a new WebSocket session in
@@ -51,6 +52,31 @@ Model endpoints come from the deployment's service catalog. **Settings** does
 not expose a local model URL override, which prevents a browser-only endpoint
 change from bypassing the deployment configuration.
 
+## Inspect Frontend/Backend Latency
+
+When a Frontend/Backend turn emits stage metrics, select
+**End-to-end latency** below the Conversation Orb. The breakdown consumes
+`RTVIEvent.Metrics` and separates agent stages from the real-time voice pipeline.
+
+The breakdown can show the following seven metric types:
+
+| UI Row | RTVI Metric |
+| --- | --- |
+| Frontend Talker — tool selection TTFT | `frontend_tool_selection_ttft` |
+| Frontend Talker — tool selection processing | `frontend_tool_selection_processing_time` |
+| Backend Thinker — TTFT | `backend_llm_ttft` |
+| Backend Thinker — processing | `backend_llm_processing_time` |
+| Backend tool | `backend_tool_call_latency` |
+| Frontend Talker — final response TTFT | `frontend_final_response_ttft` |
+| Frontend Talker — final response processing | `frontend_final_response_processing_time` |
+
+Values use milliseconds. Only stages executed and emitted for that turn appear.
+For example, direct result mode does not run the final Talker response stage.
+
+The client clears the previous breakdown when a new recognized user turn
+ends, then uses turn and invocation correlation to merge the current rows.
+Older-turn metrics cannot replace rows after the new turn is identified.
+
 ## Session Restart Boundary
 
 WebSocket audio uses a monotonically increasing bot-track epoch. The client
@@ -61,6 +87,13 @@ cancelled turn. The new session ID also remounts the Conversation Orb, clearing
 session-scoped speaking, thinking, tool, and latency state. User-selected
 examples, service preferences, recording choice, and capture consent remain
 unchanged.
+
+The source SQA oracle in
+[`tests/sqa/test_teardown.mjs`](../tests/sqa/test_teardown.mjs) ends and starts a
+WebSocket session without refreshing the tab. It passes only when the server
+mints a different session ID and the second welcome has both transcript text
+and audible onset. Run this oracle against each target environment before you
+qualify that deployment.
 
 ## Getting started
 
