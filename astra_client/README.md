@@ -12,18 +12,17 @@ It is a React and TypeScript single-page app built with [Vite](https://vite.dev/
 - **Prompt management**: pick a built-in persona or write a custom system prompt.
 - **Voice selection**: browse and preview TTS voices with language filtering.
 - **Audio visualizers**: real-time input and output waveform display.
-- **Metrics dashboard**: time-to-first-byte latency charts, token usage,
+- **Metrics dashboard**: time-to-first-audio latency, token usage,
   connection status, and Frontend/Backend agent stage metrics grouped by turn.
 - **Conversation transcript**: live ASR and bot-response display.
 - **Webcam vision panel**: live webcam input for the multimodal Omni Subagents example.
 - **Safe session restart**: End and Start can create a new WebSocket session in
   the same tab, with a fresh session ID and audible welcome.
-- **Guided introductions**: optional landing and live-session guides begin with
-  a small **Take a tour?** invitation. Animated steps start only after you opt
-  in, and both invitations remain replayable from the header.
+- **Guided introduction**: a brief **Click ? for a tour** hint points to the
+  landing-page `?` button. The tour starts only when you select the button.
 - **Streamlined example selection**: select an example through its full card,
   then use the launch bar to configure or start it.
-- **Five-minute session timer**: a compact square **TIME LEFT** countdown stays
+- **Ten-minute session timer**: a compact square **TIME LEFT** countdown stays
   fixed below the top-right session-ID chip and gracefully ends a live session
   at zero.
 - **Per-example tools**: enable or disable tools for the Generic
@@ -31,13 +30,14 @@ It is a React and TypeScript single-page app built with [Vite](https://vite.dev/
 
 ## Use the Curated Experience
 
-A small **Take a tour?** invitation appears on every full page load. Select
-**Yes** to start the six-step animated landing tour, which highlights the
-example cards, configuration and start controls, pipeline information, and
-settings. Select **No** to dismiss the invitation without starting the
-spotlight animation. After you opt in, use **Back** and **Next** to move through
-the steps, or select **Skip tour** from any step. Select **Guided introduction**
-(`?`) in the header to return to the invitation.
+A brief, nonblocking **Click ? for a tour** hint appears for 5 seconds when the
+landing page loads. No tour invitation or spotlight opens automatically.
+Select **Guided introduction** (`?`) to start the six-step animated landing
+tour. It highlights the example cards, configuration and start controls,
+pipeline information, and settings. Use **Back** and **Next** to move through
+the steps, or select **Skip tour** from any step. The `?` button is not
+available while a session is starting, live, or stopping. There is no separate
+live-session tour.
 
 To prepare a session, select anywhere on an example card. The cards do not
 contain separate **Select example** or **Configure** actions. After selection,
@@ -47,24 +47,16 @@ want to choose a text-to-speech engine, change capture preferences, or adjust
 other supported options. Start the conversation directly when the defaults are
 suitable.
 
-A live session starts with a compact square `05:00` **TIME LEFT** countdown
+A live session starts with a compact square `10:00` **TIME LEFT** countdown
 below the session-ID chip at the top right. It uses an absolute deadline and
-enters its low state during the final 60
-seconds, and enters its critical state during the final 15 seconds. At zero,
+enters its low state during the final 60 seconds. It enters its critical state
+during the final 15 seconds. At zero,
 the client requests the existing timeout end path once. Normal graceful
 teardown, capture reporting, and feedback then run. The timer appears only
 while the session is live.
 
-The default and checked-in Astra runtime values set the limit to 300 seconds.
+The default and checked-in Astra runtime values set the limit to 600 seconds.
 Deployments can override the limit with `DEMO_SESSION_SECONDS`.
-
-Each time a session reaches the live state, a separate **Take a tour?**
-invitation appears. Select **Yes** to start the two-step animated conversation
-tour. It first highlights the activity area where tool-call labels appear, then
-points to the control that opens the latency breakdown. Select **No** to dismiss
-the invitation without animation, or select **Skip tour** from either animated
-step. While a session is connected, select `?` to return to the conversation
-tour invitation instead of the landing invitation.
 
 The Generic Frontend/Backend Agent configuration includes its available tools.
 You can also change the same selection under **Settings**. The settings list
@@ -80,7 +72,7 @@ change from bypassing the deployment configuration.
 
 ## Inspect Frontend/Backend Latency
 
-The latency trigger remains the compact **End-to-end latency** pill below the
+The latency trigger is the compact **Time to first audio** pill below the
 Conversation Orb. On wide layouts, selecting it opens a separately anchored,
 height-bounded breakdown in the blank area to the right. The breakdown expands
 downward and scrolls when needed instead of opening upward over the
@@ -92,16 +84,20 @@ The breakdown can show the following seven metric types:
 
 | UI Row | RTVI Metric |
 | --- | --- |
-| Frontend Talker — tool selection TTFT | `frontend_tool_selection_ttft` |
-| Frontend Talker — tool selection processing | `frontend_tool_selection_processing_time` |
-| Backend Thinker — TTFT | `backend_llm_ttft` |
-| Backend Thinker — processing | `backend_llm_processing_time` |
+| Frontend Talker — first tool-call token | `frontend_tool_selection_ttft` |
+| Frontend Talker — total selection time | `frontend_tool_selection_processing_time` |
+| Backend Thinker — first plan token | `backend_llm_ttft` |
+| Backend Thinker — total planning time | `backend_llm_processing_time` |
 | Backend tool | `backend_tool_call_latency` |
-| Frontend Talker — final response TTFT | `frontend_final_response_ttft` |
-| Frontend Talker — final response processing | `frontend_final_response_processing_time` |
+| Frontend Talker — first answer token | `frontend_final_response_ttft` |
+| Frontend Talker — total answer generation | `frontend_final_response_processing_time` |
 
 Values use milliseconds. Only stages executed and emitted for that turn appear.
 For example, direct result mode does not run the final Talker response stage.
+Each model total includes its corresponding first-token time. These rows are
+alternative views of the same model call, so do not add them together. Parallel
+tool calls can also overlap. **Time to first audio** measures from user silence
+to bot speech, which can be progress speech rather than the final answer.
 
 The client clears the previous breakdown when a new recognized user turn
 ends, then uses turn and invocation correlation to merge the current rows.
