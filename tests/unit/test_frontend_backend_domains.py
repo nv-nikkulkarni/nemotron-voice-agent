@@ -438,7 +438,13 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
 
         self.assertEqual(backend._overall_timeout_seconds, 40.0)
         self.assertEqual(backend._planner_timeout_seconds, 18.0)
+        self.assertEqual(backend.tool_result_mode_default, "direct")
         self.assertEqual(TOOLS["web_search"].timeout_s, 20.0)
+        retry_budget = (
+            services._WEB_SEARCH_ATTEMPT_TIMEOUT_SECONDS * services._WEB_SEARCH_MAX_ATTEMPTS
+            + services._WEB_SEARCH_RETRY_BACKOFF_SECONDS * sum(range(1, services._WEB_SEARCH_MAX_ATTEMPTS))
+        )
+        self.assertLess(retry_budget, TOOLS["web_search"].timeout_s)
         self.assertGreater(45.0, backend._overall_timeout_seconds)
         self.assertGreater(backend._overall_timeout_seconds, backend._planner_timeout_seconds)
         self.assertGreater(backend._overall_timeout_seconds, TOOLS["web_search"].timeout_s)
@@ -922,6 +928,7 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(_talker_filler_mode(), "emit")
             self.assertEqual(_tool_result_mode(), "talker")
+            self.assertEqual(_tool_result_mode("direct"), "direct")
         with patch.dict(
             os.environ,
             {
@@ -937,6 +944,31 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_payload_outcome({"type": "tool_result", "status": "partial"}), "partial")
         self.assertEqual(_payload_outcome({"type": "response_hint", "reason": "params_missing"}), "needs_input")
         self.assertEqual(_payload_outcome({"type": "response_hint", "reason": "timeout"}), "failure")
+
+    async def test_generic_backend_defaults_to_direct_grounded_delivery(self) -> None:
+        thinker = _DelayedThinker(delay=0)
+        thinker.tool_result_mode_default = "direct"
+        handler = build_handlers(thinker, filler_policy="talker_authored")["call_backend"]
+        params = _FunctionParams({"query": "Generate a random number."})
+
+        with patch.dict(os.environ, {}, clear=True):
+            await handler(params)
+
+        spoken = [frame.text for frame in params.llm.frames if isinstance(frame, LLMTextFrame)]
+        self.assertEqual(spoken, ["The result is five."])
+        self.assertFalse(params.results[0][1].run_llm)
+
+    async def test_explicit_talker_mode_overrides_generic_direct_default(self) -> None:
+        thinker = _DelayedThinker(delay=0)
+        thinker.tool_result_mode_default = "direct"
+        handler = build_handlers(thinker, filler_policy="talker_authored")["call_backend"]
+        params = _FunctionParams({"query": "Generate a random number."})
+
+        with patch.dict(os.environ, {"FRONTEND_BACKEND_TOOL_RESULT_MODE": "talker"}, clear=True):
+            await handler(params)
+
+        self.assertEqual(params.llm.frames, [])
+        self.assertTrue(params.results[0][1].run_llm)
 
     async def test_airline_compatible_filler_policy_uses_planner_text(self) -> None:
         handler = build_handlers(
@@ -1046,6 +1078,42 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((stock["status"], stock["symbol"], stock["price"]), ("success", "NVDA", 123.45))
         self.assertEqual(client.calls, 2)
         sleep.assert_awaited_once()
+
+    async def test_web_search_retries_once_inside_its_dispatcher_budget(self) -> None:
+        calls = 0
+
+        class FakeResponse:
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return {"choices": [{"message": {"content": "The grounded answer."}}]}
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb) -> None:
+                return None
+
+            async def post(self, *args, **kwargs):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    raise services.httpx.ReadTimeout("transient read timeout")
+                return FakeResponse()
+
+        with (
+            patch.dict(os.environ, {"PERPLEXITY_API_KEY": "configured"}),
+            patch.object(services.httpx, "AsyncClient", return_value=FakeClient()),
+            patch.object(services.asyncio, "sleep", new_callable=AsyncMock) as sleep,
+        ):
+            result = await services.web_search({"query": "latest NVIDIA news"})
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["answer"], "The grounded answer.")
+        self.assertEqual(calls, 2)
+        sleep.assert_awaited_once_with(services._WEB_SEARCH_RETRY_BACKOFF_SECONDS)
 
     async def test_grounded_formatter_preserves_exact_stock_values(self) -> None:
         payload = format_tool_result(

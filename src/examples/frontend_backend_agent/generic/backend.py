@@ -31,6 +31,10 @@ _RETRIABLE_PLANNER_EXCEPTIONS = (TimeoutError, APIConnectionError, APITimeoutErr
 class GenericThinkerBackend:
     """Run one bounded, replaceable backend task per voice session."""
 
+    # Generic formatters already produce grounded, TTS-safe speech; avoid a second
+    # Talker pass over Pipecat's asynchronous started/final result envelope.
+    tool_result_mode_default = "direct"
+
     def __init__(
         self,
         *,
