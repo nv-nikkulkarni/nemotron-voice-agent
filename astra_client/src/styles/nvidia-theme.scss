@@ -4860,6 +4860,7 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
 }
 .example-card:hover .ex-tag { border-color: color-mix(in srgb, var(--ex-accent) 30%, transparent); color: var(--text-primary); }
 .example-card__cta {
+  appearance: none; background: none; border: 0; cursor: pointer;
   font-family: var(--font-grotesk); font-size: var(--text-sm); font-weight: 600;
   color: color-mix(in srgb, var(--ex-accent) 90%, #fff);
   padding-top: var(--space-2); border-top: 1px solid var(--border-subtle);
@@ -4868,6 +4869,7 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
 }
 .example-card:hover .example-card__cta { gap: 12px; }
 .example-card.selected .example-card__cta { color: var(--nvidia-green); }
+.example-card__cta:focus-visible { outline: 2px solid var(--ex-accent); outline-offset: 4px; border-radius: var(--radius-sm); }
 
 // Prominent capability callout (e.g. omni webcam + upload) + sample queries
 .example-card__feature {

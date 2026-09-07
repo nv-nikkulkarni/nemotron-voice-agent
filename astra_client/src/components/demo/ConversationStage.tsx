@@ -106,7 +106,15 @@ function ExampleCard({
         )}
       </button>
       <div className="example-card__actions">
-        <span className="example-card__cta">{selected ? "✓ Selected" : "Select example"}</span>
+        <button
+          type="button"
+          className="example-card__cta"
+          onClick={onSelect}
+          aria-pressed={selected}
+          aria-label={`${selected ? "Selected" : "Select"} ${option.label}`}
+        >
+          {selected ? "✓ Selected" : "Select example"}
+        </button>
         <button type="button" className="btn-ghost example-card__configure" onClick={onConfigure}>
           Configure
         </button>
