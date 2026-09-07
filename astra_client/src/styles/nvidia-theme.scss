@@ -4522,15 +4522,82 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
 // The expansion is anchored to the orb band, not to the trigger pill.
 .lat-breakdown {
   position: absolute; top: 150px; right: clamp(18px, 3vw, 48px);
-  z-index: 40; width: min(380px, 28vw); max-height: min(360px, 52vh); overflow-y: auto;
+  z-index: 40; width: min(480px, 34vw); max-height: min(650px, 72vh); overflow-y: auto;
   box-sizing: border-box;
   background: var(--bg-card); border: 1px solid var(--border-default); border-radius: 12px;
-  box-shadow: 0 16px 44px rgba(0,0,0,0.48); padding: 12px 14px; text-align: left;
+  box-shadow: 0 18px 48px rgba(0,0,0,0.52); padding: 14px 16px; text-align: left;
   animation: pop-in 180ms var(--ease-spring) both;
 }
 .lat-breakdown__head { display: flex; align-items: center; justify-content: space-between;
   font-family: var(--font-grotesk); font-weight: 600; font-size: var(--text-sm); color: var(--text-primary); margin-bottom: 8px; }
+.lat-breakdown__head > div { min-width: 0; display: grid; gap: 2px; }
+.lat-breakdown__head small {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-mono, var(--font-grotesk)); font-size: 10px; font-weight: 500; color: var(--text-muted);
+}
 .lat-breakdown__x { background: none; border: none; color: var(--text-secondary); font-size: 18px; line-height: 1; cursor: pointer; }
+.lat-axis {
+  display: flex; justify-content: space-between; margin: 5px 2px 6px;
+  font-family: var(--font-mono, var(--font-grotesk)); font-size: 9px; color: var(--text-muted);
+}
+.lat-lane {
+  padding: 10px; border-radius: 9px;
+  background: color-mix(in srgb, var(--bg-app) 54%, transparent);
+  border: 1px solid color-mix(in srgb, var(--nvidia-green) 28%, var(--border-subtle));
+}
+.lat-lane + .lat-lane { margin-top: 9px; }
+.lat-lane--async {
+  background: color-mix(in srgb, var(--bg-app) 32%, transparent);
+  border-style: dashed; border-color: color-mix(in srgb, #38bdf8 34%, var(--border-subtle));
+}
+.lat-lane__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 9px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.055em; text-transform: uppercase; color: var(--text-primary);
+}
+.lat-lane__head > span:last-child { font-size: 9px; font-weight: 600; color: var(--text-muted); text-align: right; }
+.lat-lane--critical .lat-lane__head > span:last-child { color: color-mix(in srgb, var(--nvidia-green) 84%, #fff); }
+.lat-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 11px; }
+.lat-stage { --lat-stage-color: var(--nvidia-green); min-width: 0; }
+.lat-stage--backend { --lat-stage-color: #38bdf8; }
+.lat-stage--tool { --lat-stage-color: #a78bfa; }
+.lat-stage--final { --lat-stage-color: #facc15; }
+.lat-stage__head {
+  display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px;
+  font-size: 11.5px; color: var(--text-primary);
+}
+.lat-stage__head > span:first-child { min-width: 0; font-weight: 650; }
+.lat-stage__head > span:last-child {
+  flex: none; font-family: var(--font-mono, var(--font-grotesk)); font-size: 10.5px; font-weight: 650;
+}
+.lat-stage__track {
+  position: relative; height: 9px; overflow: visible; border-radius: var(--radius-full);
+  background:
+    linear-gradient(90deg, transparent 49.7%, color-mix(in srgb, var(--text-muted) 20%, transparent) 50%, transparent 50.3%),
+    color-mix(in srgb, var(--text-muted) 10%, transparent);
+}
+.lat-stage__bar {
+  position: absolute; top: 1px; height: 7px; min-width: 3px; border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--lat-stage-color) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lat-stage-color) 92%, #fff);
+  box-shadow: 0 0 9px color-mix(in srgb, var(--lat-stage-color) 18%, transparent);
+}
+.lat-lane--async .lat-stage__bar { opacity: 0.82; }
+.lat-stage__ttft {
+  position: absolute; top: -3px; width: 2px; height: 11px; border-radius: 1px;
+  background: #fff; box-shadow: 0 0 0 1px color-mix(in srgb, var(--lat-stage-color) 78%, transparent);
+}
+.lat-stage__audio {
+  position: absolute; z-index: 3; top: -3px; width: 1px; height: 15px;
+  background: #f472b6; box-shadow: 0 0 5px color-mix(in srgb, #f472b6 62%, transparent);
+}
+.lat-stage__meta {
+  display: flex; justify-content: space-between; gap: 10px; margin-top: 4px;
+  font-size: 9.5px; line-height: 1.25; color: var(--text-muted);
+}
+.lat-stage__meta > span:first-child { max-width: 72%; }
+.lat-stage__meta > span:last-child {
+  flex: none; font-family: var(--font-mono, var(--font-grotesk)); color: var(--text-secondary);
+}
 .lat-breakdown__section { display: flex; justify-content: space-between; gap: 12px; margin: 9px 0 6px;
   padding-top: 7px; border-top: 1px solid var(--border-subtle); color: var(--text-primary);
   font-size: 11px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -4556,12 +4623,12 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
   border-top: 1px dashed color-mix(in srgb, var(--nvidia-green) 40%, transparent);
   font-size: 13px; font-weight: 700; color: color-mix(in srgb, var(--nvidia-green) 88%, #fff); }
 .lat-breakdown__felt > span:last-child { font-family: var(--font-mono, var(--font-grotesk)); }
-.lat-breakdown__note { margin: 8px 0 0; font-size: 11px; line-height: 1.4; color: var(--text-muted); }
+.lat-breakdown__playout-note { margin: 7px 0 0; font-size: 9.5px; line-height: 1.35; color: var(--text-muted); }
 
 @media (max-width: 1320px) {
   .lat-breakdown {
     position: relative; inset: auto;
-    width: min(440px, calc(100vw - 48px)); max-height: min(300px, 38vh);
+    width: min(480px, calc(100vw - 48px)); max-height: min(520px, 54vh);
     margin: 10px auto 0;
   }
 }
@@ -4569,6 +4636,10 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
 @media (max-width: 640px) {
   .demo-hud { top: 120px; right: 10px; }
   .demo-timer { width: 54px; height: 54px; }
+  .lat-breakdown { width: min(420px, calc(100vw - 24px)); padding: 12px; }
+  .lat-lane__head, .lat-stage__meta { align-items: flex-start; }
+  .lat-stage__meta { display: grid; gap: 3px; }
+  .lat-stage__meta > span:first-child { max-width: none; }
 }
 
 .icon-btn {

@@ -77,27 +77,40 @@ Conversation Orb. On wide layouts, selecting it opens a separately anchored,
 height-bounded breakdown in the blank area to the right. The breakdown expands
 downward and scrolls when needed instead of opening upward over the
 conversation. On narrower layouts, it appears below the trigger. The breakdown
-consumes `RTVIEvent.Metrics` and separates agent stages from the real-time
-voice pipeline.
+consumes `RTVIEvent.Metrics` and presents the agent stages as a waterfall. The
+**Before you heard a response** lane shows the critical path to first audio. The
+**After delegation** lane shows asynchronous planning, tool, and final-answer
+work that continues after progress speech can begin. The real-time voice
+pipeline remains below these lanes.
 
 The breakdown can show the following seven metric types:
 
-| UI Row | RTVI Metric |
+| Displayed Stage Detail | RTVI Metric |
 | --- | --- |
-| Frontend Talker — first tool-call token | `frontend_tool_selection_ttft` |
-| Frontend Talker — total selection time | `frontend_tool_selection_processing_time` |
-| Backend Thinker — first plan token | `backend_llm_ttft` |
-| Backend Thinker — total planning time | `backend_llm_processing_time` |
-| Backend tool | `backend_tool_call_latency` |
-| Frontend Talker — first answer token | `frontend_final_response_ttft` |
-| Frontend Talker — total answer generation | `frontend_final_response_processing_time` |
+| Frontend selection first-token marker | `frontend_tool_selection_ttft` |
+| Frontend selection total and waterfall bar | `frontend_tool_selection_processing_time` |
+| Backend planning first-token marker | `backend_llm_ttft` |
+| Backend planning total and waterfall bar | `backend_llm_processing_time` |
+| Backend tool total and waterfall bar | `backend_tool_call_latency` |
+| Final-answer first-token marker | `frontend_final_response_ttft` |
+| Final-answer total and waterfall bar | `frontend_final_response_processing_time` |
 
 Values use milliseconds. Only stages executed and emitted for that turn appear.
 For example, direct result mode does not run the final Talker response stage.
-Each model total includes its corresponding first-token time. These rows are
-alternative views of the same model call, so do not add them together. Parallel
-tool calls can also overlap. **Time to first audio** measures from user silence
-to bot speech, which can be progress speech rather than the final answer.
+Each stage shows its total duration, with the corresponding time to first token
+inline when available. The total already includes the first-token time, so do
+not add them together. Parallel tool calls can also overlap. When structured
+Frontend/Backend metrics are present, the client hides the generic LLM pipeline
+row to avoid showing the same model work twice. It retains the generic LLM row
+for pipelines that do not emit the structured agent metrics.
+
+The browser estimates each bar start offset by subtracting the server-reported
+duration from the first browser-observed completion offset. The resulting
+positions show an approximate sequence, not a server-clock trace. If observation
+offsets are unavailable, the client displays stages in their reported order.
+**Time to first audio**
+measures from user silence to bot speech, which can be progress speech rather
+than the final answer.
 
 The client clears the previous breakdown when a new recognized user turn
 ends, then uses turn and invocation correlation to merge the current rows.

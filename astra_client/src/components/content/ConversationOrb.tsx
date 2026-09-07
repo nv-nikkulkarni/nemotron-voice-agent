@@ -18,6 +18,12 @@ import {
   parseAgentStageMetrics,
   type AgentStageMetricSnapshot,
 } from "../../demo/frontendBackendStageMetrics";
+import {
+  buildAgentTimeline,
+  suppressDuplicateLlmRows,
+  timelineDomainMs,
+  type AgentTimelineStage,
+} from "../../demo/latencyTimeline";
 
 interface LatRow { label: string; ms: number; kind: string }
 
@@ -50,7 +56,9 @@ export function ConversationOrb() {
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [breakdown, setBreakdown] = useState<LatRow[] | null>(null);
   const [agentBreakdown, setAgentBreakdown] = useState<AgentStageMetricSnapshot | null>(null);
+  const [agentMetricOffsets, setAgentMetricOffsets] = useState<Record<string, number>>({});
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const turnOriginRef = useRef<number | null>(null);
   // Tool the model just chose to call (from the server `tool-call` message). Shown in a
   // small box while the tool runs; cleared when the bot starts speaking the result.
   const [activeTool, setActiveTool] = useState<string | null>(null);
@@ -71,7 +79,9 @@ export function ConversationOrb() {
       setLatencyMs(null);
       setBreakdown(null);
       setAgentBreakdown(null);
+      setAgentMetricOffsets({});
       setPlayoutMs(null);
+      turnOriginRef.current = performance.now();
     }, []),
   );
   useRTVIClientEvent(
@@ -103,6 +113,14 @@ export function ConversationOrb() {
     useCallback((metrics: unknown) => {
       const updates = parseAgentStageMetrics(metrics);
       if (updates.length > 0) {
+        const observedOffset = turnOriginRef.current == null ? 0 : performance.now() - turnOriginRef.current;
+        setAgentMetricOffsets((current) => {
+          const next = { ...current };
+          for (const row of updates) {
+            if (next[row.id] == null) next[row.id] = observedOffset;
+          }
+          return next;
+        });
         setAgentBreakdown((current) => mergeAgentStageMetrics(current, updates));
       }
     }, []),
@@ -137,7 +155,36 @@ export function ConversationOrb() {
   else if (userSpeaking) { caption = "Listening to you…"; state = "user"; }
 
   const hasAgentBreakdown = !!agentBreakdown && agentBreakdown.rows.length > 0;
-  const hasBreakdown = hasAgentBreakdown || (!!breakdown && breakdown.length > 0);
+  const pipelineRows = suppressDuplicateLlmRows(breakdown, hasAgentBreakdown);
+  const timeline = buildAgentTimeline(agentBreakdown, agentMetricOffsets, latencyMs);
+  const timelineMaxMs = timelineDomainMs(timeline.maxMs);
+  const hasBreakdown = hasAgentBreakdown || pipelineRows.length > 0;
+
+  const renderTimelineStage = (stage: AgentTimelineStage) => {
+    const left = Math.min(100, (stage.startMs / timelineMaxMs) * 100);
+    const width = Math.max(2, Math.min(100 - left, (stage.durationMs / timelineMaxMs) * 100));
+    const ttft = stage.ttftMs == null ? null : Math.min(100, (stage.ttftMs / stage.durationMs) * 100);
+    return (
+      <li key={stage.id} className={`lat-stage lat-stage--${stage.kind}`} title={stage.outcome ? `Outcome: ${stage.outcome}` : undefined}>
+        <div className="lat-stage__head">
+          <span>{stage.label}</span>
+          <span>{Math.round(stage.durationMs)} ms total</span>
+        </div>
+        <div className="lat-stage__track" aria-label={`${stage.label}: ${Math.round(stage.durationMs)} milliseconds`}>
+          {latencyMs != null && latencyMs <= timelineMaxMs && (
+            <span className="lat-stage__audio" style={{ left: `${(latencyMs / timelineMaxMs) * 100}%` }} aria-hidden />
+          )}
+          <span className="lat-stage__bar" style={{ left: `${left}%`, width: `${width}%` }}>
+            {ttft != null && <span className="lat-stage__ttft" style={{ left: `${ttft}%` }} aria-hidden />}
+          </span>
+        </div>
+        <div className="lat-stage__meta">
+          <span>{stage.microcopy}</span>
+          {stage.ttftMs != null && <span>First token {Math.round(stage.ttftMs)} ms</span>}
+        </div>
+      </li>
+    );
+  };
 
   return (
     <div className="conv-orb-band" data-tour="conversation-tools">
@@ -175,35 +222,42 @@ export function ConversationOrb() {
         </button>
 
         {showBreakdown && hasBreakdown && (
-          <div className="lat-breakdown" role="dialog" aria-label="Latency breakdown">
+          <div className="lat-breakdown" role="dialog" aria-label="Latency breakdown timeline">
             <div className="lat-breakdown__head">
-              <span>Latency breakdown</span>
+              <div>
+                <span>What happened after you stopped speaking</span>
+                <small>{agentBreakdown?.turnId || "Current turn"}</small>
+              </div>
               <button type="button" className="lat-breakdown__x" onClick={() => setShowBreakdown(false)} aria-label="Close">×</button>
             </div>
             {hasAgentBreakdown && (
               <>
-                <div className="lat-breakdown__section">
-                  <span>Frontend / Backend agent</span>
-                  {agentBreakdown?.turnId && <span>{agentBreakdown.turnId}</span>}
+                <div className="lat-axis" aria-hidden>
+                  <span>0</span>
+                  <span>{Math.round(timelineMaxMs / 2)} ms</span>
+                  <span>{Math.round(timelineMaxMs)} ms</span>
                 </div>
-                <ul className="lat-breakdown__list" aria-label="Frontend and backend agent latency">
-                  {agentBreakdown!.rows.map((row) => (
-                    <li
-                      key={row.id}
-                      className={`lat-row lat-row--${row.kind}`}
-                      title={row.outcome ? `Outcome: ${row.outcome}` : undefined}
-                    >
-                      <span className="lat-row__dot" aria-hidden />
-                      <span className="lat-row__label">{row.label}</span>
-                      <span className="lat-row__ms">{Math.round(row.valueMs)} ms</span>
-                    </li>
-                  ))}
-                </ul>
+                <section className="lat-lane lat-lane--critical" aria-label="Stages before first audio">
+                  <div className="lat-lane__head">
+                    <span>Before you heard a response</span>
+                    <span>Critical path</span>
+                  </div>
+                  <ul className="lat-timeline">{timeline.critical.map(renderTimelineStage)}</ul>
+                </section>
+                {!!timeline.asynchronous.length && (
+                  <section className="lat-lane lat-lane--async" aria-label="Asynchronous delegated stages">
+                    <div className="lat-lane__head">
+                      <span>After delegation</span>
+                      <span>Does not block first audio</span>
+                    </div>
+                    <ul className="lat-timeline">{timeline.asynchronous.map(renderTimelineStage)}</ul>
+                  </section>
+                )}
               </>
             )}
-            {!!breakdown?.length && <div className="lat-breakdown__section">Realtime voice pipeline</div>}
-            <ul className="lat-breakdown__list">
-              {breakdown?.map((r, i) => (
+            {!!pipelineRows.length && <div className="lat-breakdown__section">Realtime voice pipeline</div>}
+            <ul className="lat-breakdown__list" aria-label="Realtime voice pipeline latency">
+              {pipelineRows.map((r, i) => (
                 <li key={`${r.kind}-${i}`} className={`lat-row lat-row--${r.kind}`}>
                   <span className="lat-row__dot" aria-hidden />
                   <span className="lat-row__label">{r.label}</span>
@@ -227,10 +281,7 @@ export function ConversationOrb() {
                 <span>{Math.round(latencyMs + playoutMs)} ms</span>
               </div>
             )}
-            <p className="lat-breakdown__note">
-              Model totals include their first-token time, so do not add both values. Parallel tool calls can
-              overlap. First audio can be progress speech. Browser playout measures bot-start → first audible sample.
-            </p>
+            <p className="lat-breakdown__playout-note">Browser playout measures bot-start → first audible sample.</p>
           </div>
         )}
       </aside>
