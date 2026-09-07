@@ -2,6 +2,8 @@
 
 This guide provides reference benchmarks for the Nemotron Voice Agent covering **accuracy**, **full-duplex behavior**, and **latency/throughput**.
 
+To collect structured internal feedback for an Astra and NVIDIA Cloud Functions deployment, use [Create the Astra and NVCF Deployment Feedback Form](how-to/create-deployment-feedback-form.md).
+
 ---
 
 ## Latency and Scalability
