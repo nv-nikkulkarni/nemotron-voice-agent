@@ -24,7 +24,8 @@ It is a React and TypeScript single-page app built with [Vite](https://vite.dev/
   then use the launch bar to configure or start it.
 - **Ten-minute session timer**: a compact square **TIME LEFT** countdown stays
   fixed below the top-right session-ID chip and gracefully ends a live session
-  at zero.
+  at zero. With the Omni webcam rail active, it shifts left so it cannot cover
+  the **Chunk** selector.
 - **Per-example tools**: enable or disable tools for the Generic
   Frontend/Backend Agent from its configuration popup or from **Settings**.
 
@@ -53,7 +54,8 @@ enters its low state during the final 60 seconds. It enters its critical state
 during the final 15 seconds. At zero,
 the client requests the existing timeout end path once. Normal graceful
 teardown, capture reporting, and feedback then run. The timer appears only
-while the session is live.
+while the session is live. When the selected example uses the webcam rail, the
+timer shifts into the conversation column and leaves the rail controls clear.
 
 The default and checked-in Astra runtime values set the limit to 600 seconds.
 Deployments can override the limit with `DEMO_SESSION_SECONDS`.
@@ -108,9 +110,14 @@ The browser estimates each bar start offset by subtracting the server-reported
 duration from the first browser-observed completion offset. The resulting
 positions show an approximate sequence, not a server-clock trace. If observation
 offsets are unavailable, the client displays stages in their reported order.
-**Time to first audio**
-measures from user silence to bot speech, which can be progress speech rather
-than the final answer.
+The preferred **Time to first audio** value comes from the server RTVI
+`user-bot-latency` metric and measures from user silence to bot speech. If that
+metric is absent, the client measures from `UserStoppedSpeaking` to the first
+audible bot output. It labels this fallback **End-to-end latency** in the pill
+and **Browser-observed end-to-end latency** in the breakdown. The fallback
+includes browser delivery and playout, and is therefore approximate. The
+server value takes precedence whenever it is available. First audio can be
+progress speech rather than the final answer.
 
 The client clears the previous breakdown when a new recognized user turn
 ends, then uses turn and invocation correlation to merge the current rows.

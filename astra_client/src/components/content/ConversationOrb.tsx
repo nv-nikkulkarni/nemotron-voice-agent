@@ -20,6 +20,7 @@ import {
 } from "../../demo/frontendBackendStageMetrics";
 import {
   buildAgentTimeline,
+  selectFirstAudioLatency,
   suppressDuplicateLlmRows,
   timelineDomainMs,
   type AgentTimelineStage,
@@ -54,11 +55,13 @@ export function ConversationOrb() {
   const [userSpeaking, setUserSpeaking] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [clientFirstAudioMs, setClientFirstAudioMs] = useState<number | null>(null);
   const [breakdown, setBreakdown] = useState<LatRow[] | null>(null);
   const [agentBreakdown, setAgentBreakdown] = useState<AgentStageMetricSnapshot | null>(null);
   const [agentMetricOffsets, setAgentMetricOffsets] = useState<Record<string, number>>({});
   const [showBreakdown, setShowBreakdown] = useState(false);
   const turnOriginRef = useRef<number | null>(null);
+  const clientFirstAudioRecordedRef = useRef(false);
   // Tool the model just chose to call (from the server `tool-call` message). Shown in a
   // small box while the tool runs; cleared when the bot starts speaking the result.
   const [activeTool, setActiveTool] = useState<string | null>(null);
@@ -77,10 +80,12 @@ export function ConversationOrb() {
       setUserSpeaking(false);
       setThinking(true);
       setLatencyMs(null);
+      setClientFirstAudioMs(null);
       setBreakdown(null);
       setAgentBreakdown(null);
       setAgentMetricOffsets({});
       setPlayoutMs(null);
+      clientFirstAudioRecordedRef.current = false;
       turnOriginRef.current = performance.now();
     }, []),
   );
@@ -98,7 +103,14 @@ export function ConversationOrb() {
       playoutTimerRef.current = setInterval(() => {
         const audible = outputRms() > 0.01;
         if (audible || performance.now() - t0 > 1500) {
-          if (audible) setPlayoutMs(Math.max(0, performance.now() - t0));
+          if (audible) {
+            const now = performance.now();
+            setPlayoutMs(Math.max(0, now - t0));
+            if (turnOriginRef.current != null && !clientFirstAudioRecordedRef.current) {
+              clientFirstAudioRecordedRef.current = true;
+              setClientFirstAudioMs(Math.max(0, now - turnOriginRef.current));
+            }
+          }
           if (playoutTimerRef.current) { clearInterval(playoutTimerRef.current); playoutTimerRef.current = null; }
         }
       }, 20);
@@ -155,8 +167,10 @@ export function ConversationOrb() {
   else if (userSpeaking) { caption = "Listening to you…"; state = "user"; }
 
   const hasAgentBreakdown = !!agentBreakdown && agentBreakdown.rows.length > 0;
+  const firstAudioMs = selectFirstAudioLatency(latencyMs, clientFirstAudioMs);
+  const clientObservedLatency = latencyMs == null && clientFirstAudioMs != null;
   const pipelineRows = suppressDuplicateLlmRows(breakdown, hasAgentBreakdown);
-  const timeline = buildAgentTimeline(agentBreakdown, agentMetricOffsets, latencyMs);
+  const timeline = buildAgentTimeline(agentBreakdown, agentMetricOffsets, firstAudioMs);
   const timelineMaxMs = timelineDomainMs(timeline.maxMs);
   const hasBreakdown = hasAgentBreakdown || pipelineRows.length > 0;
 
@@ -171,8 +185,8 @@ export function ConversationOrb() {
           <span>{Math.round(stage.durationMs)} ms total</span>
         </div>
         <div className="lat-stage__track" aria-label={`${stage.label}: ${Math.round(stage.durationMs)} milliseconds`}>
-          {latencyMs != null && latencyMs <= timelineMaxMs && (
-            <span className="lat-stage__audio" style={{ left: `${(latencyMs / timelineMaxMs) * 100}%` }} aria-hidden />
+          {firstAudioMs != null && firstAudioMs <= timelineMaxMs && (
+            <span className="lat-stage__audio" style={{ left: `${(firstAudioMs / timelineMaxMs) * 100}%` }} aria-hidden />
           )}
           <span className="lat-stage__bar" style={{ left: `${left}%`, width: `${width}%` }}>
             {ttft != null && <span className="lat-stage__ttft" style={{ left: `${ttft}%` }} aria-hidden />}
@@ -215,10 +229,12 @@ export function ConversationOrb() {
           disabled={!hasBreakdown}
           aria-expanded={showBreakdown}
           onClick={() => setShowBreakdown((v) => !v)}
-          title={hasBreakdown ? "Click for the latency breakdown" : "Time from user silence to first bot audio"}
+          title={hasBreakdown ? "Click for the latency breakdown" : "Time from user silence to first audible bot audio"}
         >
-          <span className="conv-latency__label">Time to first audio{hasBreakdown ? " ⓘ" : ""}</span>
-          <span className="conv-latency__value">{latencyMs != null ? `${(latencyMs / 1000).toFixed(2)}s` : "—"}</span>
+          <span className="conv-latency__label">
+            {clientObservedLatency ? "End-to-end latency" : "Time to first audio"}{hasBreakdown ? " ⓘ" : ""}
+          </span>
+          <span className="conv-latency__value">{firstAudioMs != null ? `${(firstAudioMs / 1000).toFixed(2)}s` : "—"}</span>
         </button>
 
         {showBreakdown && hasBreakdown && (
@@ -266,10 +282,10 @@ export function ConversationOrb() {
               ))}
             </ul>
             <div className="lat-breakdown__total">
-              <span>Time to first audio (user silence → speech)</span>
-              <span>{latencyMs != null ? `${Math.round(latencyMs)} ms` : "—"}</span>
+              <span>{clientObservedLatency ? "Browser-observed end-to-end latency" : "Time to first audio (user silence → speech)"}</span>
+              <span>{firstAudioMs != null ? `${Math.round(firstAudioMs)} ms` : "—"}</span>
             </div>
-            {playoutMs != null && (
+            {playoutMs != null && latencyMs != null && (
               <div className="lat-breakdown__sub">
                 <span>+ Audio playout (your browser)</span>
                 <span>{Math.round(playoutMs)} ms</span>

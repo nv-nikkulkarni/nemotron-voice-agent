@@ -10,7 +10,7 @@ if (!compiledPath) {
   throw new Error("LATENCY_TIMELINE_MODULE must point to compiled latencyTimeline.js");
 }
 
-const { buildAgentTimeline, suppressDuplicateLlmRows, timelineDomainMs } = await import(
+const { buildAgentTimeline, selectFirstAudioLatency, suppressDuplicateLlmRows, timelineDomainMs } = await import(
   pathToFileURL(compiledPath).href
 );
 
@@ -85,4 +85,10 @@ test("rounds the visible domain up to a stable human-readable boundary", () => {
   assert.equal(timelineDomainMs(1), 100);
   assert.equal(timelineDomainMs(1730), 1800);
   assert.equal(timelineDomainMs(5300), 5500);
+});
+
+test("prefers server first-audio latency and falls back to browser-observed audio", () => {
+  assert.equal(selectFirstAudioLatency(620, 690), 620);
+  assert.equal(selectFirstAudioLatency(null, 690), 690);
+  assert.equal(selectFirstAudioLatency(null, null), null);
 });

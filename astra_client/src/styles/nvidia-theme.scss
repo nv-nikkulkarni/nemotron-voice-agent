@@ -2699,6 +2699,10 @@ h2, h3, h4 { font-family: var(--font-grotesk); letter-spacing: -0.015em; }
   z-index: 40;
 }
 
+// Omni reserves a fixed-width webcam rail on the right. Keep the timer inside
+// the conversation column so it cannot cover the rail's Chunk selector.
+.demo-hud--with-webcam { right: 326px; }
+
 .demo-timer {
   display: inline-flex;
   width: 56px;
@@ -4635,6 +4639,7 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
 
 @media (max-width: 640px) {
   .demo-hud { top: 120px; right: 10px; }
+  .demo-hud--with-webcam { right: 318px; }
   .demo-timer { width: 54px; height: 54px; }
   .lat-breakdown { width: min(420px, calc(100vw - 24px)); padding: 12px; }
   .lat-lane__head, .lat-stage__meta { align-items: flex-start; }

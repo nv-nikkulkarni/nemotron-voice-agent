@@ -102,3 +102,7 @@ export function suppressDuplicateLlmRows<T extends { kind: string }>(
 ): T[] {
   return (rows ?? []).filter((row) => !(hasStructured && row.kind === "llm"));
 }
+
+export function selectFirstAudioLatency(serverMs: number | null, clientMs: number | null): number | null {
+  return serverMs ?? clientMs;
+}
