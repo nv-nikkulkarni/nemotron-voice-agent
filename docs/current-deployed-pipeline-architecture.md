@@ -234,22 +234,56 @@ isolated `-2` environment now runs `0.1.130`/`2.0.58` under an explicit owner
 override. Its deployment smoke passed, but its complete staging qualification
 and production approval remain pending.
 
-### 2.3 Source-Recovery Candidate 0.1.134
+### 2.3 Source-Recovery Viking Candidate 0.1.138
 
-The post-SSD recovery branch is
-`dev/nikkulkarni/nvcf-deploy-source-recovery-0.1.134`. It starts from surviving
-commit `25339a7` and restores the `2.0.59` and `2.0.60` runtime source from their
-immutable images before applying separately reviewed evidence-backed fixes.
-The detailed hashes and classification boundary are recorded in the
+The post-SSD recovery is consolidated on
+`dev/nikkulkarni/nvcf-deploy-rebased` at commit
+`479e0f538818df8ca27ac36e547e913a37d3fe64`. It restores the `2.0.59` and
+`2.0.60` runtime source from their immutable images before applying separately
+reviewed evidence-backed fixes. The detailed hashes and classification boundary
+are recorded in the
 [source recovery manifest](recovery/0.1.134-source-recovery-manifest.md).
 
 The candidate restores Talker-authored filler, guarded result modes, correlated
 agent-stage metrics, streamed Thinker time to first token, a fresh WebSocket
 audio epoch on no-refresh session restart, prompt-only current-information
 grounding, and ordered 45/40/18/20-second deadlines. It contains no intent
-router or memory redesign. App/UI `2.0.62` and chart `0.1.134` have not yet been
-built, deployed, or qualified. The active isolated environment remains on
-`0.1.130` and app/UI `2.0.58`.
+router or memory redesign.
+
+The immutable artifact identities are:
+
+| Artifact | Published Identity |
+| --- | --- |
+| App | `nvcr.io/0491162300748285/nemotron-voice-agent:2.0.66`; OCI digest `sha256:23b7828a23972c78251b7fc99c397eb48a0be05715acd89a9e8af1e08cec7bf1`; AMD64 manifest `sha256:9079593f559958d0c53c51fcf739138461d3c05d5fe81068b1d9f1a04581ca93` |
+| Astra UI | `nvcr.io/0491162300748285/nemotron-voice-agent-ui:2.0.66-479e0f53`; OCI digest `sha256:d61d8aeebaa3c18e0ab6d36f4513fbb2a51bb9fe84b2ea91d775689c19303771`; AMD64 manifest `sha256:f0634a5b6ace219250e35decd08a9b522038ae6b10d47a297638bb914a10384a`; timestamp `2026-09-07T04:51:25Z` |
+| Helm chart | `0491162300748285/nemotron-voice-agent:0.1.138`; package SHA-256 `28cc58bbc02bbf93ec2881738909986721acce2a7ccbc0c788272098eea1a30f`; `UPLOAD_COMPLETE` at `2026-09-07 04:58:48 UTC`; pullback checksum matched |
+
+The recovered host lacks Docker authentication for Astra Artifactory. The NGC
+organization registry therefore holds the recoverable UI copy.
+
+Viking Helm release `p7`, revision 2, runs chart `0.1.138` and app `2.0.66` in
+namespace `nva-p7`. All 14 workloads are Ready with zero current restarts, and
+the five app replicas resolve the published app digest. The local UI runs the
+matching `2.0.66-479e0f53` image at `http://localhost:7860`. HTTP, configuration,
+deployment metadata, tool catalog, capture readiness, and WebSocket connection
+smoke checks passed.
+
+Revision 1 omitted the non-secret `sessionCapture.ngcOrg` value, and the app
+failed fast with an empty `SESSION_CAPTURE_NGC` setting. Revision 2 reuses the
+same immutable chart and images and sets the capture target to
+`0491162300748285/session-captures`. Capture reports enabled, upload required,
+upload ready, and target configured. Redis and the SeaweedFS-backed S3 store
+are connected.
+
+Credential values were supplied interactively to Kubernetes and are not
+recorded in the repository. The chart references the key names
+`NVIDIA_API_KEY`, `NGC_API_KEY`, `PERPLEXITY_API_KEY`, `WEATHERAPI_KEY`,
+and `FINNHUB_API_KEY`.
+
+This evidence does not qualify the candidate. No audio request, conversation
+query, or SQA suite ran. Chart `0.1.138` and app/UI `2.0.66` remain
+**unqualified**, and no Astra or NVCF deployment was changed. The active
+isolated environment remains on `0.1.130` and app/UI `2.0.58`.
 
 ### 2.4 Important Naming Truth: “Live/Prod” Versus Astra `prd`
 
