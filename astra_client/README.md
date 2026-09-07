@@ -18,9 +18,9 @@ It is a React and TypeScript single-page app built with [Vite](https://vite.dev/
 - **Webcam vision panel**: live webcam input for the multimodal Omni Subagents example.
 - **Safe session restart**: End and Start can create a new WebSocket session in
   the same tab, with a fresh session ID and audible welcome.
-- **Guided introductions**: the landing tour opens on every full page load, and
-  a separate live-session tour explains tool activity and latency controls.
-  Both remain replayable from the header.
+- **Guided introductions**: optional landing and live-session guides begin with
+  a small **Take a tour?** invitation. Animated steps start only after you opt
+  in, and both invitations remain replayable from the header.
 - **Streamlined example selection**: select an example through its full card,
   then use the launch bar to configure or start it.
 - **Five-minute session timer**: a compact square countdown stays fixed at the
@@ -30,11 +30,13 @@ It is a React and TypeScript single-page app built with [Vite](https://vite.dev/
 
 ## Use the Curated Experience
 
-The six-step guided introduction opens automatically on every full page load.
-It highlights the example cards, configuration and start controls, pipeline
-information, and settings. Use **Back** and **Next** to move through it, or
-select **Skip tour** from any step. Select **Guided introduction** (`?`) in the
-header to replay it.
+A small **Take a tour?** invitation appears on every full page load. Select
+**Yes** to start the six-step animated landing tour, which highlights the
+example cards, configuration and start controls, pipeline information, and
+settings. Select **No** to dismiss the invitation without starting the
+spotlight animation. After you opt in, use **Back** and **Next** to move through
+the steps, or select **Skip tour** from any step. Select **Guided introduction**
+(`?`) in the header to return to the invitation.
 
 To prepare a session, select anywhere on an example card. The cards do not
 contain separate **Select example** or **Configure** actions. After selection,
@@ -54,12 +56,13 @@ while the session is live.
 The default and checked-in Astra runtime values set the limit to 300 seconds.
 Deployments can override the limit with `DEMO_SESSION_SECONDS`.
 
-Each time a session reaches the live state, a separate two-step conversation
-tour opens once. It first highlights the activity area where tool-call labels
-appear, then points to the control that opens the latency breakdown. Select
-**Skip tour** from either step when you want to continue immediately. While a
-session is connected, select `?` to replay the conversation tour instead of the
-landing tour.
+Each time a session reaches the live state, a separate **Take a tour?**
+invitation appears. Select **Yes** to start the two-step animated conversation
+tour. It first highlights the activity area where tool-call labels appear, then
+points to the control that opens the latency breakdown. Select **No** to dismiss
+the invitation without animation, or select **Skip tour** from either animated
+step. While a session is connected, select `?` to return to the conversation
+tour invitation instead of the landing invitation.
 
 The Generic Frontend/Backend Agent configuration includes its available tools.
 You can also change the same selection under **Settings**. The settings list
