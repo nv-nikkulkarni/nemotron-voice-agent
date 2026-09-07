@@ -50,12 +50,18 @@ correction, and then fails closed if the retry still drifts. Capability matching
 is validation-only: it never infers user intent, selects a domain tool, or writes
 a corrected tool call in Python.
 
-The recovery candidate explicitly sets Talker-authored filler and Talker result
-speech. `FRONTEND_BACKEND_TOOL_RESULT_MODE=direct` remains the low-latency
-rollback that speaks trusted backend text without a second Talker inference.
-`hybrid` uses direct speech for successful results and the Talker for failures
-or clarifications. `talker` sends every speakable result through the guarded
-final Talker pass.
+When `FRONTEND_BACKEND_TOOL_RESULT_MODE` is absent, each backend selects its
+default. Generic uses `direct`, which speaks trusted backend text without a
+second Talker inference. Airline retains `talker`, which sends every speakable
+result through the guarded final Talker pass. An explicit `direct`, `hybrid`,
+or `talker` value overrides either backend default. `hybrid` speaks successful
+results directly and uses the Talker for failures or clarifications.
+
+The checked-in NVCF chart explicitly sets
+`app.frontendBackendToolResultMode: "talker"`. That chart value becomes
+`FRONTEND_BACKEND_TOOL_RESULT_MODE=talker` in the application pod and
+overrides the Generic source default. Changing only the backend source does not
+change this rendered Helm behavior.
 
 Replay validation buffers a completion only after a direct backend response has been recorded. Initial and pre-tool conversation remains streamed, preserving its existing time-to-first-audio behavior.
 
@@ -163,8 +169,8 @@ The following environment variables bound shared and domain-specific orchestrati
 | `CHAT_HISTORY_RECENT_TURNS` | `20` | Retains this many recent non-prompt messages in the Talker context |
 | `FRONTEND_BACKEND_VAD_STOP_SECS` | `0.5` | Waits for trailing ASR text before finalizing a Frontend/Backend Agent turn; changing it affects latency and fragmented follow-ups |
 | `FRONTEND_BACKEND_TALKER_FILLER_MODE` | `emit` | Uses `off`, `observe`, or `emit` to suppress, validate-only, or speak an accepted Talker filler |
-| `FRONTEND_BACKEND_TOOL_RESULT_MODE` | `talker` | Uses `direct`, `hybrid`, or `talker` for the grounded post-tool response |
-| `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` | Disabled | Legacy direct-mode rollback used only when the explicit result-mode variable is absent |
+| `FRONTEND_BACKEND_TOOL_RESULT_MODE` | Domain default: Generic `direct`; Airline `talker`; NVCF chart `talker` | An explicit `direct`, `hybrid`, or `talker` value overrides the backend default for grounded post-tool responses |
+| `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` | Disabled | Legacy switch that forces direct mode only when the explicit result-mode variable is absent |
 | `THINKER_FILLER_THRESHOLD_SECONDS` | `0.3` | Delays progress speech until delegated work remains active past the threshold |
 | `THINKER_TOOL_TIMEOUT_SECONDS` | `45.0` | Bounds the shared Talker-to-backend function handler |
 | `GENERIC_PLANNER_TIMEOUT_SECONDS` | `18.0` | Bounds generic Thinker planning |
@@ -182,11 +188,19 @@ blocks the backend; there is no static fallback.
 
 The `generic-frontend-backend-agent` registry entry enables all 5 built-in generic tools. To expose a subset, create or edit a trusted registry entry. Client session data and Talker prompt metadata do not widen that set.
 
-
 Finnhub quote requests retry once after a short bounded backoff only for
 transport errors, HTTP 429, or HTTP 5xx responses. Authentication failures and
 malformed data fail closed without retry, and a second transient failure returns
 the existing grounded unavailable response.
+
+Web search makes at most 2 attempts. Each attempt has a 9-second ceiling, and
+the single retry waits 0.5 seconds. The resulting 18.5-second retry budget fits
+inside the default 20-second `GENERIC_WEB_SEARCH_TIMEOUT_SECONDS` tool
+deadline. Transport failures, attempt timeouts, malformed JSON, HTTP 429, and
+HTTP 5xx responses can trigger the retry. Other HTTP errors fail immediately.
+After the second failure, the tool returns the existing grounded unavailable
+response.
+
 For model and catalog settings, refer to [Configure LLM](../../../docs/how-to/configure-llm.md) and [Configure Services](../../../docs/how-to/configure-services.md). For prompt behavior, tool subsets, and domain extension, refer to [Configure Frontend/Backend Agent Domains](../../../docs/how-to/configure-frontend-backend-domains.md).
 
 The built-in generic profile keeps Nemotron 3 Super reasoning enabled for the

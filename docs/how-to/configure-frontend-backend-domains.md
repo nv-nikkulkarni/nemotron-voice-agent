@@ -20,10 +20,20 @@ The Talker sees only 2 functions. Internal functions, credentials, backend state
 The shared Frontend/Backend Agent pipeline waits `0.5` seconds of voice-activity-detector silence before finalizing a turn. Override this pipeline-scoped value with `FRONTEND_BACKEND_VAD_STOP_SECS` only after real-audio testing. A shorter value can split follow-ups such as “How about Paris?” before the final location transcript arrives; a longer value adds end-of-turn latency. Other examples retain their existing defaults.
 
 Use `FRONTEND_BACKEND_TOOL_RESULT_MODE=direct`, `hybrid`, or `talker` to
-control the grounded post-tool response. The recovery release uses `talker`;
-`direct` remains the low-latency rollback, and `hybrid` invokes the Talker only
-for non-success results. `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` is a legacy
-fallback used only when the explicit mode is absent.
+control the grounded post-tool response. An explicit valid value overrides the
+selected backend default. Without this variable, the Generic backend uses
+`direct` and speaks trusted backend text without another Talker inference.
+The Airline backend retains `talker`, which sends speakable results through
+the guarded Talker pass. `hybrid` speaks successful results directly and uses
+the Talker for failures or clarifications.
+
+The checked-in NVCF chart sets
+`app.frontendBackendToolResultMode: "talker"`, which renders
+`FRONTEND_BACKEND_TOOL_RESULT_MODE=talker` in the application pod. That
+explicit chart setting overrides the Generic source default. A source-only
+change does not alter this Helm behavior. The legacy
+`FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` switch can force `direct` only when
+the explicit mode is absent.
 
 The Generic Talker produces an optional `filler_text` in the same
 `call_backend` selection. `FRONTEND_BACKEND_TALKER_FILLER_MODE=off`, `observe`,
@@ -252,6 +262,11 @@ The generic domain applies the following controls:
 - It bounds the outer function callback, backend, planner, and web tool at 45,
   40, 18, and 20 seconds by default. This ordering leaves time for the backend
   to return one grounded timeout response before the outer callback expires.
+- With the default web-tool deadline, web search can make at most 2 attempts.
+  Each attempt has a 9-second ceiling, and the single retry waits 0.5 seconds.
+  This 18.5-second retry budget fits inside the 20-second tool deadline.
+  Transport failures, attempt timeouts, malformed JSON, HTTP 429, and HTTP 5xx
+  responses can trigger the retry. Other HTTP errors fail immediately.
 - It treats the user request and retrieved webpages as untrusted input.
 - It creates final spoken text from validated arguments and returned service data.
 - It cancels and replaces an unfinished request when the same session sends newer delegated work.
