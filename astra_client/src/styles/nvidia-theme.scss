@@ -4365,6 +4365,7 @@ header h1 { font-family: var(--font-display); }
 .clean-main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 
 .clean-topbar {
+  position: relative; z-index: 60;
   display: flex; align-items: center; justify-content: space-between;
   padding: var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--border-subtle);
@@ -4389,7 +4390,30 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
 // Agent" text beside it is the wordmark.
 .clean-brand__logo { height: 36px; width: auto; display: block; }
 .clean-brand__divider { width: 1px; height: 22px; background: color-mix(in srgb, #fff 22%, transparent); }
-.clean-topbar__actions { display: flex; align-items: center; gap: var(--space-2); }
+.clean-topbar__actions { position: relative; display: flex; align-items: center; gap: var(--space-2); }
+.tour-hint {
+  position: absolute; top: calc(100% + 14px); right: 72px; z-index: 61;
+  width: max-content; max-width: min(220px, calc(100vw - 32px));
+  padding: 7px 11px; border-radius: var(--radius-full); pointer-events: none;
+  color: var(--text-secondary); background: color-mix(in srgb, var(--bg-elevated) 95%, #0d1605);
+  border: 1px solid color-mix(in srgb, var(--nvidia-green) 38%, var(--border-default));
+  box-shadow: 0 10px 28px rgba(0,0,0,0.38); font-size: var(--text-xs); line-height: 1;
+  animation: tour-hint-appear 5s var(--ease-out-soft) both;
+}
+.tour-hint strong { color: var(--nvidia-green); font-size: 1.15em; }
+.tour-hint::before {
+  content: ""; position: absolute; top: -5px; right: 62px; width: 9px; height: 9px;
+  background: inherit; border-left: inherit; border-top: inherit; transform: rotate(45deg);
+}
+@keyframes tour-hint-appear {
+  0% { opacity: 0; transform: translateY(-6px); }
+  12%, 78% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-hint { animation-name: tour-hint-fade; }
+  @keyframes tour-hint-fade { 0%, 78% { opacity: 1; } 100% { opacity: 0; } }
+}
 .clean-deployed-at {
   margin-left: auto;
   margin-right: var(--space-3);
@@ -5027,31 +5051,8 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
 .startview__selection strong { overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; }
 .tool-selector__status { margin: 0; color: var(--text-muted); font-size: var(--text-sm); }
 
-// A quiet opt-in prompt appears before either animated guide. Until the user
-// chooses Yes, there is no spotlight, target motion, or guided-step animation.
-.tour-invite-layer {
-  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
-  padding: var(--space-4); background: rgba(0,0,0,0.48); backdrop-filter: blur(3px);
-}
-.tour-invite {
-  width: min(390px, 100%); padding: var(--space-5); color: var(--text-primary);
-  background: color-mix(in srgb, var(--bg-elevated) 96%, #0d1605);
-  border: 1px solid color-mix(in srgb, var(--nvidia-green) 42%, transparent);
-  border-radius: var(--radius-xl); box-shadow: 0 24px 70px rgba(0,0,0,0.58);
-}
-.tour-invite__eyebrow {
-  margin: 0 0 5px; color: var(--nvidia-green); font-size: 11px; font-weight: 700;
-  letter-spacing: 0.1em; text-transform: uppercase;
-}
-.tour-invite h2 { margin: 0; font-size: var(--text-xl); }
-.tour-invite > p:not(.tour-invite__eyebrow) {
-  margin: var(--space-2) 0 var(--space-5); color: var(--text-secondary);
-  font-size: var(--text-sm); line-height: 1.55;
-}
-.tour-invite__actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
-
-// Replayable guided introduction. The spotlight dims the page while the guide
-// owns interaction until the user completes or skips it.
+// The passive hint opens this replayable guide only after the user selects ?.
+// The spotlight dims the page while the guide owns interaction until the user completes or skips it.
 .tour-layer { position: fixed; inset: 0; z-index: 100; pointer-events: auto; }
 .tour-spotlight {
   position: fixed; z-index: 101; border: 2px solid var(--nvidia-green);

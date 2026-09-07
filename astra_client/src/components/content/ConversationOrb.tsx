@@ -168,9 +168,9 @@ export function ConversationOrb() {
           disabled={!hasBreakdown}
           aria-expanded={showBreakdown}
           onClick={() => setShowBreakdown((v) => !v)}
-          title={hasBreakdown ? "Click for the latency breakdown" : "Server response time (user → first bot audio)"}
+          title={hasBreakdown ? "Click for the latency breakdown" : "Time from user silence to first bot audio"}
         >
-          <span className="conv-latency__label">End-to-end latency{hasBreakdown ? " ⓘ" : ""}</span>
+          <span className="conv-latency__label">Time to first audio{hasBreakdown ? " ⓘ" : ""}</span>
           <span className="conv-latency__value">{latencyMs != null ? `${(latencyMs / 1000).toFixed(2)}s` : "—"}</span>
         </button>
 
@@ -212,7 +212,7 @@ export function ConversationOrb() {
               ))}
             </ul>
             <div className="lat-breakdown__total">
-              <span>Server response (VAD-stop → first audio)</span>
+              <span>Time to first audio (user silence → speech)</span>
               <span>{latencyMs != null ? `${Math.round(latencyMs)} ms` : "—"}</span>
             </div>
             {playoutMs != null && (
@@ -228,8 +228,8 @@ export function ConversationOrb() {
               </div>
             )}
             <p className="lat-breakdown__note">
-              Server stages are measured on the server; playout is measured in your browser
-              (bot-start → first audible sample). True felt = server response + playout.
+              Model totals include their first-token time, so do not add both values. Parallel tool calls can
+              overlap. First audio can be progress speech. Browser playout measures bot-start → first audible sample.
             </p>
           </div>
         )}

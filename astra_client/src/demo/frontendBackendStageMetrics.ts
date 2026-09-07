@@ -31,17 +31,17 @@ type StageDefinition = {
 const TTFB_STAGES: Record<string, StageDefinition> = {
   frontend_tool_selection_llm: {
     key: "frontend_tool_selection_ttft",
-    label: "Frontend Talker — tool selection TTFT",
+    label: "Frontend Talker — first tool-call token",
     kind: "frontend",
   },
   backend_thinker_llm: {
     key: "backend_llm_ttft",
-    label: "Backend Thinker — TTFT",
+    label: "Backend Thinker — first plan token",
     kind: "backend",
   },
   frontend_final_response_llm: {
     key: "frontend_final_response_ttft",
-    label: "Frontend Talker — final response TTFT",
+    label: "Frontend Talker — first answer token",
     kind: "final",
   },
 };
@@ -49,17 +49,17 @@ const TTFB_STAGES: Record<string, StageDefinition> = {
 const PROCESSING_STAGES: Record<string, StageDefinition> = {
   frontend_tool_selection_llm: {
     key: "frontend_tool_selection_processing_time",
-    label: "Frontend Talker — tool selection processing",
+    label: "Frontend Talker — total selection time",
     kind: "frontend",
   },
   backend_thinker_llm: {
     key: "backend_llm_processing_time",
-    label: "Backend Thinker — processing",
+    label: "Backend Thinker — total planning time",
     kind: "backend",
   },
   frontend_final_response_llm: {
     key: "frontend_final_response_processing_time",
-    label: "Frontend Talker — final response processing",
+    label: "Frontend Talker — total answer generation",
     kind: "final",
   },
 };
