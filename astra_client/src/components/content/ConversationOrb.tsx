@@ -140,7 +140,7 @@ export function ConversationOrb() {
   const hasBreakdown = hasAgentBreakdown || (!!breakdown && breakdown.length > 0);
 
   return (
-    <div className="conv-orb-band">
+    <div className="conv-orb-band" data-tour="conversation-tools">
       <div className="conv-orb-canvas conv-sphere-canvas">
         <SphereWaveVisualizer userAnalyser={userAnalyser} botAnalyser={botAnalyser} thinking={thinking} />
       </div>
@@ -157,7 +157,7 @@ export function ConversationOrb() {
         </div>
       )}
 
-      <div className="conv-latency">
+      <div className="conv-latency" data-tour="conversation-latency">
         <button
           type="button"
           className="conv-latency__btn"

@@ -82,9 +82,9 @@ export async function newPage(browser, sig, { viewport = { width: 1280, height: 
   return { ctx, page };
 }
 
-// Pick an example card on the landing page, which now opens the ExampleConfigModal
-// popup (.ex-config). We configure the per-session choices in the popup but do NOT
-// launch here — startConversation() clicks the popup's "Start conversation".
+// Select an example with its full card, then open the ExampleConfigModal from
+// the launch bar. We configure per-session choices in the popup but do NOT launch
+// here — startConversation() clicks the popup's "Start conversation".
 //   example : "generic" | "omni"
 //   model   : "lightning" | "super"            (generic only; anything not "super" → Lightning)
 //   tts     : "magpie" | "chatterbox"          (optional; leaves the popup default if omitted)
@@ -96,10 +96,23 @@ export async function newPage(browser, sig, { viewport = { width: 1280, height: 
 //   consent : check the "Store my audio…" toggle inside the popup.
 export async function selectExample(page, { example = "generic", model = "lightning", tts, tools, reasoning, consent = false } = {}) {
   const isOmni = /omni/i.test(example);
-  // 1. Click the example card to open its configuration popup.
-  const card = page.locator(".example-card").filter({ hasText: isOmni ? /omni/i : /generic/i }).first();
-  if (await card.count()) await card.click();
-  else await page.locator(".example-card").nth(isOmni ? 1 : 0).click();
+  const skipTour = page.getByRole("button", { name: /skip tour/i });
+  if (await skipTour.isVisible().catch(() => false)) await skipTour.click();
+  // 1. Select with the full card, then open configuration from the launch bar.
+  const matchingCard = page.locator(".example-card").filter({ hasText: isOmni ? /omni/i : /generic/i }).first();
+  const card = await matchingCard.count() ? matchingCard : page.locator(".example-card").nth(isOmni ? 1 : 0);
+  await card.evaluate((element) => element.click());
+  const selection = page.locator(".startview__selection strong");
+  await selection.waitFor({ state: "visible", timeout: 8000 });
+  const selectedLabel = (await selection.innerText()).trim();
+  if (!(isOmni ? /omni/i : /generic/i).test(selectedLabel)) {
+    throw new Error(`example card did not select the requested experience: ${selectedLabel}`);
+  }
+  if (await card.getAttribute("aria-pressed") !== "true") {
+    throw new Error("selected example card did not expose aria-pressed=true");
+  }
+  const configure = page.locator(".startview__launch").getByRole("button", { name: /^configure$/i });
+  await configure.evaluate((element) => element.click());
 
   // 2. Wait for the popup to appear (the launch surface).
   const popup = page.locator(".ex-config");
@@ -172,7 +185,7 @@ export async function selectExample(page, { example = "generic", model = "lightn
   }
 }
 
-export async function startConversation(page, { timeoutMs = 30000 } = {}) {
+export async function startConversation(page, { timeoutMs = 30000, dismissConversationTour = true } = {}) {
   // The popup's primary button ("Start conversation" / "Connecting…") launches.
   const btn = page.locator(".ex-config__actions .btn-primary").first();
   if (await btn.count()) await btn.click({ timeout: 10000 });
@@ -181,7 +194,14 @@ export async function startConversation(page, { timeoutMs = 30000 } = {}) {
   while (Date.now() - t0 < timeoutMs) {
     await sleep(700);
     const cap = await orbCaption(page);
-    if (/connected|listening|speaking|thinking/i.test(cap)) return { connected: true, connectMs: Date.now() - t0 };
+    if (/connected|listening|speaking|thinking/i.test(cap)) {
+      const tour = page.locator('.tour-popover[aria-label="Conversation feature introduction"]');
+      await tour.waitFor({ state: "visible", timeout: 1500 }).catch(() => {});
+      if (dismissConversationTour && await tour.isVisible().catch(() => false)) {
+        await tour.getByRole("button", { name: /skip tour/i }).evaluate((element) => element.click());
+      }
+      return { connected: true, connectMs: Date.now() - t0 };
+    }
   }
   return { connected: false, connectMs: null };
 }

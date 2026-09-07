@@ -2690,7 +2690,7 @@ h2, h3, h4 { font-family: var(--font-grotesk); letter-spacing: -0.015em; }
    ============================================================================ */
 .demo-hud {
   position: fixed;
-  bottom: 20px;
+  top: 68px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -4547,6 +4547,7 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
 .example-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 340px)); gap: var(--space-4); justify-content: center; width: 100%; max-width: 760px; }
 .example-card {
   --ex-accent: var(--nvidia-green);
+  appearance: none; width: 100%; color: inherit; font: inherit;
   text-align: left; display: flex; flex-direction: column; gap: var(--space-2);
   background: var(--bg-card); border: 1px solid var(--border-default); border-top: 3px solid var(--ex-accent);
   border-radius: var(--radius-lg); padding: var(--space-5); cursor: pointer; box-shadow: var(--shadow-md);
@@ -4677,7 +4678,7 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
 .pi-prompt { margin: 0; white-space: pre-wrap; background: var(--bg-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-3); color: var(--text-secondary); font-size: var(--text-xs); line-height: 1.6; max-height: 320px; overflow-y: auto; }
 
 // --- recording UI ---
-.rec-indicator { position: fixed; top: 68px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); font-weight: var(--font-semibold); color: #f87171; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-full); padding: 4px 12px; z-index: 25; }
+.rec-indicator { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); font-weight: var(--font-semibold); color: #f87171; background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-full); padding: 4px 12px; }
 .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: #f87171; animation: rec-blink 1.2s ease-in-out infinite; }
 @keyframes rec-blink { 50% { opacity: 0.25; } }
 .rec-download { position: fixed; bottom: var(--space-6); left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: var(--space-2); background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-full); padding: 8px 12px; box-shadow: var(--shadow-lg); z-index: 25; }
@@ -4859,17 +4860,6 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
   transition: transform 180ms var(--ease-spring), border-color 180ms ease, color 180ms ease, background 180ms ease;
 }
 .example-card:hover .ex-tag { border-color: color-mix(in srgb, var(--ex-accent) 30%, transparent); color: var(--text-primary); }
-.example-card__cta {
-  appearance: none; background: none; border: 0; cursor: pointer;
-  font-family: var(--font-grotesk); font-size: var(--text-sm); font-weight: 600;
-  color: color-mix(in srgb, var(--ex-accent) 90%, #fff);
-  padding-top: var(--space-2); border-top: 1px solid var(--border-subtle);
-  display: inline-flex; align-items: center; gap: 6px;
-  transition: gap 200ms var(--ease-spring), color 200ms ease;
-}
-.example-card:hover .example-card__cta { gap: 12px; }
-.example-card.selected .example-card__cta { color: var(--nvidia-green); }
-.example-card__cta:focus-visible { outline: 2px solid var(--ex-accent); outline-offset: 4px; border-radius: var(--radius-sm); }
 
 // Prominent capability callout (e.g. omni webcam + upload) + sample queries
 .example-card__feature {
@@ -4994,23 +4984,11 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
 .ex-config__error { color: #ff6b6b; font-size: var(--text-sm); margin: var(--space-2) 0; }
 .ex-config__actions { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-3); }
 @media (max-width: 480px) { .ex-config__opts { grid-template-columns: 1fr; } }
-// Selection, configuration, and launch are deliberately separate actions.
-.example-card { cursor: default; }
-.example-card__select {
-  all: unset;
-  display: flex; flex: 1; flex-direction: column; gap: var(--space-2);
-  color: inherit; text-align: left; cursor: pointer; border-radius: var(--radius-md);
-}
-.example-card__select:focus-visible {
+// The entire card is one accessible selection target. Configuration and launch
+// remain separate actions in the bar below the cards.
+.example-card:focus-visible {
   outline: 2px solid var(--ex-accent); outline-offset: 6px;
 }
-.example-card__actions {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
-  margin-top: auto; padding-top: var(--space-2); border-top: 1px solid var(--border-subtle);
-}
-.example-card__cta { padding-top: 0; border-top: 0; }
-.example-card__configure { flex-shrink: 0; color: color-mix(in srgb, var(--ex-accent) 85%, #fff); }
-.example-card__configure:hover { color: #fff; }
 
 .startview__launch {
   width: min(760px, 100%); display: flex; align-items: center; justify-content: flex-end;

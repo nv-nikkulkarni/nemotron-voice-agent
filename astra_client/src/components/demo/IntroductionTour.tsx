@@ -19,7 +19,7 @@ interface TargetRect {
   height: number;
 }
 
-const STEPS: TourStep[] = [
+const INTRODUCTION_STEPS: TourStep[] = [
   {
     target: '[data-tour="welcome"]',
     eyebrow: "Welcome",
@@ -55,6 +55,21 @@ const STEPS: TourStep[] = [
     eyebrow: "Fine tune",
     title: "Adjust session settings",
     body: "Review audio devices, the deployment-managed model, prompts, voices, and Generic tool selection.",
+  },
+];
+
+const CONVERSATION_STEPS: TourStep[] = [
+  {
+    target: '[data-tour="conversation-tools"]',
+    eyebrow: "Live activity",
+    title: "Follow grounded tool calls",
+    body: "When the assistant checks weather, stocks, the web, or another capability, a live label appears here with the tool currently running.",
+  },
+  {
+    target: '[data-tour="conversation-latency"]',
+    eyebrow: "Performance",
+    title: "Open the latency breakdown",
+    body: "After a response, select the latency readout to inspect frontend selection, backend reasoning and tools, final response generation, voice stages, and browser playout.",
   },
 ];
 
@@ -100,11 +115,17 @@ function popoverPosition(rect: TargetRect | null): { placement: "above" | "below
     : { placement, style: { bottom: window.innerHeight - rect.top + 22, left } };
 }
 
-export function IntroductionTour({ onClose }: Readonly<{ onClose: () => void }>) {
+interface GuidedTourProps {
+  steps: TourStep[];
+  ariaLabel: string;
+  onClose: () => void;
+}
+
+function GuidedTour({ steps, ariaLabel, onClose }: Readonly<GuidedTourProps>) {
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState<TargetRect | null>(null);
   const popoverRef = useRef<HTMLElement>(null);
-  const step = STEPS[stepIndex];
+  const step = steps[stepIndex];
 
   useLayoutEffect(() => {
     const target = document.querySelector(step.target);
@@ -129,15 +150,15 @@ export function IntroductionTour({ onClose }: Readonly<{ onClose: () => void }>)
     popoverRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
-      if (event.key === "ArrowRight") setStepIndex((current) => Math.min(current + 1, STEPS.length - 1));
+      if (event.key === "ArrowRight") setStepIndex((current) => Math.min(current + 1, steps.length - 1));
       if (event.key === "ArrowLeft") setStepIndex((current) => Math.max(current - 1, 0));
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, stepIndex]);
+  }, [onClose, steps.length]);
 
   const position = popoverPosition(rect);
-  const lastStep = stepIndex === STEPS.length - 1;
+  const lastStep = stepIndex === steps.length - 1;
 
   return (
     <div className="tour-layer">
@@ -149,16 +170,16 @@ export function IntroductionTour({ onClose }: Readonly<{ onClose: () => void }>)
         style={position.style}
         role="dialog"
         aria-modal="true"
-        aria-label="Interface introduction"
+        aria-label={ariaLabel}
         tabIndex={-1}
       >
         <span className="tour-popover__arrow" aria-hidden />
-        <div className="tour-popover__progress" aria-label={`Step ${stepIndex + 1} of ${STEPS.length}`}>
-          {STEPS.map((item, index) => (
+        <div className="tour-popover__progress" aria-label={`Step ${stepIndex + 1} of ${steps.length}`}>
+          {steps.map((item, index) => (
             <span key={item.title} className={index === stepIndex ? "active" : ""} aria-hidden />
           ))}
         </div>
-        <p className="tour-popover__eyebrow">{step.eyebrow} · {stepIndex + 1}/{STEPS.length}</p>
+        <p className="tour-popover__eyebrow">{step.eyebrow} · {stepIndex + 1}/{steps.length}</p>
         <h2>{step.title}</h2>
         <p>{step.body}</p>
         <div className="tour-popover__actions">
@@ -186,5 +207,25 @@ export function IntroductionTour({ onClose }: Readonly<{ onClose: () => void }>)
         </div>
       </section>
     </div>
+  );
+}
+
+export function IntroductionTour({ onClose }: Readonly<{ onClose: () => void }>) {
+  return (
+    <GuidedTour
+      steps={INTRODUCTION_STEPS}
+      ariaLabel="Interface introduction"
+      onClose={onClose}
+    />
+  );
+}
+
+export function ConversationTour({ onClose }: Readonly<{ onClose: () => void }>) {
+  return (
+    <GuidedTour
+      steps={CONVERSATION_STEPS}
+      ariaLabel="Conversation feature introduction"
+      onClose={onClose}
+    />
   );
 }

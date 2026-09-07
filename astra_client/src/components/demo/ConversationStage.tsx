@@ -5,7 +5,7 @@
 // live orb + transcript (connected). Nothing else — settings/pipeline-info live
 // on their own pages.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useConnectionState } from "../../hooks/useConnectionState";
 import { useSessionLifecycle } from "../../hooks/useSessionLifecycle";
 import { useApp } from "../../context/useApp";
@@ -55,71 +55,52 @@ const EXAMPLE_META: Record<string, ExampleMeta> = {
 const FALLBACK_META: ExampleMeta = { accent: "#76b900", blurb: "", tags: [] };
 
 function ExampleCard({
-  option, selected, onSelect, onConfigure,
+  option, selected, onSelect,
 }: Readonly<{
   option: DeploymentOption;
   selected: boolean;
   onSelect: () => void;
-  onConfigure: () => void;
 }>) {
   const meta = EXAMPLE_META[option.key] ?? FALLBACK_META;
 
   return (
-    <article
+    <button
+      type="button"
       className={`example-card ${selected ? "selected" : ""}`}
       style={{ ["--ex-accent" as string]: meta.accent }}
+      onClick={onSelect}
+      aria-pressed={selected}
+      aria-label={`${selected ? "Selected" : "Select"} ${option.label}`}
     >
-      <button
-        type="button"
-        className="example-card__select"
-        onClick={onSelect}
-        aria-pressed={selected}
-        aria-label={`${selected ? "Selected" : "Select"} ${option.label}`}
-      >
-        {meta.beta && <span className="example-card__beta">Beta</span>}
-        <div className="example-card__header">
-          <img className="example-card__logo" src="/nvidia-nim-icon.png" alt="NVIDIA NIM" />
-          <h3 className="example-card__title">
-            {(meta.titleLines ?? [option.label]).map((line) => (
-              <span key={line}>{line}</span>
-            ))}
-          </h3>
-        </div>
-        <p className="example-card__blurb">{meta.blurb}</p>
-        <div className="example-card__tags">
-          {meta.tags.map((tag) => (
-            <span key={tag} className="ex-tag">{tag}</span>
+      {meta.beta && <span className="example-card__beta">Beta</span>}
+      <div className="example-card__header">
+        <img className="example-card__logo" src="/nvidia-nim-icon.png" alt="NVIDIA NIM" />
+        <h3 className="example-card__title">
+          {(meta.titleLines ?? [option.label]).map((line) => (
+            <span key={line}>{line}</span>
           ))}
-        </div>
-
-        {meta.feature && <p className="example-card__feature">{meta.feature}</p>}
-
-        {meta.samples && meta.samples.length > 0 && (
-          <div className="example-card__samples">
-            <span className="ex-samples-label">Try saying</span>
-            <ul>
-              {meta.samples.map((sample) => (
-                <li key={sample}>“{sample}”</li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </button>
-      <div className="example-card__actions">
-        <button
-          type="button"
-          className="example-card__cta"
-          onClick={onSelect}
-          aria-pressed={selected}
-          aria-label={`${selected ? "Selected" : "Select"} ${option.label}`}
-        >
-          {selected ? "✓ Selected" : "Select example"}
-        </button>
-        <button type="button" className="btn-ghost example-card__configure" onClick={onConfigure}>
-          Configure
-        </button>
+        </h3>
       </div>
-    </article>
+      <p className="example-card__blurb">{meta.blurb}</p>
+      <div className="example-card__tags">
+        {meta.tags.map((tag) => (
+          <span key={tag} className="ex-tag">{tag}</span>
+        ))}
+      </div>
+
+      {meta.feature && <p className="example-card__feature">{meta.feature}</p>}
+
+      {meta.samples && meta.samples.length > 0 && (
+        <div className="example-card__samples">
+          <span className="ex-samples-label">Try saying</span>
+          <ul>
+            {meta.samples.map((sample) => (
+              <li key={sample}>“{sample}”</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </button>
   );
 }
 
@@ -158,7 +139,6 @@ function StartView({ connecting }: Readonly<{ connecting: boolean }>) {
             option={option}
             selected={selectedExample?.key === option.key}
             onSelect={() => selectExample(option.key)}
-            onConfigure={() => openConfig(option.key)}
           />
         ))}
       </div>
@@ -236,9 +216,14 @@ function ConversationLive() {
   );
 }
 
-export function ConversationStage() {
+export function ConversationStage({ onLiveChange }: Readonly<{ onLiveChange?: (live: boolean) => void }>) {
   const { isConnected, isConnecting } = useConnectionState();
   const { phase } = useSessionLifecycle();
+  const live = isConnected && phase === "live";
+
+  useEffect(() => {
+    onLiveChange?.(live);
+  }, [live, onLiveChange]);
   // Keep the live view mounted through teardown so it doesn't flash back to the
   // landing between disconnect and the thank-you/stopping overlay.
   if (isConnected || phase === "stopping") return <ConversationLive />;

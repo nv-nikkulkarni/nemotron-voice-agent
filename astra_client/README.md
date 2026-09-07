@@ -18,27 +18,47 @@ It is a React and TypeScript single-page app built with [Vite](https://vite.dev/
 - **Webcam vision panel**: live webcam input for the multimodal Omni Subagents example.
 - **Safe session restart**: End and Start can create a new WebSocket session in
   the same tab, with a fresh session ID and audible welcome.
-- **Guided introduction**: a replayable animated overlay points to the main
-  controls and explains how to select, configure, start, and inspect an example.
-- **Streamlined example selection**: select an example without opening its
-  complete configuration popup, then configure it only when you need to change
-  its session options.
+- **Guided introductions**: the landing tour opens on every full page load, and
+  a separate live-session tour explains tool activity and latency controls.
+  Both remain replayable from the header.
+- **Streamlined example selection**: select an example through its full card,
+  then use the launch bar to configure or start it.
+- **Five-minute session timer**: a visible countdown gracefully ends a live
+  session at zero through the standard capture, teardown, and feedback flow.
 - **Per-example tools**: enable or disable tools for the Generic
   Frontend/Backend Agent from its configuration popup or from **Settings**.
 
 ## Use the Curated Experience
 
-Select **Guided introduction** (`?`) in the header while no session is active.
-The six-step tour highlights the example cards, configuration and start
-controls, pipeline information, and settings. Use **Back** and **Next** to move
-through it, or select **Skip tour**. You can start the tour again from the
-header.
+The six-step guided introduction opens automatically on every full page load.
+It highlights the example cards, configuration and start controls, pipeline
+information, and settings. Use **Back** and **Next** to move through it, or
+select **Skip tour** from any step. Select **Guided introduction** (`?`) in the
+header to replay it.
 
-To prepare a session, select the main area of an example card. This action only
-selects the example. Select **Configure** on the card or in the selected-example
-action row when you want to choose a text-to-speech engine, change capture
-preferences, or adjust other supported options. Select **Start conversation**
-in the action row to launch the selected example directly.
+To prepare a session, select anywhere on an example card. The cards do not
+contain separate **Select example** or **Configure** actions. After selection,
+the launch bar below the cards is the landing page's only visible place to
+select **Configure** or **Start conversation**. Configure the example when you
+want to choose a text-to-speech engine, change capture preferences, or adjust
+other supported options. Start the conversation directly when the defaults are
+suitable.
+
+A live session starts with a visible `05:00` countdown based on an absolute
+deadline. The timer enters its low state during the final 60 seconds and its
+critical state during the final 15 seconds. At zero, the client requests the
+existing timeout end path once. Normal graceful teardown, capture reporting,
+and feedback then run. The timer appears only while the session is live.
+
+The default and checked-in Astra runtime values set the limit to 300 seconds.
+Deployments can override the limit with `DEMO_SESSION_SECONDS`.
+
+Each time a session reaches the live state, a separate two-step conversation
+tour opens once. It first highlights the activity area where tool-call labels
+appear, then points to the control that opens the latency breakdown. Select
+**Skip tour** from either step when you want to continue immediately. While a
+session is connected, select `?` to replay the conversation tour instead of the
+landing tour.
 
 The Generic Frontend/Backend Agent configuration includes its available tools.
 You can also change the same selection under **Settings**. The settings list

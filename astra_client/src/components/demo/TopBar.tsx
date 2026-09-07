@@ -19,7 +19,7 @@ export function TopBar({
   onHome: () => void;
   onSettings: () => void;
   onPipeline: () => void;
-  onTour: () => void;
+  onTour: (active: boolean) => void;
 }>) {
   const { phase, endSession } = useSessionLifecycle();
   const active = phase === "starting" || phase === "live" || phase === "stopping";
@@ -39,8 +39,15 @@ export function TopBar({
         {deployedAtLabel(demoConfig.deployedAt)}
       </time>
       <div className="clean-topbar__actions">
-        {!active && (
-          <button className="icon-btn icon-btn--tour" onClick={onTour} title="Guided introduction" aria-label="Open guided introduction">?</button>
+        {!stopping && phase !== "starting" && (
+          <button
+            className="icon-btn icon-btn--tour"
+            onClick={() => onTour(active)}
+            title={active ? "Conversation guide" : "Guided introduction"}
+            aria-label={active ? "Open conversation guide" : "Open guided introduction"}
+          >
+            ?
+          </button>
         )}
         <button className="icon-btn" data-tour="pipeline" onClick={onPipeline} title="Pipeline info" aria-label="Pipeline info">ⓘ</button>
         <button className="icon-btn icon-btn--settings" data-tour="settings" onClick={onSettings} title="Settings" aria-label="Settings">⚙</button>
