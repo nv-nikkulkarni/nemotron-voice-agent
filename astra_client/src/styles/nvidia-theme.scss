@@ -2691,22 +2691,27 @@ h2, h3, h4 { font-family: var(--font-grotesk); letter-spacing: -0.015em; }
 .demo-hud {
   position: fixed;
   top: 68px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 18px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
   z-index: 40;
 }
 
 .demo-timer {
   display: inline-flex;
+  width: 58px;
+  height: 58px;
+  box-sizing: border-box;
+  flex-direction: column;
+  justify-content: center;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: 999px;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 12px;
   font-family: var(--font-mono);
-  font-size: var(--text-lg);
+  font-size: var(--text-sm);
   font-weight: 700;
   letter-spacing: 0.05em;
   color: var(--nvidia-green);
@@ -2716,8 +2721,8 @@ h2, h3, h4 { font-family: var(--font-grotesk); letter-spacing: -0.015em; }
   backdrop-filter: blur(6px);
 }
 .demo-timer .demo-timer-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--nvidia-green);
 }
@@ -3102,6 +3107,7 @@ h2, h3, h4 { font-family: var(--font-grotesk); letter-spacing: -0.015em; }
   // this band, so no message ever moves behind the orb — no overlap and no need
   // for a background/blur that would box the orb against the aurora backdrop.
   flex: none;
+  position: relative;
   padding: var(--space-3) var(--space-4);
   display: flex;
   flex-direction: column;
@@ -4446,11 +4452,23 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
   border: 1px dashed color-mix(in srgb, var(--ex-accent) 40%, transparent);
 }
 
-/* End-to-end latency readout under the orb */
-.conv-latency { position: relative; display: inline-block; }
+/* End-to-end latency readout in the open space to the right of the orb. */
+.conv-latency {
+  position: absolute;
+  top: 92px;
+  right: clamp(18px, 3vw, 48px);
+  z-index: 18;
+  width: clamp(250px, 23vw, 330px);
+  box-sizing: border-box;
+  padding: 10px;
+  background: color-mix(in srgb, var(--bg-card) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--nvidia-green) 22%, var(--border-default));
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.3);
+}
 .conv-latency__btn {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 5px 14px; border-radius: var(--radius-full);
+  display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 9px; border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--nvidia-green) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--nvidia-green) 28%, transparent);
   cursor: pointer; transition: background 160ms ease, border-color 160ms ease;
@@ -4486,12 +4504,15 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
   100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--nvidia-green) 0%, transparent); }
 }
 
-// Latency breakdown popover (opens on click)
+// Latency breakdown expands downward inside the dedicated side card. It is not
+// positioned from the trigger, so it cannot be cut off by the top viewport edge.
 .lat-breakdown {
-  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
-  z-index: 40; width: min(440px, 92vw); max-height: min(620px, 78vh); overflow-y: auto;
-  background: var(--bg-card); border: 1px solid var(--border-default); border-radius: 12px;
-  box-shadow: 0 16px 44px rgba(0,0,0,0.55); padding: 12px 14px; text-align: left;
+  position: static;
+  width: 100%; max-height: min(270px, 40vh); overflow-y: auto;
+  margin-top: 10px; box-sizing: border-box;
+  background: color-mix(in srgb, var(--bg-elevated) 84%, transparent);
+  border: 1px solid var(--border-subtle); border-radius: 10px;
+  box-shadow: none; padding: 12px 14px; text-align: left;
   animation: pop-in 180ms var(--ease-spring) both;
 }
 .lat-breakdown__head { display: flex; align-items: center; justify-content: space-between;
@@ -4523,6 +4544,22 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
   font-size: 13px; font-weight: 700; color: color-mix(in srgb, var(--nvidia-green) 88%, #fff); }
 .lat-breakdown__felt > span:last-child { font-family: var(--font-mono, var(--font-grotesk)); }
 .lat-breakdown__note { margin: 8px 0 0; font-size: 11px; line-height: 1.4; color: var(--text-muted); }
+
+@media (max-width: 1320px) {
+  .conv-latency {
+    position: relative;
+    inset: auto;
+    width: min(440px, calc(100% - 32px));
+    margin-top: var(--space-1);
+  }
+  .lat-breakdown { max-height: min(300px, 38vh); }
+}
+
+@media (max-width: 640px) {
+  .demo-hud { top: 64px; right: 10px; }
+  .demo-timer { width: 54px; height: 54px; font-size: var(--text-xs); }
+  .conv-latency { width: calc(100% - 20px); }
+}
 
 .icon-btn {
   width: 38px; height: 38px; border-radius: 50%;

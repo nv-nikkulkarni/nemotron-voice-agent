@@ -3,7 +3,7 @@
 
 // The live-session hero band: a greenish turbulent orb whose shell reacts to the
 // mic input intensity, a caption reflecting who is speaking, and a small
-// end-to-end latency readout. Clicking the readout opens a breakdown overlay
+// end-to-end latency readout. Clicking the readout expands a bounded side panel
 // showing where the time went (end-of-utterance detection + each server stage),
 // parsed from pipecat's `latency-breakdown` server message.
 
@@ -157,7 +157,11 @@ export function ConversationOrb() {
         </div>
       )}
 
-      <div className="conv-latency" data-tour="conversation-latency">
+      <aside
+        className={`conv-latency${showBreakdown && hasBreakdown ? " is-expanded" : ""}`}
+        data-tour="conversation-latency"
+        aria-label="Conversation latency"
+      >
         <button
           type="button"
           className="conv-latency__btn"
@@ -229,7 +233,7 @@ export function ConversationOrb() {
             </p>
           </div>
         )}
-      </div>
+      </aside>
     </div>
   );
 }
