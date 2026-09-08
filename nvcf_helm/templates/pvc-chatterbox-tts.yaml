@@ -1,0 +1,20 @@
+{{- if and .Values.chatterboxTts.enabled (not .Values.chatterboxTts.cache.nvcf) -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-chatterbox-tts-cache
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chatterbox-tts
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.chatterboxTts.cache.storageClass }}
+  storageClassName: {{ .Values.chatterboxTts.cache.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.chatterboxTts.cache.size }}
+{{- end }}

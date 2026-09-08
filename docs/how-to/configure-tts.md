@@ -186,7 +186,7 @@ The UI renders assistant bubbles from LLM response events, independently of the 
 
 ### Pronunciation (IPA)
 
-Override Magpie's default pronunciation for specific words with an International Phonetic Alphabet (IPA) dictionary. Create a JSON or YAML dictionary file, then set `TTS_IPA_FILE_PATH` in `.env` to that path. Relative paths resolve from the repo root:
+Override Magpie's default pronunciation for specific words with an International Phonetic Alphabet (IPA) dictionary. Create a JSON or YAML dictionary file, then set `TTS_IPA_FILE_PATH` in `.env` to that path. Relative paths resolve from the repository root:
 
 ```bash
 TTS_IPA_FILE_PATH=config/ipa.json
@@ -202,9 +202,33 @@ Example dictionary:
 }
 ```
 
-The dictionary loads at session start and applies to every TTS request. Restart the server (or re-apply the active Compose profile) after changing the file. For the dictionary format and the phonemes Magpie supports, see [TTS customization](https://docs.nvidia.com/nim/speech/latest/tts/customization.html) and [phoneme support](https://docs.nvidia.com/nim/speech/latest/tts/phoneme-support.html).
+The loader also accepts the versioned registry in
+[`pronunciation_registry.yaml`](../../src/examples/shared/pronunciation_registry.yaml).
+Each `entries` item requires `ipa` and can retain `arpabet`, `category`, and
+`aliases` metadata. ARPAbet is review metadata only. The runtime extracts
+grapheme-to-IPA mappings and aliases for Magpie requests.
 
-> **Check the wiring.** `TTS_IPA_FILE_PATH` only takes effect if the pipeline loads the dictionary and passes it to the `NvidiaTTSService`. The shipped examples do this with `custom_dictionary=load_ipa_dictionary()` where they construct the service (see the `NvidiaTTSService(...)` call in [`src/examples/generic/pipeline.py`](../../src/examples/generic/pipeline.py)). If you build a custom pipeline, confirm your `NvidiaTTSService(...)` is created with `custom_dictionary=load_ipa_dictionary()`, or the env var has no effect.
+The NVCF Helm chart sets `TTS_IPA_FILE_PATH` from
+`app.ttsPronunciationPath`, which defaults to the packaged registry. Magpie
+receives the extracted IPA dictionary. Chatterbox receives no custom dictionary
+because its request interface does not support this field. Legacy flat
+grapheme-to-IPA JSON and YAML files remain compatible.
+
+Restart the application after changing the file. You do not need to redeploy the
+text-to-speech NVIDIA Inference Microservice (NIM). The broad packaged mappings
+remain subject to human listening and exact-word Viking qualification before
+promotion. Refer to the [SQA pronunciation evidence and registry boundary](../../tests/sqa/TTS_PRONUNCIATION_CANDIDATES.md).
+
+For the dictionary format and the phonemes Magpie supports, refer to
+[TTS customization](https://docs.nvidia.com/nim/speech/latest/tts/customization.html)
+and [phoneme support](https://docs.nvidia.com/nim/speech/latest/tts/phoneme-support.html).
+
+> **Check the wiring.** `TTS_IPA_FILE_PATH` only takes effect if the pipeline
+> passes the selected model to `load_ipa_dictionary(tts_model)` and supplies its
+> result as `custom_dictionary`. Passing the model prevents unsupported
+> services such as Chatterbox from receiving the dictionary. Refer to the
+> `NvidiaTTSService(...)` call in
+> [`src/examples/generic/pipeline.py`](../../src/examples/generic/pipeline.py).
 
 ### TTS text filter
 

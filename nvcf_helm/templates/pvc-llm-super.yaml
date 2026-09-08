@@ -1,0 +1,20 @@
+{{- if and .Values.llmSuper.enabled (not .Values.llmSuper.cache.nvcf) -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-llm-super-cache
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llm-super
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.llmSuper.cache.storageClass }}
+  storageClassName: {{ .Values.llmSuper.cache.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.llmSuper.cache.size }}
+{{- end }}

@@ -1,0 +1,58 @@
+{{- if .Values.redis.enabled -}}
+# Redis session bus (src/session_bus/). Plain Deployment, 1 replica, no PVC/GPU — the
+# exact shape that deploys reliably on NVCF (unlike the session-affinity router, which
+# needs a StatefulSet NVCF rejects). In-memory only (--appendonly no, --save "") since
+# session state is ephemeral; a restart just means active sessions re-negotiate media.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-redis
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "nemotron-voice-agent.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels:
+        {{- include "nemotron-voice-agent.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: redis
+    spec:
+      {{- include "nemotron-voice-agent.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image | quote }}
+          imagePullPolicy: {{ .Values.redis.pullPolicy | default "IfNotPresent" }}
+          # No command override -- this is a Bitnami image; its entrypoint reads these
+          # env vars. ALLOW_EMPTY_PASSWORD is safe here: redis is ClusterIP-only, never
+          # exposed outside the cluster network, and holds only ephemeral session state.
+          env:
+            - name: ALLOW_EMPTY_PASSWORD
+              value: "yes"
+            - name: REDIS_AOF_ENABLED
+              value: "no"
+            - name: REDIS_EXTRA_FLAGS
+              value: {{ printf "--maxmemory %s --maxmemory-policy allkeys-lru" .Values.redis.maxmemory | quote }}
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          {{- with .Values.redis.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

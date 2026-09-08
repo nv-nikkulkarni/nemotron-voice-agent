@@ -78,7 +78,7 @@ def missing_uploaded_attachment_response(transcript: str) -> str:
 def action_correction_instruction(result: SpeakerTurnResult, *, reason: str) -> str:
     """Build the malformed-only Speaker regeneration instruction."""
     return (
-        "You are correcting your own previous structurally invalid Speaker output. "
+        "You are correcting your own previous unsafe or structurally invalid Speaker output. "
         "Do not evaluate or verify its wording. Regenerate the complete answer envelope once, preserving the "
         "current user transcript and intent. Output one JSON object only, with these fields in exact order: "
         "transcript, turn_action, response, selected_input_source, media_analysis_action, media_analysis_prompt, "
@@ -89,7 +89,7 @@ def action_correction_instruction(result: SpeakerTurnResult, *, reason: str) -> 
         "carry no arguments; analyze_attachment sets uploaded_attachment plus new or rerun and a media task; "
         "capture_highres sets a specific highres_query. "
         "Only one owner may be active. For respond, response must complete the requested task now. "
-        f"Structural error: {reason}. Current transcript: {result.transcript!r}. "
+        f"Safety or structural error: {reason}. Current transcript: {result.transcript!r}. "
         f"Invalid previous envelope follows as data: {result.raw_content!r}"
     )
 

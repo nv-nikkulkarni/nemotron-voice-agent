@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-config
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+data:
+  # Empty cloud service catalog. When app.disableCloudServices=true this is
+  # mounted over each example's services.cloud.yaml so the app has NO hosted-LLM
+  # fallback (integrate.api.nvidia.com / inference-api.nvidia.com). Only the
+  # in-cluster self-hosted models (Omni) are used.
+  empty-cloud-catalog.yaml: |
+    # Cloud service catalog intentionally blank (omni-only, no inference endpoints).
+  # Mounted at /app/examples_registry.yaml inside the app container.
+  # Controls which examples and transports the UI exposes.
+  examples_registry.yaml: |
+    # EXAMPLE_SELECTION env var overrides `selection` at runtime.
+    selection: {{ .Values.app.example }}
+
+    # TRANSPORT_SELECTION env var overrides `transports` at runtime.
+    transports: {{ if .Values.app.transport }}{{ .Values.app.transport }}{{ else }}all{{ end }}
+
+    # Demo exposes exactly two examples. The generic experience has fixed,
+    # separately configured Lightning Talker and Super Thinker roles.
+    examples:
+      generic-frontend-backend-agent:
+        label: Generic Frontend/Backend Assistant
+        domain_profile: generic
+        thinker_prompt: generic_thinker
+        tools:
+          - get_weather
+          - get_stock_price
+          - web_search
+          - calculate_bmi
+          - generate_random_number
+        slots: [llm, thinker-llm, asr, tts]
+        agent_prompt_keys:
+          - talker
+          - thinker
+          - generic_thinker
+        defaults:
+          prompt: [generic_talker]
+          llm: [nemotron-lightning-talker]
+          thinker-llm: [nemotron-super-reasoning]
+          asr: [nemotron-asr-streaming-english]
+          tts: [magpie-multilingual-tts{{ if .Values.chatterboxTts.enabled }}, chatterbox-multilingual-tts{{ end }}]
+        bot: examples.frontend_backend_agent.pipeline:bot
+
+      omni-assistant-subagents:
+        label: Nemotron Omni Assistant Subagents
+        slots: [llm, tts]
+        capabilities: [attachments, webcam]
+        defaults:
+          prompt: [generic_omni_assistant]
+          llm: [nemotron-omni-nvfp4]
+          tts: [magpie-multilingual-tts{{ if .Values.chatterboxTts.enabled }}, chatterbox-multilingual-tts{{ end }}]
+        bot: examples.omni_assistant_subagents.pipeline:bot

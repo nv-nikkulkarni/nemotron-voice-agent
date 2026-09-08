@@ -92,8 +92,71 @@ x-app-env: &app-env
   APP_RUNTIME: container
   TRANSPORT_SELECTION: ${TRANSPORT_SELECTION:-}
   PIPELINE_TLS: ${PIPELINE_TLS:-true}
+  # Redis session bus (src/session_bus/): shared webcam/attachment/config state across
+  # replicas. Empty/unset -> in-memory, single-worker mode (unchanged default behavior).
+  # Set REDIS_URL="" explicitly to opt out even though the `redis` service below is running.
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  SESSION_BUS_SOCKET_TIMEOUT_SECS: ${SESSION_BUS_SOCKET_TIMEOUT_SECS:-15}
+  SESSION_BUS_BLOCK_MS: ${SESSION_BUS_BLOCK_MS:-5000}
+  SESSION_BUS_TTL: ${SESSION_BUS_TTL:-3600}
+  # session_store (src/session_store/): shared object storage for session-capture
+  # log/audio/transcript artifacts across replicas. Defaults to "local" (per-pod
+  # files, today's behavior, no new infrastructure) -- matching every other
+  # profile's default. To exercise the real S3 path, opt in explicitly with
+  # BOTH `--profile capture` (starts the seaweedfs service below) AND
+  # `SESSION_STORE_BACKEND=s3` (e.g. `SESSION_STORE_BACKEND=s3 docker compose
+  # --profile <example> --profile capture up`) -- a single flag flipping every
+  # profile to a network store by default previously caused exactly this: a
+  # plain `docker compose --profile generic-assistant up` silently started
+  # depending on a second container nothing in that profile asked for.
+  SESSION_STORE_BACKEND: ${SESSION_STORE_BACKEND:-local}
+  SESSION_STORE_ENDPOINT: ${SESSION_STORE_ENDPOINT:-http://seaweedfs:8333}
+  SESSION_STORE_BUCKET: ${SESSION_STORE_BUCKET:-nva-session-capture}
+  SESSION_STORE_ACCESS_KEY: ${SESSION_STORE_ACCESS_KEY:-seaweedfs}
+  SESSION_STORE_SECRET_KEY: ${SESSION_STORE_SECRET_KEY:-seaweedfs}
 
 services:
+  # Redis session bus (src/session_bus/). No `profiles:` -> starts alongside every
+  # example profile, so the app's REDIS_URL default (redis://redis:6379/0, above)
+  # always resolves under `docker compose --profile <example> up`. In-memory only
+  # (no persistence, no PVC) -- sessions are ephemeral, so nothing to durably store.
+  redis:
+    image: redis:7.2.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # S3-compatible object store backing session_store (src/session_store/), OPT-IN
+  # via `--profile capture` (see SESSION_STORE_BACKEND above -- also needs
+  # SESSION_STORE_BACKEND=s3 set to actually be used). Single-binary standalone
+  # mode (master+volume+filer+s3 in one process) -- fine for local/dev; NVCF/Astra
+  # point session_store at a real SeaweedFS/MinIO/S3 deployment instead (see
+  # docs/current-deployed-pipeline-architecture.md section 13). No auth enforced by default, hence
+  # the placeholder access/secret keys above -- boto3 requires non-empty values to
+  # sign requests even though this server doesn't validate them. No host port
+  # published: only other containers on this compose network need to reach it
+  # (via the `seaweedfs` service DNS name), so there's no reason to expose an
+  # unauthenticated S3 endpoint on the host by default.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.41
+    profiles:
+      - capture
+    command: ["server", "-s3", "-s3.port=8333", "-dir=/data"]
+    volumes:
+      - seaweedfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8333/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   generic-assistant:
     <<: *app-base
     profiles:
@@ -228,3 +291,6 @@ services:
     environment:
       <<: *app-env
       EXAMPLE_SELECTION: ${EXAMPLE_SELECTION:-frontend-backend-agent}
+
+volumes:
+  seaweedfs-data:
