@@ -1,0 +1,62 @@
+{{- if .Values.tracing.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-phoenix
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: phoenix
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "nemotron-voice-agent.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: phoenix
+  template:
+    metadata:
+      labels:
+        {{- include "nemotron-voice-agent.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: phoenix
+    spec:
+      # A Service named "phoenix" makes Kubernetes inject docker-link env vars
+      # (PHOENIX_PORT=tcp://<ip>:6006, PHOENIX_HOST=<ip>) into this pod, which
+      # Phoenix mis-parses (get_env_port expects an int) and crashes on import.
+      # Disable service links and set host/port/working-dir explicitly.
+      enableServiceLinks: false
+      {{- include "nemotron-voice-agent.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: phoenix
+          image: "{{ .Values.tracing.image.repository }}:{{ .Values.tracing.image.tag }}"
+          imagePullPolicy: {{ .Values.tracing.image.pullPolicy }}
+          env:
+            - name: PHOENIX_HOST
+              value: "0.0.0.0"
+            - name: PHOENIX_PORT
+              value: "6006"
+            # OpenShift runs the pod as an arbitrary non-root UID that can't write
+            # Phoenix's default ~/.phoenix; point its SQLite working dir at /tmp.
+            - name: PHOENIX_WORKING_DIR
+              value: "/tmp/phoenix"
+          ports:
+            - name: ui
+              containerPort: 6006
+              protocol: TCP
+            - name: otlp
+              containerPort: 4317
+              protocol: TCP
+          # Decouple slow first-run (SQLite init) from liveness so a cold start
+          # isn't killed before Phoenix is serving.
+          startupProbe:
+            httpGet:
+              path: /
+              port: ui
+            periodSeconds: 10
+            failureThreshold: 30
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: ui
+            periodSeconds: 30
+            failureThreshold: 3
+{{- end }}

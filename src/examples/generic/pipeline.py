@@ -42,6 +42,12 @@ from examples.shared.pipeline_utils import (
     register_session_start_handlers,
     with_realtime_observers,
 )
+from examples.shared.tool_call_speech_gate import ToolCallSpeechGate
+from examples.shared.tts_chunk_aggregator import (
+    LengthLimitedSentenceAggregator,
+    resolve_tts_chunk_chars,
+)
+from session_capture.capture import mark_pipeline_finished, run_finalize
 from tracing import IS_TRACING_ENABLED
 from utils import (
     is_nvcf,
@@ -143,7 +149,19 @@ async def bot(runner_args: RunnerArguments) -> None:
     tools_schema = None
     registered_tools: list[str] = []
     tool_choice = body.get("tool_choice", "auto") or "auto"
-    tools_available = resolve_tools_available(__file__, prompt_key)
+    # Per-session tool selection from the UI's example-config popup (comma-separated tool
+    # names) overrides the prompt's tools_available. "none"/empty -> tools disabled; unknown
+    # names are dropped (only registered handlers are honoured). Absent -> prompt default.
+    tools_override = body.get("tools_available")
+    if isinstance(tools_override, str) and tools_override.strip():
+        if tools_override.strip().lower() == "none":
+            tools_available = []
+        else:
+            requested = [name.strip() for name in tools_override.split(",") if name.strip()]
+            tools_available = [name for name in requested if name in TOOL_HANDLERS]
+        logger.info(f"Per-session tools_available override: {tools_available}")
+    else:
+        tools_available = resolve_tools_available(__file__, prompt_key)
     tools_schema, registered_tools = build_tools_schema(__file__, tools_available)
     tools_enabled = tools_schema is not None
     if tools_enabled:
@@ -169,7 +187,7 @@ async def bot(runner_args: RunnerArguments) -> None:
     tts_language_code = body.get("tts_language_code", "") or default_tts.get("language_code", "")
     if tts_language_code:
         tts_language_code = normalize_lang_code(tts_language_code)
-    custom_dictionary = load_ipa_dictionary()
+    custom_dictionary = load_ipa_dictionary(tts_model)
 
     tts_settings_kwargs: dict = {"voice": tts_voice}
     if tts_synthesis_mode:
@@ -193,12 +211,25 @@ async def bot(runner_args: RunnerArguments) -> None:
         tts_kwargs["zero_shot_audio_prompt_file"] = tts_zero_shot_audio_prompt_file
     tts = NvidiaTTSService(**tts_kwargs)
 
+    # Some TTS engines cap a single synthesis request (Chatterbox: ~500 chars / ~500
+    # speech tokens ≈ 20s) — a longer run-on chunk fails or truncates mid-sentence. Swap
+    # in a length-limited aggregator so such an engine's chunks stay under the cap (split
+    # on clause/word boundaries). Other engines keep pipecat's default aggregator.
+    tts_chunk_chars = resolve_tts_chunk_chars(tts_model, tts_voice, body, default_tts)
+    if tts_chunk_chars:
+        _agg_kwargs: dict = {"max_chars": tts_chunk_chars}
+        _mode = getattr(tts, "_text_aggregation_mode", None)
+        if _mode is not None:
+            _agg_kwargs["aggregation_type"] = _mode
+        tts._text_aggregator = LengthLimitedSentenceAggregator(**_agg_kwargs)
+
     logger.info(
         f"TTS: server={tts_server}, ssl={tts_ssl}, voice={tts_voice}, "
         f"model={tts_model or '(pipecat default)'}, function_id={tts_function_id or '(pipecat default)'}, "
         f"synthesis_mode={tts_synthesis_mode or '(pipecat default)'}, "
         f"language={tts_language_code or '(pipecat default)'}, "
         f"zero_shot_audio_prompt_file={tts_zero_shot_audio_prompt_file or '(none)'}, "
+        f"chunk_chars={tts_chunk_chars or '(unlimited)'}, "
         f"text_filters=[NemotronSpeechTextFilter]"
     )
 
@@ -220,7 +251,7 @@ async def bot(runner_args: RunnerArguments) -> None:
         f"preserve_prompt_messages={preserve_prompt_messages}"
     )
 
-    audio_recorder = create_audio_recorder()
+    audio_recorder = create_audio_recorder(body.get("session_id", ""))
 
     async def queue_activity_llm_run() -> None:
         await task.queue_frame(LLMRunFrame())
@@ -239,6 +270,10 @@ async def bot(runner_args: RunnerArguments) -> None:
             stt,
             user_aggregator,
             llm,
+            # Drop any text the model emits in a tool-call completion (CoT leak /
+            # "let me check…" stall) before it reaches TTS. The real answer comes
+            # from the post-tool-result completion and passes through normally.
+            ToolCallSpeechGate(),
             tts,
             transport.output(),
             *([activity_check] if activity_check else []),
@@ -330,6 +365,19 @@ async def bot(runner_args: RunnerArguments) -> None:
             )
         )
 
+    # Surface the tool the model just decided to call to the UI (a small indicator box
+    # shown while the tool runs; the client clears it when the bot starts speaking the
+    # result). Fires the moment tool calls arrive from the LLM, before execution.
+    if tools_enabled:
+
+        @llm.event_handler("on_function_calls_started")
+        async def on_tool_calls_started(service, function_calls):
+            if not function_calls:
+                return
+            tool_name = function_calls[0].function_name
+            logger.info(f"Tool call started: {tool_name}")
+            await task.queue_frame(RTVIServerMessageFrame(data={"type": "tool-call", "tool": tool_name}))
+
     async def _on_session_start() -> None:
         if audio_recorder:
             await audio_recorder.start_recording()
@@ -345,6 +393,18 @@ async def bot(runner_args: RunnerArguments) -> None:
         on_start=_on_session_start,
         welcome_enabled=welcome_enabled,
     )
+
+    @task.event_handler("on_pipeline_finished")
+    async def on_pipeline_finished(task, frame):
+        # Fires only once the CancelFrame queued by task.cancel() (below) has
+        # genuinely reached the end of the pipeline (or timed out) -- i.e. every
+        # processor, including the audio recorder's final turn, has actually
+        # flushed. Finalizing any earlier risks the last turn's WAV missing
+        # from the tarball, plus a late write recreating it after finalize's
+        # own cleanup deletes the session prefix. Offloaded via to_thread: this
+        # does blocking store I/O, tar assembly and, on the winning pod, a
+        # subprocess upload with up to a 300s timeout -- never safe on the loop.
+        await run_finalize(mark_pipeline_finished, body.get("session_id", ""))
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):

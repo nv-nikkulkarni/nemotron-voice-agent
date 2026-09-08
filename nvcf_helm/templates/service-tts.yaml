@@ -1,0 +1,25 @@
+{{- if .Values.tts.enabled -}}
+# Service name is fixed to "tts-service" — matches the hostname the app reads
+# from src/examples/*/services.local.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tts-service
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tts
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: tts
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+      protocol: TCP
+    - name: http
+      port: 9000
+      targetPort: http
+      protocol: TCP
+{{- end }}

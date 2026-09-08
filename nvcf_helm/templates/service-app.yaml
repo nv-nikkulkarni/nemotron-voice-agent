@@ -1,0 +1,26 @@
+{{/*
+The inference entrypoint. NVCF targets this fixed Service name through
+--helm-chart-service nemotron-voice-agent and --inference-port 7860. Redis shares
+live session and media state across application replicas, and SeaweedFS shares
+session-capture artifacts, so ordinary Kubernetes Service balancing is sufficient.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: nemotron-voice-agent
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  type: {{ .Values.app.service.type }}
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+  ports:
+    - name: http
+      port: {{ .Values.app.service.port }}
+      targetPort: http
+      protocol: TCP
+      {{- if and (eq .Values.app.service.type "NodePort") .Values.app.service.nodePort }}
+      nodePort: {{ .Values.app.service.nodePort }}
+      {{- end }}

@@ -1,0 +1,21 @@
+{{- if .Values.booking.enabled -}}
+# Service name fixed to "booking-server" on port 8001 — matches the hostname the
+# app reads from src/examples/frontend_backend_agent/services.local.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-server
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: booking
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: booking
+  ports:
+    - name: http
+      port: 8001
+      targetPort: http
+      protocol: TCP
+{{- end }}

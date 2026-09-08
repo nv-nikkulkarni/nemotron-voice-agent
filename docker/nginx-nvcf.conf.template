@@ -1,0 +1,84 @@
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 7860;
+    server_name localhost;
+
+    # Allow media uploads (omni image/video attachments). Match the backend's
+    # own cap (_MAX_UPLOAD_BYTES = 50 MB in src/server.py); nginx defaults to
+    # 1 MB, which 413s any real screenshot/photo before it reaches the app.
+    client_max_body_size 50m;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # React SPA — client-side routes return index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # WebSocket transport MUST go through the NVCF *streaming* gateway
+    # (grpc.nvcf.nvidia.com), routed by a `function-id` header. The per-function
+    # invocation URL is an HTTP-only gateway that strips the WebSocket Upgrade
+    # header (returns 200 instead of 101). Browsers can't set the function-id /
+    # authorization headers on a WS handshake, so we inject them here.
+    location = /api/ws {
+        proxy_pass https://grpc.nvcf.nvidia.com;
+        proxy_ssl_server_name on;
+        proxy_set_header Host grpc.nvcf.nvidia.com;
+        proxy_set_header Authorization "Bearer ${NVIDIA_API_KEY}";
+        proxy_set_header function-id "${NVCF_FUNCTION_ID}";
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        # NVCF sets an `nvcf-request-id` cookie for session resume/affinity. A
+        # browser replays it on the next connect; after the function instance
+        # rolls over (redeploy) that id points at a dead session and the gateway
+        # returns 404 (surfaces as WebSocket 1006 in the UI). The app is
+        # stateless w.r.t. cookies, so strip both directions → every WS is fresh.
+        proxy_set_header Cookie "";
+        proxy_hide_header Set-Cookie;
+
+        # Voice sessions are long-lived
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_connect_timeout 10s;
+    }
+
+    # All other API + health traffic uses the HTTP invocation URL, which handles
+    # buffered request/response fine (the streaming gateway 502s on plain GETs).
+    location ~ ^/(api|health)(/.*)?$ {
+        proxy_pass https://${NVCF_HOST};
+        proxy_ssl_server_name on;
+        proxy_set_header Host ${NVCF_HOST};
+        proxy_set_header Authorization "Bearer ${NVIDIA_API_KEY}";
+        # Route to the function by header, not just the per-function subdomain.
+        # The public invocation edge routes by the <fid>.invocation... hostname,
+        # but from inside NVIDIA's network the host resolves to the internal NVCF
+        # gateway, which routes to the function by the `function-id` header (same
+        # as the WS gateway below). Without it that gateway answers /health itself
+        # and 404s /api/* — so set it here too.
+        proxy_set_header function-id "${NVCF_FUNCTION_ID}";
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+        # Keep NVCF's session cookie out of the browser here too, so it is never
+        # stored and can't be replayed onto the WebSocket upgrade above.
+        proxy_set_header Cookie "";
+        proxy_hide_header Set-Cookie;
+
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_connect_timeout 10s;
+    }
+
+    # Feedback proxy: forwards same-origin POST /feedback to the (server-side)
+    # Google Form URL. Written by the entrypoint from FEEDBACK_FORM_URL so the
+    # form URL is never shipped in the client bundle. Empty when unset.
+    include /etc/nginx/snippets/feedback.conf;
+}

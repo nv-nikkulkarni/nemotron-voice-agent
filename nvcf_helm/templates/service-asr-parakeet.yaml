@@ -1,0 +1,25 @@
+{{- if .Values.asrParakeet.enabled -}}
+# Service name fixed to "parakeet-rnnt-asr" — matches the hostname the app reads
+# from src/examples/*/services.local.yaml (multilingual-assistant default ASR).
+apiVersion: v1
+kind: Service
+metadata:
+  name: parakeet-rnnt-asr
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: asr-parakeet
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: asr-parakeet
+  ports:
+    - name: grpc
+      port: 50052
+      targetPort: grpc
+      protocol: TCP
+    - name: http
+      port: 9001
+      targetPort: http
+      protocol: TCP
+{{- end }}

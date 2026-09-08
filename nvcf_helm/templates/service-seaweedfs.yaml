@@ -1,0 +1,23 @@
+{{- if .Values.sessionStore.enabled -}}
+# Service name is fixed to "seaweedfs" — matches SESSION_STORE_ENDPOINT in
+# deployment-app.yaml and the hostname docker-compose.yml's seaweedfs service
+# uses, so app code needs no environment-specific hostname logic (same trick
+# service-redis.yaml already uses for "redis").
+apiVersion: v1
+kind: Service
+metadata:
+  name: seaweedfs
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: session-store
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: session-store
+  ports:
+    - name: s3
+      port: 8333
+      targetPort: s3
+      protocol: TCP
+{{- end }}

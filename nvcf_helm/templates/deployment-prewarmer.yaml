@@ -1,0 +1,189 @@
+{{- if .Values.prewarm.enabled -}}
+# Chart-only prewarmer — DIRECT-to-NIM warming; it NEVER calls the app.
+#
+# This replaces the earlier prewarmer that POSTed /api/session-config to warm TTS:
+# on NVCF that fast-retry loop hammered the app's single uvicorn worker (a heavy
+# endpoint) and starved it, so the function went ACTIVE (cheap /health passed) while
+# every real invocation 504'd. The fix is to warm each NIM's OWN server directly, so
+# the prewarmer cannot contend with user traffic on the app worker.
+#
+# It warms, per enabled NIM:
+#   1. the LLM *generate* path — one tiny /v1/chat/completions to each enabled LLM
+#      (nano / super / omni) pays vLLM's one-time first-token cost (CUDA-graph
+#      capture / lazy compile; measured cold ~36s Nano / ~50s Omni) up front.
+#   2. the Riva gRPC NIMs (ASR + Magpie + Chatterbox) via the app's OWN bundled
+#      client (examples.shared.prewarm) — these speak gRPC, not curl-able HTTP.
+# It loops until everything is hot so the FIRST real connection is fast, then
+# keep-alives so nothing re-cold-starts. Reuses the app image; no app source changes.
+{{- if .Values.prewarm.grpc.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-prewarmer-scripts
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prewarmer
+data:
+  warm_grpc.py: |
+    # Warm the Riva gRPC NIMs (ASR + both TTS) directly, via the app's own client.
+    # Exits 0 only when every ENABLED gRPC NIM warmed, so the shell ready() loop can
+    # gate on it. Endpoints/voices/models are rendered from values at template time.
+    import sys
+    from examples.shared.prewarm import warmup_tts_synthesis, prewarm_asr
+
+    def one(name, fn):
+        try:
+            ok = bool(fn())
+            print(f"prewarmer: {name} {'hot' if ok else 'not ready'}", flush=True)
+            return ok
+        except Exception as e:  # noqa: BLE001
+            print(f"prewarmer: {name} error {e}", flush=True)
+            return False
+
+    ok = True
+    {{- if .Values.chatterboxTts.enabled }}
+    ok = one("TTS chatterbox", lambda: warmup_tts_synthesis(
+        "{{ .Values.prewarm.grpc.chatterbox.server }}",
+        "{{ .Values.prewarm.grpc.chatterbox.voice }}",
+        model="{{ .Values.prewarm.grpc.chatterbox.model }}")) and ok
+    {{- end }}
+    {{- if .Values.tts.enabled }}
+    ok = one("TTS magpie", lambda: warmup_tts_synthesis(
+        "{{ .Values.prewarm.grpc.magpie.server }}",
+        "{{ .Values.prewarm.grpc.magpie.voice }}",
+        model="{{ .Values.prewarm.grpc.magpie.model }}")) and ok
+    {{- end }}
+    {{- if .Values.asr.enabled }}
+    _a = prewarm_asr("{{ .Values.prewarm.grpc.asr.server }}",
+                     model="{{ .Values.prewarm.grpc.asr.model }}")
+    ok = one("ASR", lambda: not _a.get("error")) and ok
+    {{- end }}
+    sys.exit(0 if ok else 1)
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-prewarmer
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prewarmer
+spec:
+  replicas: 1
+  # Match the NIMs' generous rollout window: under the fresh-deploy image-pull IO
+  # contention this pod can be slow to start, and the default 600s would trip the
+  # whole NVCF deploy with ProgressDeadlineExceeded (as Phoenix once did).
+  progressDeadlineSeconds: 7200
+  selector:
+    matchLabels:
+      {{- include "nemotron-voice-agent.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: prewarmer
+  template:
+    metadata:
+      labels:
+        {{- include "nemotron-voice-agent.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: prewarmer
+    spec:
+      {{- include "nemotron-voice-agent.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: prewarmer
+          image: "{{ include "nemotron-voice-agent.appImage" . }}"
+          imagePullPolicy: {{ .Values.appImage.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              {{- if .Values.prewarm.llm.enabled }}
+              # $1=label $2=baseUrl $3=model — one tiny generation warms the engine.
+              warm_llm() {
+                curl -sf -m {{ .Values.prewarm.llm.requestTimeoutSecs }} -X POST \
+                  "$2/chat/completions" -H 'Content-Type: application/json' \
+                  -d '{"model":"'"$3"'","messages":[{"role":"user","content":"{{ .Values.prewarm.llm.warmPrompt }}"}],"max_tokens":{{ .Values.prewarm.llm.maxTokens }},"stream":false}' \
+                  -o /dev/null
+              }
+              # Omni-specific warm: its Speaker generates with response_format json_object
+              # (guided decoding). vLLM compiles that JSON grammar on first use — a one-time
+              # multi-second cost the plain warm_llm never pays. Warm with the SAME json_object
+              # mode so the FIRST real welcome is already hot (was ~25s cold otherwise).
+              warm_omni() {
+                curl -sf -m {{ .Values.prewarm.llm.requestTimeoutSecs }} -X POST \
+                  "{{ .Values.prewarm.llm.omni.baseUrl }}/chat/completions" -H 'Content-Type: application/json' \
+                  -d '{"model":"{{ required "omni.servedModelName must be set when Omni is enabled" .Values.omni.servedModelName }}","messages":[{"role":"user","content":"{{ .Values.prewarm.llm.omni.warmPrompt }}"}],"max_tokens":{{ .Values.prewarm.llm.omni.maxTokens }},{{ if .Values.prewarm.llm.omni.jsonMode }}"response_format":{"type":"json_object"},{{ end }}"stream":false}' \
+                  -o /dev/null
+              }
+              warm_llms() {
+                _rc=0
+                {{- if .Values.llm.enabled }}
+                if warm_llm nano "{{ .Values.prewarm.llm.nano.baseUrl }}" "{{ .Values.prewarm.llm.nano.model }}"; then echo "prewarmer: llm nano hot"; else echo "prewarmer: llm nano not ready"; _rc=1; fi
+                {{- end }}
+                {{- if .Values.llmLightning.enabled }}
+                if warm_llm lightning "{{ .Values.prewarm.llm.lightning.baseUrl }}" "{{ .Values.prewarm.llm.lightning.model }}"; then echo "prewarmer: llm lightning hot"; else echo "prewarmer: llm lightning not ready"; _rc=1; fi
+                {{- end }}
+                {{- if .Values.llmSuper.enabled }}
+                if warm_llm super "{{ .Values.prewarm.llm.super.baseUrl }}" "{{ .Values.prewarm.llm.super.model }}"; then echo "prewarmer: llm super hot"; else echo "prewarmer: llm super not ready"; _rc=1; fi
+                {{- end }}
+                {{- if .Values.omni.enabled }}
+                if warm_omni; then echo "prewarmer: llm omni hot"; else echo "prewarmer: llm omni not ready"; _rc=1; fi
+                {{- end }}
+                return $_rc
+              }
+              {{- else }}
+              warm_llms() { return 0; }
+              {{- end }}
+
+              {{- if .Values.prewarm.grpc.enabled }}
+              # Riva gRPC NIMs (ASR + TTS) warmed directly via the app's bundled client.
+              warm_grpc() {
+                cd /app && PYTHONPATH=/app/src /app/.venv/bin/python /scripts/warm_grpc.py
+              }
+              {{- else }}
+              warm_grpc() { return 0; }
+              {{- end }}
+
+              # Ready == every enabled LLM generate path AND every enabled gRPC NIM warmed.
+              # DIRECT to each NIM — the app (uvicorn) is never touched.
+              ready() { warm_llms && warm_grpc; }
+
+              echo "prewarmer: warming LLM generate path + Riva gRPC NIMs (direct, no app calls) ..."
+              until ready; do
+                echo "prewarmer: NIMs not ready yet; retry in {{ .Values.prewarm.retrySecs }}s"
+                sleep {{ .Values.prewarm.retrySecs }}
+              done
+              echo "prewarmer: initial warm complete; entering keep-alive."
+              while true; do
+                sleep {{ .Values.prewarm.keepAliveSecs }}
+                # If a NIM went cold mid-life (crash/restart), don't wait a whole
+                # keep-alive interval — fast-retry until it's hot again.
+                until ready; do
+                  echo "prewarmer: a NIM is cold; fast-retry in {{ .Values.prewarm.retrySecs }}s"
+                  sleep {{ .Values.prewarm.retrySecs }}
+                done
+                echo "prewarmer: keep-alive ok"
+              done
+          {{- if .Values.prewarm.grpc.enabled }}
+          volumeMounts:
+            - name: prewarmer-scripts
+              mountPath: /scripts
+          {{- end }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 512Mi
+      {{- if .Values.prewarm.grpc.enabled }}
+      volumes:
+        - name: prewarmer-scripts
+          configMap:
+            name: {{ include "nemotron-voice-agent.fullname" . }}-prewarmer-scripts
+      {{- end }}
+      {{- with .Values.prewarm.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.prewarm.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

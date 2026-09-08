@@ -1,0 +1,130 @@
+{{- if .Values.omni.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-omni
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: omni
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 7200
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "nemotron-voice-agent.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: omni
+  template:
+    metadata:
+      labels:
+        {{- include "nemotron-voice-agent.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: omni
+    spec:
+      {{- include "nemotron-voice-agent.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - name: vllm-omni
+          image: "{{ include "nemotron-voice-agent.omniImage" . }}"
+          imagePullPolicy: {{ .Values.omniImage.pullPolicy }}
+          # HF_HOME / caches are baked into the image (docker/Dockerfile.omni) at
+          # writable, non-root-traversable paths (/cache, /tmp) — do not override.
+          command:
+            - /bin/bash
+            - -c
+            - |
+              {{- if .Values.nvcf }}
+              # NVCF injects function secrets as /var/secrets/secrets.json. vLLM
+              # pulls the Omni weights from Hugging Face at startup, so surface the
+              # key as HF_TOKEN (and NVIDIA_API_KEY) for gated model downloads.
+              if [ -f /var/secrets/secrets.json ]; then
+                key=$(grep -o '"NVIDIA_API_KEY"[[:space:]]*:[[:space:]]*"[^"]*"' /var/secrets/secrets.json | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+                if [ -n "$key" ]; then
+                  export NVIDIA_API_KEY="$key"
+                  export HF_TOKEN="$key"
+                fi
+              fi
+              {{- end }}
+              # vllm[audio] is baked into the image; no runtime pip install.
+              vllm serve {{ .Values.omni.model }} \
+                --served-model-name {{ required "omni.servedModelName must match the model_id in the self-hosted Omni service catalogs" .Values.omni.servedModelName | quote }} \
+                --host 0.0.0.0 \
+                --port {{ .Values.omni.port }} \
+                --max-num-seqs {{ .Values.omni.maxNumSeqs }} \
+                --max-model-len {{ .Values.omni.maxModelLen }} \
+                --trust-remote-code \
+                --gpu-memory-utilization {{ .Values.omni.gpuMemoryUtilization }} \
+                {{- if .Values.omni.enforceEager }}
+                --enforce-eager \
+                {{- end }}
+                --limit-mm-per-prompt '{"video": 999, "image": 999, "audio": 999}' \
+                --media-io-kwargs '{"video": {"fps": 2, "num_frames": 256}}' \
+                --enable-prefix-caching \
+                --max-num-batched-tokens 8192 \
+                --reasoning-parser nemotron_v3 \
+                --enable-auto-tool-choice \
+                --tool-call-parser qwen3_coder \
+                --reasoning-config '{"reasoning_start_str": "<think>", "reasoning_end_str": "\nI have to finalize the answer now.</think>"}'
+          ports:
+            - name: http
+              containerPort: {{ .Values.omni.port }}
+              protocol: TCP
+          # vLLM downloads a 30B checkpoint at startup — allow long warmup (60 min).
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            failureThreshold: 120
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 3
+          volumeMounts:
+            - name: model-cache
+              mountPath: /cache
+            - name: shm
+              mountPath: /dev/shm
+          {{- with .Values.omni.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: model-cache
+          {{- if .Values.omni.cache.nvcf }}
+          emptyDir:
+            sizeLimit: {{ .Values.omni.cache.size }}
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ include "nemotron-voice-agent.fullname" . }}-omni-cache
+          {{- end }}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.omni.shmSize }}
+      {{- with .Values.omni.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.omni.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.omni.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
