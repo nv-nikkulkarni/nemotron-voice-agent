@@ -12,29 +12,33 @@ It is a React and TypeScript single-page app built with [Vite](https://vite.dev/
 - **Prompt management**: pick a built-in persona or write a custom system prompt.
 - **Voice selection**: browse and preview TTS voices with language filtering.
 - **Audio visualizers**: real-time input and output waveform display.
-- **Metrics dashboard**: time-to-first-byte latency charts, token usage,
+- **Metrics dashboard**: time-to-first-audio latency, token usage,
   connection status, and Frontend/Backend agent stage metrics grouped by turn.
 - **Conversation transcript**: live ASR and bot-response display.
 - **Webcam vision panel**: live webcam input for the multimodal Omni Subagents example.
 - **Safe session restart**: End and Start can create a new WebSocket session in
   the same tab, with a fresh session ID and audible welcome.
-- **Guided introductions**: the landing tour opens on every full page load, and
-  a separate live-session tour explains tool activity and latency controls.
-  Both remain replayable from the header.
+- **Guided introduction**: a brief **Click ? for a tour** hint points to the
+  landing-page `?` button. The tour starts only when you select the button.
 - **Streamlined example selection**: select an example through its full card,
   then use the launch bar to configure or start it.
-- **Five-minute session timer**: a compact square countdown stays fixed at the
-  top right and gracefully ends a live session at zero.
+- **Ten-minute session timer**: a compact square **TIME LEFT** countdown stays
+  fixed below the top-right session-ID chip and gracefully ends a live session
+  at zero. With the Omni webcam rail active, it shifts left so it cannot cover
+  the **Chunk** selector.
 - **Per-example tools**: enable or disable tools for the Generic
   Frontend/Backend Agent from its configuration popup or from **Settings**.
 
 ## Use the Curated Experience
 
-The six-step guided introduction opens automatically on every full page load.
-It highlights the example cards, configuration and start controls, pipeline
-information, and settings. Use **Back** and **Next** to move through it, or
-select **Skip tour** from any step. Select **Guided introduction** (`?`) in the
-header to replay it.
+A brief, nonblocking **Click ? for a tour** hint appears for 5 seconds when the
+landing page loads. No tour invitation or spotlight opens automatically.
+Select **Guided introduction** (`?`) to start the six-step animated landing
+tour. It highlights the example cards, configuration and start controls,
+pipeline information, and settings. Use **Back** and **Next** to move through
+the steps, or select **Skip tour** from any step. The `?` button is not
+available while a session is starting, live, or stopping. There is no separate
+live-session tour.
 
 To prepare a session, select anywhere on an example card. The cards do not
 contain separate **Select example** or **Configure** actions. After selection,
@@ -44,22 +48,17 @@ want to choose a text-to-speech engine, change capture preferences, or adjust
 other supported options. Start the conversation directly when the defaults are
 suitable.
 
-A live session starts with a compact square `05:00` countdown fixed at the top
-right. It uses an absolute deadline, enters its low state during the final 60
-seconds, and enters its critical state during the final 15 seconds. At zero,
+A live session starts with a compact square `10:00` **TIME LEFT** countdown
+below the session-ID chip at the top right. It uses an absolute deadline and
+enters its low state during the final 60 seconds. It enters its critical state
+during the final 15 seconds. At zero,
 the client requests the existing timeout end path once. Normal graceful
 teardown, capture reporting, and feedback then run. The timer appears only
-while the session is live.
+while the session is live. When the selected example uses the webcam rail, the
+timer shifts into the conversation column and leaves the rail controls clear.
 
-The default and checked-in Astra runtime values set the limit to 300 seconds.
+The default and checked-in Astra runtime values set the limit to 600 seconds.
 Deployments can override the limit with `DEMO_SESSION_SECONDS`.
-
-Each time a session reaches the live state, a separate two-step conversation
-tour opens once. It first highlights the activity area where tool-call labels
-appear, then points to the control that opens the latency breakdown. Select
-**Skip tour** from either step when you want to continue immediately. While a
-session is connected, select `?` to replay the conversation tour instead of the
-landing tour.
 
 The Generic Frontend/Backend Agent configuration includes its available tools.
 You can also change the same selection under **Settings**. The settings list
@@ -75,27 +74,50 @@ change from bypassing the deployment configuration.
 
 ## Inspect Frontend/Backend Latency
 
-The latency summary appears in a bounded card to the right of the Conversation
-Orb on wide layouts. Select **End-to-end latency** to expand the breakdown
-downward inside the same card. The panel stays height-bounded and scrolls when
-needed instead of opening upward over the conversation. On narrower layouts,
-the complete card moves below the orb. The breakdown consumes
-`RTVIEvent.Metrics` and separates agent stages from the real-time voice pipeline.
+The latency trigger is the compact **Time to first audio** pill below the
+Conversation Orb. On wide layouts, selecting it opens a separately anchored,
+height-bounded breakdown in the blank area to the right. The breakdown expands
+downward and scrolls when needed instead of opening upward over the
+conversation. On narrower layouts, it appears below the trigger. The breakdown
+consumes `RTVIEvent.Metrics` and presents the agent stages as a waterfall. The
+**Before you heard a response** lane shows the critical path to first audio. The
+**After delegation** lane shows asynchronous planning, tool, and final-answer
+work that continues after progress speech can begin. The real-time voice
+pipeline remains below these lanes.
 
 The breakdown can show the following seven metric types:
 
-| UI Row | RTVI Metric |
+| Displayed Stage Detail | RTVI Metric |
 | --- | --- |
-| Frontend Talker — tool selection TTFT | `frontend_tool_selection_ttft` |
-| Frontend Talker — tool selection processing | `frontend_tool_selection_processing_time` |
-| Backend Thinker — TTFT | `backend_llm_ttft` |
-| Backend Thinker — processing | `backend_llm_processing_time` |
-| Backend tool | `backend_tool_call_latency` |
-| Frontend Talker — final response TTFT | `frontend_final_response_ttft` |
-| Frontend Talker — final response processing | `frontend_final_response_processing_time` |
+| Frontend selection first-token marker | `frontend_tool_selection_ttft` |
+| Frontend selection total and waterfall bar | `frontend_tool_selection_processing_time` |
+| Backend planning first-token marker | `backend_llm_ttft` |
+| Backend planning total and waterfall bar | `backend_llm_processing_time` |
+| Backend tool total and waterfall bar | `backend_tool_call_latency` |
+| Final-answer first-token marker | `frontend_final_response_ttft` |
+| Final-answer total and waterfall bar | `frontend_final_response_processing_time` |
 
 Values use milliseconds. Only stages executed and emitted for that turn appear.
 For example, direct result mode does not run the final Talker response stage.
+Each stage shows its total duration, with the corresponding time to first token
+inline when available. The total already includes the first-token time, so do
+not add them together. Parallel tool calls can also overlap. When structured
+Frontend/Backend metrics are present, the client hides the generic LLM pipeline
+row to avoid showing the same model work twice. It retains the generic LLM row
+for pipelines that do not emit the structured agent metrics.
+
+The browser estimates each bar start offset by subtracting the server-reported
+duration from the first browser-observed completion offset. The resulting
+positions show an approximate sequence, not a server-clock trace. If observation
+offsets are unavailable, the client displays stages in their reported order.
+The preferred **Time to first audio** value comes from the server RTVI
+`user-bot-latency` metric and measures from user silence to bot speech. If that
+metric is absent, the client measures from `UserStoppedSpeaking` to the first
+audible bot output. It labels this fallback **End-to-end latency** in the pill
+and **Browser-observed end-to-end latency** in the breakdown. The fallback
+includes browser delivery and playout, and is therefore approximate. The
+server value takes precedence whenever it is available. First audio can be
+progress speech rather than the final answer.
 
 The client clears the previous breakdown when a new recognized user turn
 ends, then uses turn and invocation correlation to merge the current rows.
