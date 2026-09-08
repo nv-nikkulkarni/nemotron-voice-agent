@@ -187,7 +187,7 @@ export async function selectExample(page, { example = "generic", model = "lightn
   }
 }
 
-export async function startConversation(page, { timeoutMs = 30000, dismissConversationTour = true } = {}) {
+export async function startConversation(page, { timeoutMs = 30000 } = {}) {
   // The popup's primary button ("Start conversation" / "Connecting…") launches.
   const btn = page.locator(".ex-config__actions .btn-primary").first();
   if (await btn.count()) await btn.click({ timeout: 10000 });
@@ -197,15 +197,6 @@ export async function startConversation(page, { timeoutMs = 30000, dismissConver
     await sleep(700);
     const cap = await orbCaption(page);
     if (/connected|listening|speaking|thinking/i.test(cap)) {
-      const invitation = page.locator('.tour-invite[aria-label="Conversation tour invitation"]');
-      await invitation.waitFor({ state: "visible", timeout: 1500 }).catch(() => {});
-      if (dismissConversationTour && await invitation.isVisible().catch(() => false)) {
-        await invitation.getByRole("button", { name: /No/i }).evaluate((element) => element.click());
-      }
-      const tour = page.locator('.tour-popover[aria-label="Conversation feature introduction"]');
-      if (dismissConversationTour && await tour.isVisible().catch(() => false)) {
-        await tour.getByRole("button", { name: /skip tour/i }).evaluate((element) => element.click());
-      }
       return { connected: true, connectMs: Date.now() - t0 };
     }
   }

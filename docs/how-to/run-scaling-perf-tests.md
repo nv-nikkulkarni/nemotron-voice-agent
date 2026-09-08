@@ -79,6 +79,13 @@ Useful flags (passed through to `simulate_concurrency.sh`):
 - Single-level run: `results_<timestamp>/` with `benchmark_summary.json`, `results.txt`, `results.tsv`, `results.json`, plus per-client logs and audio dumps.
 - Sweep: `perf_suite_<timestamp>/` with suite-level `results.txt`, `results.tsv`, `results.json`, and one `run_<N>_clients/` directory per concurrency level.
 
+The summary tables retain the seven aggregate Frontend/Backend stage columns.
+For per-turn diagnosis, open a client's `result_<id>.json` and inspect
+`server_metrics.stage_events`. Those entries preserve turn, invocation, parent
+invocation, retry attempt, outcome, and tool-name correlation when the server
+emits it. The collector accepts nested wire envelopes and already-unwrapped
+RTVI metrics from software development kit callbacks through the same parser.
+
 See the perf README for the full output layout and per-flag reference:
 
 - [`benchmarking_tools/scaling-perf/README.md`](../../benchmarking_tools/scaling-perf/README.md)
