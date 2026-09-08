@@ -30,7 +30,7 @@ export interface DemoConfig {
   deployedAt: string;
   /** Master switch for the curated-demo UI (timer, curated prompts, feedback, record). */
   demoMode: boolean;
-  /** Hard session cap in seconds; a 5:00 -> 0:00 countdown that gracefully ends the session. */
+  /** Hard session cap in seconds; a 10:00 -> 0:00 countdown that gracefully ends the session. */
   sessionSeconds: number;
   /** Allow-list of example keys to expose. Empty = show all. */
   examples: string[];
