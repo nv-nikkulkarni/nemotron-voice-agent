@@ -496,7 +496,6 @@ SESSION_CONFIG_KEYS: frozenset[str] = frozenset(
         "domain_profile",
         "thinker_prompt",
         "tools",
-        "tools_available",
         "asr_model",
         "asr_function_id",
         "asr_language_code",
@@ -506,6 +505,7 @@ SESSION_CONFIG_KEYS: frozenset[str] = frozenset(
         "tts_model",
         "tts_synthesis_mode",
         "tts_language_code",
+        "tools_available",
     }
 )
 
@@ -791,14 +791,25 @@ def parse_env_bool(name: str, default: bool = False) -> bool:
     return raw.lower() == "true" if raw else default
 
 
-def load_ipa_dictionary() -> dict | None:
+def load_ipa_dictionary(model_name: str | None = None) -> dict[str, str] | None:
     """Load a word-to-IPA pronunciation dictionary for ``NvidiaTTSService``.
 
     Reads ``TTS_IPA_FILE_PATH`` and parses JSON or YAML into a flat
-    ``{grapheme: ipa}`` dict. Relative paths resolve from ``PROJECT_ROOT``.
-    Returns ``None`` when unset, missing, malformed, or empty so callers can
-    pass the result straight into ``custom_dictionary=``.
+    ``{grapheme: ipa}`` dict. A versioned registry with an ``entries``
+    mapping is also accepted; each entry must contain ``ipa`` and can retain
+    review-only ``arpabet``, ``category``, and ``aliases`` metadata.
+    Relative paths resolve from ``PROJECT_ROOT``.
+
+    NVIDIA Speech NIM custom dictionaries are supported by Magpie, not
+    Chatterbox. When a non-Magpie model is explicit, return ``None`` instead
+    of sending an unsupported request field. An empty model name retains the
+    NvidiaTTSService default, which is Magpie.
     """
+    normalized_model = (model_name or "").strip().lower()
+    if normalized_model and "magpie" not in normalized_model:
+        logger.info(f"Skipping TTS IPA dictionary for unsupported model: {model_name}")
+        return None
+
     raw_path = os.getenv("TTS_IPA_FILE_PATH", "").strip()
     if not raw_path:
         return None
@@ -821,9 +832,37 @@ def load_ipa_dictionary() -> dict | None:
         logger.warning(f"TTS IPA dictionary must be a mapping, ignoring: {path}")
         return None
 
-    dictionary = {
-        str(word).strip(): str(ipa).strip() for word, ipa in data.items() if str(word).strip() and str(ipa).strip()
-    }
+    if "entries" in data:
+        entries = data.get("entries")
+        if not isinstance(entries, dict):
+            logger.warning(f"TTS pronunciation registry entries must be a mapping, ignoring: {path}")
+            return None
+        dictionary: dict[str, str] = {}
+        for raw_word, raw_entry in entries.items():
+            word = str(raw_word).strip()
+            if not word or not isinstance(raw_entry, dict):
+                logger.warning(f"Skipping malformed TTS pronunciation registry entry: {raw_word!r}")
+                continue
+            ipa = str(raw_entry.get("ipa", "")).strip()
+            if not ipa:
+                logger.warning(f"Skipping TTS pronunciation registry entry without IPA: {word!r}")
+                continue
+            dictionary[word] = ipa
+            aliases = raw_entry.get("aliases", [])
+            if aliases is None:
+                aliases = []
+            if not isinstance(aliases, list):
+                logger.warning(f"Ignoring non-list aliases for TTS pronunciation entry: {word!r}")
+                continue
+            for raw_alias in aliases:
+                alias = str(raw_alias).strip()
+                if alias:
+                    dictionary[alias] = ipa
+    else:
+        dictionary = {
+            str(word).strip(): str(ipa).strip() for word, ipa in data.items() if str(word).strip() and str(ipa).strip()
+        }
+
     if not dictionary:
         logger.warning(f"TTS IPA dictionary is empty, ignoring: {path}")
         return None

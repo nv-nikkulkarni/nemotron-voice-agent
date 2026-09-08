@@ -139,6 +139,7 @@ npx skills add .
 
 - [`deploy`](skills/deploy/SKILL.md): NGC login, deployment-profile selection, and compose bring-up.
 - [`configure-pipeline`](skills/configure-pipeline/SKILL.md): edit `.env`, prompts, and example service catalogs, then re-apply the change.
+- [`operate-nemotron-voice-agent`](skills/operate-nemotron-voice-agent/SKILL.md): operate and qualify the custom Viking, NVCF, and Astra deployment, including concurrency, capture, SQA, incidents, promotion, and rollback.
 
 ---
 
