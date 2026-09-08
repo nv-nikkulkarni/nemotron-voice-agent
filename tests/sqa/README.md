@@ -36,12 +36,14 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 | `selftest_audio.mjs`, `probe.mjs`, `diag_mic.mjs` | Layered bring-up checks (audio loopback → single turn → mic routing). |
 | `lib/harness.mjs`, `lib/audio.mjs` | Shared browser + ASR/TTS helpers. |
 
-The Generic Frontend/Backend example owns its five-tool allowlist on the server;
-it does not render client-side tool checkboxes. Release suites assert the exact
-`generic_talker` prompt catalog (`get_weather`, `get_stock_price`, `web_search`,
-`calculate_bmi`, and `generate_random_number`) before exercising native tool
-calls. The harness still fails when a test explicitly requests a visible control
-that the selected UI claims to expose but does not render.
+The Generic Frontend/Backend example owns its five-tool maximum allowlist on
+the server. `GET /api/tools` exposes the allowed ToolSpecs to the configuration
+popup and **Settings**, which share the same checkboxes. The client sends the
+selected subset for the next session; the server never accepts a tool outside
+the registry allowlist. Release suites assert the exact Generic catalog
+(`get_weather`, `get_stock_price`, `web_search`, `calculate_bmi`, and
+`generate_random_number`) before exercising native tool calls. The harness also
+fails when a UI-claimed tool control is missing or does not reflect selection.
 
 ## Run
 ```bash
