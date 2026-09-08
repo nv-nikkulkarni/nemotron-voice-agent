@@ -59,6 +59,14 @@ stockApi:
   apiKeySecret: nva-tool-api-keys
   apiKeySecretKey: FINNHUB_API_KEY
 
+# Capture uploads are mandatory in the recovered app. The destination is
+# non-secret; the credential value stays in the existing Kubernetes Secret.
+sessionCapture:
+  ngcOrg: "0491162300748285"
+  ngcResource: session-captures
+  ngcSecret: nvidia-api-key
+  ngcSecretKey: NGC_API_KEY
+
 # Match the proven local deployment: pod-local emptyDir caches avoid replacing
 # the already-warmed NIM deployments with new PVC-backed pods.
 llm:
