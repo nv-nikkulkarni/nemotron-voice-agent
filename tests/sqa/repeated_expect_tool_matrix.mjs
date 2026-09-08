@@ -25,6 +25,11 @@ const INPUT_SPEECH_INSTRUCTIONS =
   + "Pronounce every city name carefully. Do not answer, paraphrase, omit, or add words.";
 const INPUT_CITY_ALIASES = new Map([
   ["Bengaluru", ["Bangalore"]],
+  // Independent ASR commonly transcribes the city as its exact English
+  // homophone even when the generated clip immediately spells S E O U L and
+  // says South Korea. This alias keeps that grounded input from becoming an
+  // oracle failure without accepting an unrelated city.
+  ["Seoul", ["Soul"]],
 ]);
 const CITY_SPOKEN_SUBJECTS = new Map([
   ["Rome", "Rome, spelled R O M E, in Italy"],
@@ -62,6 +67,7 @@ const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const containsCity = (text, city) => new RegExp(`\\b${escapeRegExp(city)}\\b`, "i").test(text);
 const cityMentions = (city) => [city, ...(INPUT_CITY_ALIASES.get(city) || [])];
 const containsExpectedCity = (text, city) => cityMentions(city).some((mention) => containsCity(text, mention));
+const containsWeatherValue = (text) => /\b\d+(?:\.\d+)?\s*(?:degrees?\s*[cf]|°\s*[cf])\b/i.test(text);
 
 async function transcribeWithRetry(path) {
   const previous = transcriptionTail;
@@ -227,7 +233,15 @@ async function exerciseTurn(session, turnIndex, inputPath) {
   let completionCapture = null;
   const afterFirstCapture = (await H.readMessages(page)).slice(before);
   const firstDomBot = [...afterFirstCapture].reverse().find((message) => message.role === "bot")?.text || "";
-  if (!containsExpectedCity(firstDomBot, spec.city)) {
+  const firstTools = await H.toolWatchSince(page, toolMark);
+  const firstExpectedToolCalled = firstTools.some((tool) =>
+    tool.toLowerCase().includes(EXPECT_TOOL.toLowerCase()));
+  // Talker-authored filler is deliberately grounded in the city, so a city
+  // match alone no longer proves the weather turn is complete. Keep recording
+  // until the internal weather call has fired and a concrete weather value is
+  // in the transcript. This prevents the next test turn from superseding a
+  // still-running planner after only "Let me check ..." was spoken.
+  if (!firstExpectedToolCalled || !containsWeatherValue(firstDomBot)) {
     completionCapture = await H.captureBot(
       page,
       `expect_tool_c${clientIndex + 1}_t${turnIndex + 1}_completion_bot`,
@@ -266,6 +280,7 @@ async function exerciseTurn(session, turnIndex, inputPath) {
   const botAsrOk = Boolean(botAsr) && !botAsr.startsWith("ASR-error:");
   const botAsrGrounded = botAsrOk && containsExpectedCity(botAsr, spec.city);
   const ownCityGrounded = containsExpectedCity(combinedAnswer, spec.city);
+  const weatherValueGrounded = containsWeatherValue(combinedAnswer);
   const silent = !botAudio && !domBot.trim();
   const inputDelivered = Boolean(deliveredUser || domUser.trim());
 
@@ -288,10 +303,12 @@ async function exerciseTurn(session, turnIndex, inputPath) {
     botAsrOk,
     botAsrGrounded,
     ownCityGrounded,
+    weatherValueGrounded,
     silent,
     leakedCities,
     wallMs: Date.now() - startedAt,
     pass: listening && inputDelivered && expectedToolCalled && botAudio && botAsrGrounded && ownCityGrounded
+      && weatherValueGrounded
       && !silent && leakedCities.length === 0,
   };
 }
@@ -351,6 +368,7 @@ report.summary = {
   botAsrTurns: count((result) => result.botAsrOk),
   botAsrGroundedTurns: count((result) => result.botAsrGrounded),
   groundedTurns: count((result) => result.ownCityGrounded),
+  weatherValueTurns: count((result) => result.weatherValueGrounded),
   silentTurns: count((result) => result.silent),
   crossTalkTurns: count((result) => result.leakedCities.length > 0),
   failedTurns: count((result) => !result.pass),
@@ -363,6 +381,7 @@ report.pass = !report.fatal
   && report.summary.botAudioTurns === expectedTurns
   && report.summary.botAsrGroundedTurns === expectedTurns
   && report.summary.groundedTurns === expectedTurns
+  && report.summary.weatherValueTurns === expectedTurns
   && report.summary.silentTurns === 0
   && report.summary.crossTalkTurns === 0
   && report.summary.failedTurns === 0
