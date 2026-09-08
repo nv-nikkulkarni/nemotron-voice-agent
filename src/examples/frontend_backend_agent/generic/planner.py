@@ -70,9 +70,15 @@ class NvidiaGenericPlanner:
         )
         call_id = str(state.get("active_call_id") or "unbound")
         attempt = int(state.get("planner_attempt") or 1)
+        planning_round = int(state.get("planning_round") or 1)
         span = None
         if self._stage_metrics is not None:
-            span = await self._stage_metrics.start_backend(call_id, model=self._model_name, attempt=attempt)
+            span = await self._stage_metrics.start_backend(
+                call_id,
+                model=self._model_name,
+                attempt=attempt,
+                planning_round=planning_round,
+            )
         raw = await run_streamed_inference(self._llm, context, span, max_tokens=self._max_tokens)
         if not raw:
             raise RuntimeError("Generic Thinker returned an empty plan")

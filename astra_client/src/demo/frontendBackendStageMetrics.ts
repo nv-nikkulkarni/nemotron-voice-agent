@@ -39,6 +39,16 @@ const TTFB_STAGES: Record<string, StageDefinition> = {
     label: "Backend Thinker — first plan token",
     kind: "backend",
   },
+  backend_thinker_step2_llm: {
+    key: "backend_llm_ttft",
+    label: "Backend Thinker step 2 — first plan token",
+    kind: "backend",
+  },
+  backend_thinker_step3_llm: {
+    key: "backend_llm_ttft",
+    label: "Backend Thinker step 3 — first plan token",
+    kind: "backend",
+  },
   frontend_final_response_llm: {
     key: "frontend_final_response_ttft",
     label: "Frontend Talker — first answer token",
@@ -55,6 +65,16 @@ const PROCESSING_STAGES: Record<string, StageDefinition> = {
   backend_thinker_llm: {
     key: "backend_llm_processing_time",
     label: "Backend Thinker — total planning time",
+    kind: "backend",
+  },
+  backend_thinker_step2_llm: {
+    key: "backend_llm_processing_time",
+    label: "Backend Thinker step 2 — total planning time",
+    kind: "backend",
+  },
+  backend_thinker_step3_llm: {
+    key: "backend_llm_processing_time",
+    label: "Backend Thinker step 3 — total planning time",
     kind: "backend",
   },
   frontend_final_response_llm: {

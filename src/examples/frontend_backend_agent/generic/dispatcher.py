@@ -187,6 +187,8 @@ async def dispatch_plan(
     on_tool_started: Callable[[str], Awaitable[None]] | None = None,
     stage_metrics: StageMetricsCoordinator | None = None,
     backend_call_id: str = "unbound",
+    accumulated_results: list[dict[str, Any]] | None = None,
+    tool_ordinal_offset: int = 0,
 ) -> dict[str, Any]:
     """Validate atomically, serialize mutating tools, and preserve planner order."""
     enabled = frozenset(enabled_tools)
@@ -233,7 +235,7 @@ async def dispatch_plan(
             on_tool_started,
             stage_metrics,
             backend_call_id,
-            index,
+            tool_ordinal_offset + index,
         )
 
     async def run_mutating_chain(items: list[tuple[int, ValidatedToolCall]]) -> None:
@@ -252,4 +254,13 @@ async def dispatch_plan(
     await asyncio.gather(*coroutines)
 
     resolved = [payload for payload in payloads if payload is not None]
+    if accumulated_results is not None:
+        accumulated_results.extend(resolved)
     return resolved[0] if len(resolved) == 1 else combine_tool_results(resolved)
+
+
+def combine_accumulated_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return one final payload for all completed planning rounds."""
+    if not results:
+        raise PlanValidationError("planner completed without tool results")
+    return results[0] if len(results) == 1 else combine_tool_results(results)

@@ -55,6 +55,29 @@ test("extracts the seven granular frontend/backend metrics and converts seconds 
   assert.match(rows[5].label, /web search/i);
 });
 
+test("exposes second and third Thinker planning rounds as correlated backend rows", () => {
+  const rows = parseAgentStageMetrics({
+    ttfb: [
+      metric("backend_thinker_step2_llm", 0.12, "turn-1", "thinker-step2-1"),
+      metric("backend_thinker_step3_llm", 0.14, "turn-1", "thinker-step3-1"),
+    ],
+    processing: [
+      metric("backend_thinker_step2_llm", 0.42, "turn-1", "thinker-step2-1"),
+      metric("backend_thinker_step3_llm", 0.51, "turn-1", "thinker-step3-1"),
+    ],
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.label),
+    [
+      "Backend Thinker step 2 — first plan token",
+      "Backend Thinker step 3 — first plan token",
+      "Backend Thinker step 2 — total planning time",
+      "Backend Thinker step 3 — total planning time",
+    ],
+  );
+});
+
 test("ignores unrelated standard pipeline metrics", () => {
   const rows = parseAgentStageMetrics({
     ttfb: [metric("NvidiaRivaSTTService#0", 0.1, "", "")],

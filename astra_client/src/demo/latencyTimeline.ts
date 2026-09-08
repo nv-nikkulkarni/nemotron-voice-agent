@@ -72,7 +72,7 @@ export function buildAgentTimeline(
     fallbackCursor = Math.max(fallbackCursor, endMs);
     return {
       id: row.id,
-      label: row.label.replace(/^Frontend Talker — |^Backend Thinker — |^Backend tool — /, ""),
+      label: row.label.replace(/^Frontend Talker — |^Backend Thinker(?: step \d+)? — |^Backend tool — /, ""),
       kind: row.kind,
       durationMs: row.valueMs,
       startMs,

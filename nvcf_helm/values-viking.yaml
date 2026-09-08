@@ -33,6 +33,11 @@ app:
   existingSecretKey: NVIDIA_API_KEY
   # Expose all reachable examples (the client allow-lists the two we want:
   # generic-frontend-backend-agent + omni-assistant-subagents).
+  # Viking canary: only successful weather results use the guarded Talker rewrite.
+  # All other tools and every non-success outcome remain deterministic.
+  frontendBackendToolResultMode: hybrid
+  genericPlannerTimeoutSeconds: "6"
+
   example: all
   # Phoenix isn't deployed here (private-org image) — stop the app exporting OTel
   # traces to a dead phoenix:4317 that was flooding the logs every second.
