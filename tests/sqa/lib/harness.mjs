@@ -116,9 +116,9 @@ export async function newPage(browser, sig, { viewport = { width: 1280, height: 
   return { ctx, page };
 }
 
-// Pick an example card on the landing page, which now opens the ExampleConfigModal
-// popup (.ex-config). We configure the per-session choices in the popup but do NOT
-// launch here — startConversation() clicks the popup's "Start conversation".
+// Select an example with its full card, then open the ExampleConfigModal from
+// the launch bar. We configure per-session choices in the popup but do NOT launch
+// here — startConversation() clicks the popup's "Start conversation".
 //   example : "generic" | "omni"
 //   model   : "lightning" only. Generic model roles are fixed; any other value
 //             is rejected so a test cannot silently claim it selected Super/Nano.
@@ -178,10 +178,25 @@ export async function assertServerOwnedTools(page, {
 export async function selectExample(page, { example = "generic", model = "lightning", tts, tools, reasoning, consent } = {}) {
   const isOmni = /omni/i.test(example);
   if (!(await waitForDeploymentReady(page))) throw new Error("deployment options did not become ready");
-  // 1. Click the example card to open its configuration popup.
-  const card = page.locator(".example-card").filter({ hasText: isOmni ? /omni/i : /generic/i }).first();
-  if (await card.count()) await card.click();
-  else await page.locator(".example-card").nth(isOmni ? 1 : 0).click();
+  const declineTour = page.getByRole("button", { name: /No/i });
+  if (await declineTour.isVisible().catch(() => false)) await declineTour.click();
+  const skipTour = page.getByRole("button", { name: /skip tour/i });
+  if (await skipTour.isVisible().catch(() => false)) await skipTour.click();
+  // 1. Select with the full card, then open configuration from the launch bar.
+  const matchingCard = page.locator(".example-card").filter({ hasText: isOmni ? /omni/i : /generic/i }).first();
+  const card = await matchingCard.count() ? matchingCard : page.locator(".example-card").nth(isOmni ? 1 : 0);
+  await card.evaluate((element) => element.click());
+  const selection = page.locator(".startview__selection strong");
+  await selection.waitFor({ state: "visible", timeout: 8000 });
+  const selectedLabel = (await selection.innerText()).trim();
+  if (!(isOmni ? /omni/i : /generic/i).test(selectedLabel)) {
+    throw new Error(`example card did not select the requested experience: ${selectedLabel}`);
+  }
+  if (await card.getAttribute("aria-pressed") !== "true") {
+    throw new Error("selected example card did not expose aria-pressed=true");
+  }
+  const configure = page.locator(".startview__launch").getByRole("button", { name: /^configure$/i });
+  await configure.evaluate((element) => element.click());
 
   // 2. Wait for the popup to appear (the launch surface).
   const popup = page.locator(".ex-config");
@@ -271,7 +286,7 @@ export async function selectExample(page, { example = "generic", model = "lightn
   }
 }
 
-export async function startConversation(page, { timeoutMs = 30000 } = {}) {
+export async function startConversation(page, { timeoutMs = 30000, dismissConversationTour = true } = {}) {
   // The popup's primary button ("Start conversation" / "Connecting…") launches.
   const btn = page.locator(".ex-config__actions .btn-primary").first();
   if (await btn.count()) await btn.click({ timeout: 10000 });
@@ -280,28 +295,47 @@ export async function startConversation(page, { timeoutMs = 30000 } = {}) {
   while (Date.now() - t0 < timeoutMs) {
     await sleep(700);
     const cap = await orbCaption(page);
-    if (/connected|listening|speaking|thinking/i.test(cap)) return { connected: true, connectMs: Date.now() - t0 };
+    if (/connected|listening|speaking|thinking/i.test(cap)) {
+      const invitation = page.locator('.tour-invite[aria-label="Conversation tour invitation"]');
+      await invitation.waitFor({ state: "visible", timeout: 1500 }).catch(() => {});
+      if (dismissConversationTour && await invitation.isVisible().catch(() => false)) {
+        await invitation.getByRole("button", { name: /No/i }).evaluate((element) => element.click());
+      }
+      const tour = page.locator('.tour-popover[aria-label="Conversation feature introduction"]');
+      if (dismissConversationTour && await tour.isVisible().catch(() => false)) {
+        await tour.getByRole("button", { name: /skip tour/i }).evaluate((element) => element.click());
+      }
+      return { connected: true, connectMs: Date.now() - t0 };
+    }
   }
   return { connected: false, connectMs: null };
 }
 
-// Latch every tool name the transient .conv-tool box shows. That box is rendered
-// only between the pipeline's `tool-call` and `tool-call-done` events, so a
-// MutationObserver is the reliable way to see short-lived tool calls. Install once
-// the conversation is live; mark before a turn and read what fired since.
+// Latch every tool name from the UI's mirrored RTVI `tool-call` event. Keep the
+// transient .conv-tool box observer as a compatibility fallback for older UIs.
+// The event is authoritative because a fast tool can start and finish inside one
+// React render batch without ever presenting a visible DOM badge to Playwright.
+// Install once the conversation is live; mark before a turn and read what fired.
 export async function installToolWatch(page) {
   await page.evaluate(() => {
     if (window.__toolWatchInstalled) return;
     window.__toolWatchInstalled = true;
     window.__tools = [];
     window.__activeToolNames = new Set();
+    window.__rtviToolEventsSeen = false;
+    window.addEventListener("nva:tool-call", (event) => {
+      const name = String(event?.detail?.tool || "").trim();
+      if (!name) return;
+      window.__rtviToolEventsSeen = true;
+      window.__tools.push(name);
+    });
     const grab = () => {
       const visible = new Set();
       document.querySelectorAll(".conv-tool__name").forEach((node) => {
         const name = (node.textContent || "").trim();
         if (!name) return;
         visible.add(name);
-        if (!window.__activeToolNames.has(name)) window.__tools.push(name);
+        if (!window.__rtviToolEventsSeen && !window.__activeToolNames.has(name)) window.__tools.push(name);
       });
       window.__activeToolNames = visible;
     };

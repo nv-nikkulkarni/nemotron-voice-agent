@@ -186,6 +186,7 @@ export interface DeploymentOption {
   label: string;
   slots: string[];
   capabilities?: string[];
+  domainProfile?: string;
   default_session_language?: string;
   defaults?: DeploymentDefaults;
 }

@@ -13,6 +13,7 @@
 import { useEffect } from "react";
 import { useApp } from "../../context/useApp";
 import type { DeploymentOption, LLMService } from "../../api";
+import { ToolSelector } from "./ToolSelector";
 
 // A model's reasoning default comes from ONE place: the `enable_thinking` its
 // catalog entry ships in extra_params (the services YAML). Lightning defaults
@@ -38,23 +39,6 @@ const TTS_OPTIONS = [
   { key: "chatterbox", test: /chatterbox/i, label: "Chatterbox", sub: "Expressive multilingual" },
 ];
 
-// Defaults the user asked for: weather, stock, web search, BMI (calculate_bmi).
-const DEFAULT_TOOLS = ["get_weather", "get_stock_price", "web_search", "calculate_bmi"];
-const HIDDEN_TOOLS = new Set(["get_news_headlines"]);
-const TOOL_LABELS: Record<string, string> = {
-  get_weather: "Weather",
-  get_stock_price: "Stock price",
-  web_search: "Web search",
-  calculate_bmi: "BMI",
-  convert_currency: "Currency convert",
-  get_current_date_time: "Date & time",
-  generate_random_number: "Random number",
-};
-
-function labelFor(name: string): string {
-  return TOOL_LABELS[name] ?? name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 export function ExampleConfigModal({
   option, connecting, connectionError, onStart, onClose,
 }: Readonly<{
@@ -65,25 +49,26 @@ export function ExampleConfigModal({
   onClose: () => void;
 }>) {
   const {
-    llms, selectedLLMId,
-    ttsServices, selectedTTSId, selectTTS,
-    tools, selectedTools, toggleTool, setSelectedTools,
+    llms, llmsLoading, selectedLLMId,
+    asrLoading,
+    ttsServices, ttsLoading, selectedTTSId, selectTTS,
+    promptsLoading,
+    tools, toolsLoading, selectedTools, toggleTool,
     recordSession, setRecordSession, storeConsent, setStoreConsent,
     reasoning, setReasoning,
   } = useApp();
 
-  const isGeneric = option.key === "generic-frontend-backend-agent";
+  const isGeneric = option.domainProfile === "generic" || option.key === "generic-frontend-backend-agent";
   // Omni pays a much steeper reasoning cost than the cascaded pipeline: its
   // Speaker returns a single JSON envelope and TTS cannot start until that
   // envelope fully parses, so the whole chain-of-thought is silence.
   const isOmni = option.key.startsWith("omni");
   const meta = EXAMPLE_TITLES[option.key] ?? option.label;
+  const configurationLoading = llmsLoading || asrLoading || ttsLoading || promptsLoading || toolsLoading;
 
   const ttsChoices = TTS_OPTIONS
     .map((o) => ({ ...o, svc: ttsServices.find((t) => o.test.test(t.id) || o.test.test(t.name)) }))
     .filter((o) => o.svc);
-  const toolList = tools.filter((t) => !HIDDEN_TOOLS.has(t.name));
-
   // Apply the requested voice default when the popup opens. The generic agent's
   // Lightning/Super roles are registry- and pipeline-owned, not user-selectable.
   useEffect(() => {
@@ -93,14 +78,6 @@ export function ExampleConfigModal({
     if (!curTtsOffered && magpie) selectTTS(magpie.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [option.key, ttsServices.length]);
-
-  // Default tool selection (generic only) once the catalog is loaded.
-  useEffect(() => {
-    if (!isGeneric || !toolList.length) return;
-    const avail = new Set(toolList.map((t) => t.name));
-    setSelectedTools(DEFAULT_TOOLS.filter((n) => avail.has(n)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [option.key, toolList.length]);
 
   // Reset reasoning only when the selected model or that model's catalog default
   // changes. Depending on the whole llms array caused ordinary context re-renders to
@@ -147,17 +124,15 @@ export function ExampleConfigModal({
           </section>
         )}
 
-        {isGeneric && toolList.length > 0 && (
+        {isGeneric && (
           <section className="ex-config__section">
             <h3 className="ex-config__label">Tools <span className="ex-config__hint">the assistant may call</span></h3>
-            <div className="ex-config__tools">
-              {toolList.map((t) => (
-                <label key={t.name} className={`ex-tool ${selectedTools.includes(t.name) ? "on" : ""}`} title={t.description}>
-                  <input type="checkbox" checked={selectedTools.includes(t.name)} onChange={() => toggleTool(t.name)} />
-                  <span>{labelFor(t.name)}</span>
-                </label>
-              ))}
-            </div>
+            <ToolSelector
+              tools={tools}
+              selectedTools={selectedTools}
+              loading={toolsLoading}
+              onToggle={toggleTool}
+            />
           </section>
         )}
 
@@ -201,8 +176,13 @@ export function ExampleConfigModal({
 
         <div className="ex-config__actions">
           <button type="button" className="btn-secondary" onClick={onClose} disabled={connecting}>Cancel</button>
-          <button type="button" className="btn-primary btn-bubbly" onClick={onStart} disabled={connecting}>
-            {connecting ? "Connecting…" : "Start conversation"}
+          <button
+            type="button"
+            className="btn-primary btn-bubbly"
+            onClick={onStart}
+            disabled={connecting || configurationLoading}
+          >
+            {connecting ? "Connecting…" : configurationLoading ? "Preparing…" : "Start conversation"}
           </button>
         </div>
       </div>

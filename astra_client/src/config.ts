@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2024–2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: BSD-2-Clause
 
+import { DEFAULT_SESSION_SECONDS } from "./demo/sessionTimer";
+
 // Runtime demo configuration.
 //
 // The nvcf-ui container's entrypoint writes /config.js which sets
@@ -28,7 +30,7 @@ export interface DemoConfig {
   deployedAt: string;
   /** Master switch for the curated-demo UI (timer, curated prompts, feedback, record). */
   demoMode: boolean;
-  /** Hard session cap in seconds; a 2:00 -> 0:00 countdown that force-disconnects. */
+  /** Hard session cap in seconds; a 5:00 -> 0:00 countdown that gracefully ends the session. */
   sessionSeconds: number;
   /** Allow-list of example keys to expose. Empty = show all. */
   examples: string[];
@@ -61,7 +63,7 @@ export interface DemoConfig {
 const DEFAULTS: DemoConfig = {
   deployedAt: "",
   demoMode: true,
-  sessionSeconds: 120,
+  sessionSeconds: DEFAULT_SESSION_SECONDS,
   examples: ["generic-frontend-backend-agent", "omni-assistant-subagents"],
   selfHostedOnly: true,
   recordEnabled: true,

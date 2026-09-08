@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2024–2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: BSD-2-Clause
 
-import { useMemo, useState, type ComponentProps } from "react";
+import { useCallback, useMemo, useState, type ComponentProps } from "react";
 import { PipecatClient } from "@pipecat-ai/client-js";
 import { PipecatClientProvider, PipecatClientAudio } from "@pipecat-ai/client-react";
 import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
@@ -21,6 +21,7 @@ import { PipelineInfo } from "./components/demo/PipelineInfo";
 import { SessionControls } from "./components/demo/SessionControls";
 import { SessionLifecycleProvider } from "./hooks/useSessionLifecycle";
 import { StoppingOverlayHost } from "./components/demo/StoppingOverlay";
+import { ConversationTour, IntroductionTour, TourInvitation } from "./components/demo/IntroductionTour";
 // Legacy full app (non-demo builds only).
 import { Header } from "./components/Header";
 import { StatusPanel } from "./components/status-panel";
@@ -32,6 +33,7 @@ const DEFAULT_AUDIO_INPUT_SAMPLE_RATE = 16000;
 const DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE = 22050;
 type ProviderClient = ComponentProps<typeof PipecatClientProvider>["client"];
 type View = "main" | "settings" | "pipeline";
+type Tour = "introduction-prompt" | "introduction" | "conversation-prompt" | "conversation" | null;
 
 function AppInner() {
   const { selectedTransport } = useApp();
@@ -41,6 +43,13 @@ function AppInner() {
   const recorderSampleRate = deployment?.audio?.input_sample_rate ?? DEFAULT_AUDIO_INPUT_SAMPLE_RATE;
   const playerSampleRate = deployment?.audio?.output_sample_rate ?? DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE;
   const [view, setView] = useState<View>("main");
+  const [tour, setTour] = useState<Tour>("introduction-prompt");
+  const handleLiveChange = useCallback((live: boolean) => {
+    setTour((current) => {
+      if (live) return current === "conversation" ? current : "conversation-prompt";
+      return current === "conversation" || current === "conversation-prompt" ? null : current;
+    });
+  }, []);
 
   const client = useMemo(() => {
     if (selectedTransport === "websocket") {
@@ -108,9 +117,17 @@ function AppInner() {
     <PipecatClientProvider client={client as unknown as ProviderClient}>
       <SessionLifecycleProvider>
         <div className="clean-app">
-          <TopBar onHome={() => setView("main")} onSettings={() => setView("settings")} onPipeline={() => setView("pipeline")} />
+          <TopBar
+            onHome={() => setView("main")}
+            onSettings={() => setView("settings")}
+            onPipeline={() => setView("pipeline")}
+            onTour={(active) => {
+              setView("main");
+              setTour(active ? "conversation-prompt" : "introduction-prompt");
+            }}
+          />
           <main className="clean-main">
-            <ConversationStage />
+            <ConversationStage onLiveChange={handleLiveChange} />
           </main>
           <SessionControls />
           <PipecatClientAudio />
@@ -119,6 +136,22 @@ function AppInner() {
         <StoppingOverlayHost />
         {view === "settings" && <SettingsPage onClose={() => setView("main")} />}
         {view === "pipeline" && <PipelineInfo onClose={() => setView("main")} />}
+        {tour === "introduction-prompt" && (
+          <TourInvitation
+            context="introduction"
+            onAccept={() => setTour("introduction")}
+            onDecline={() => setTour(null)}
+          />
+        )}
+        {tour === "conversation-prompt" && (
+          <TourInvitation
+            context="conversation"
+            onAccept={() => setTour("conversation")}
+            onDecline={() => setTour(null)}
+          />
+        )}
+        {tour === "introduction" && <IntroductionTour onClose={() => setTour(null)} />}
+        {tour === "conversation" && <ConversationTour onClose={() => setTour(null)} />}
       </SessionLifecycleProvider>
     </PipecatClientProvider>
   );
