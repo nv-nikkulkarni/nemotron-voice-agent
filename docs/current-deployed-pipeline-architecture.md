@@ -10,11 +10,16 @@ reports.
 
 **Production snapshot verified:** September 7, 2026 (Asia/Kolkata)
 
+**Viking qualification candidate verified:** September 8, 2026 (Asia/Kolkata)
+
 **Isolated staging candidate verified:** August 27, 2026 (Asia/Kolkata)
 
 **Deployed source branch:** `dev/nikkulkarni/nvcf-deploy-rebased`
 
 **Current release source:** `82697e8f45c6de3dbc5565962113933c8c0ae951`
+
+**Viking candidate source:** behavior `3d7d8dc`, documentation `d7e8551`,
+release `5a4db3f`, and Viking configuration `eab0584`
 
 **UI behavior source:** `178e45b647d7cb1f78c192cbd06b82887283ebf4`
 
@@ -32,6 +37,8 @@ reports.
 >   `82697e8f45c6de3dbc5565962113933c8c0ae951`.
 > - **Candidate** means a newer checked-in chart change that is not yet part of the
 >   live-verified production snapshot.
+> - **Viking-verified** means chart `0.1.140` was observed in the Viking
+>   namespace. It does not describe NVCF, Astra, or a complete SQA qualification.
 > - **Historical** means the statement is preserved from qualification reports or chart history and is explicitly labelled as such.
 >
 > Never put secret values in this document. Credential names, ownership boundaries, and injection paths are safe to record; keys are not.
@@ -77,6 +84,10 @@ The retained experience is a two-platform system:
 6. **Session capture is entirely in the app process.** Pipeline teardown and browser consent are independent signals recorded in Redis. Exactly one replica wins a token-owned lock, reads artifacts from SeaweedFS, builds a tarball, and publishes an NGC resource version named with the session ID.
 7. **The two selectable experiences are Generic Assistant and Nemotron Omni Assistant Subagents.** Generic is a cascaded ASR → text LLM → tools → TTS pipeline. Omni uses an audio-capable model plus a Pipecat worker bus with Speaker, Media Analyzer, Webcam, and Thinker roles, followed by external TTS.
 8. **The owner directed an unqualified main production rollout.** The main NVCF function runs chart `0.1.139` and app `2.0.67` as the only ACTIVE project deployment; `0.1.138` is its sole INACTIVE rollback. The isolated `-2` function and all its versions were deleted after graceful undeploy. The main Astra app runs UI `2.0.75` in physical `stg` infrastructure, not a true Astra `prd` deployment.
+9. **A newer candidate runs only on Viking.** Chart `0.1.140` runs app
+   `2.0.68` with bounded dependent planning, guarded internal-mechanics output,
+   weather-only hybrid rephrasing, and a bot-aware interruption threshold. The
+   production NVCF function, Astra app, and `nvcf_helm/values.yaml` are unchanged.
 
 ### 1.1 One-screen architecture
 
@@ -362,7 +373,79 @@ them with chart `0.1.139`, app `2.0.67`, and UI `2.0.75`, which also remain
 unqualified because the full SQA suite has not run. The isolated environment
 was later gracefully undeployed and removed from the project inventory.
 
-### 2.4 Important Naming Truth: “Live/Prod” Versus Astra `prd`
+### 2.4 Viking Qualification Candidate 0.1.140
+
+Viking Helm release `p7`, revision 4, runs chart `0.1.140` and app `2.0.68` in
+namespace `nva-p7`. This is a Viking-only candidate. It has not changed or
+qualified the main NVCF function or Astra deployment. The production
+`nvcf_helm/values.yaml` file is unchanged.
+
+The candidate provenance and immutable artifacts are:
+
+| Item | Viking-Verified Value |
+| --- | --- |
+| Behavior source | `3d7d8dc` |
+| Documentation source | `d7e8551` |
+| Release source and OCI revision | `5a4db3fa14a0ea5ac077ffcb1c6117aead745dea` |
+| Viking configuration source and branch head | `eab0584` |
+| Helm chart | `0.1.140`, `appVersion: 2.0.68` |
+| App image | `nvcr.io/0491162300748285/nemotron-voice-agent:2.0.68`; pushed digest `sha256:00f6537af2086c190ecbd2d7330ed57e96745baa6835358b0a6f2ed2b68c77d2` |
+| Local UI image | `nemotron-voice-agent-ui:2.0.76-5a4db3f`; local image ID `sha256:df5b9597ce8216a3c27bcc2153e25aa16c48858abf7f0aafdd29ecbb6378c301` |
+| Local UI runtime | Container `nva-ui-local-2-0-76-5a4db3f` on `0.0.0.0:7860`; backend `http://10.78.18.44:30786`; build timestamp `2026-09-08T18:06:00Z` |
+| Local UI advertisement | 600-second sessions; Generic Frontend/Backend Agent and Omni Assistant Subagents enabled; bundles `index-BpjfWqpT.js` and `index-7D6fAwDC.css` |
+
+Revision 3 failed during startup because recovered application code enforces
+the capture destination when `uploadRequired=true`. The Viking values did not
+provide the non-secret `SESSION_CAPTURE_NGC` destination, so all 5 application
+pods entered `CrashLoopBackOff` with that explicit startup error. Redis,
+SeaweedFS, and all inference dependencies remained healthy.
+
+Commit `eab0584` fixes only `nvcf_helm/values-viking.yaml`. It supplies NGC
+organization `0491162300748285`, resource `session-captures`, and the existing
+`nvidia-api-key` secret reference for key `NGC_API_KEY`. It contains no secret
+value. Helm revision 4 then reached the following state:
+
+- All 5 application replicas became Ready with zero restarts and resolved the
+  exact app digest.
+- The prewarmer resolved the same app digest.
+- ASR, Magpie, Chatterbox, Lightning, Super, Omni, Redis, and SeaweedFS kept
+  their prior pod UIDs and zero restarts.
+- `/health`, deployment metadata, session configuration, and the 5-tool catalog
+  returned HTTP 200 responses.
+- Capture reported enabled, consent-based, upload-required, and backed by the
+  shared S3-compatible store.
+
+Focused validation recorded the following results:
+
+| Gate | Result |
+| --- | --- |
+| Python unit tests | 574 passed |
+| Live Talker model evaluation | 160/160 |
+| Live Thinker model evaluation | 100/100 |
+| Repeat-weather evaluation | 20/20 |
+| Dependent second-round evaluation | 20/20 |
+| Random-number evaluation | 20/20 |
+| Focused UI metrics tests | 5/5 passed |
+| UI build and lint | Passed |
+| Helm lint and render | Passed |
+| Real-audio identity smoke | Exact identity response passed |
+| Real-audio weather smoke | `get_weather` selected; numeric result included humidity and wind |
+| Real-audio stock smoke | `get_stock_price` selected; numeric result passed |
+
+The first browser weather attempt started audio during the welcome turn while
+the user aggregator was still muted. The settled-welcome rerun passed. This was
+an SQA oracle race, not a product failure.
+
+Synthetic false-interruption session `de91f2cf7010` injected a 120 ms non-verbal
+tone during a long spoken web-search result. The answer completed, the session
+retained one user message, no `user-interruption-trigger` event appeared, and
+capture uploaded successfully.
+
+This evidence is a focused Viking smoke, not complete qualification. Full SQA
+suites A through D and the manual human-microphone interruption reproduction
+remain pending. The automated non-verbal equivalent passed.
+
+### 2.5 Important Naming Truth: “Live/Prod” Versus Astra `prd`
 
 The retained UI is called the production app in project operations, and it points to the production NVCF function. It is **not yet an Astra production-environment deployment**.
 
@@ -389,7 +472,7 @@ The checked-in retained values explicitly contain:
 
 A true Astra production promotion requires a production deployment on `astraprd01-ocp-pdx04`, a production Vault path, generated production ingress/role values, and an NSPECT ID. Do not remove the retained live `stg` app until the `prd` app is deployed and qualified.
 
-### 2.4 Live Feature Advertisement
+### 2.6 Live Feature Advertisement
 
 `GET /api/deployment` currently advertises:
 
@@ -848,7 +931,37 @@ The main release exposes direct, hybrid, and Talker result modes. Chart
 deterministic backend text reaches speech without another Talker generation.
 `hybrid` and `talker` remain explicit diagnostic modes. The Generic source
 default is also `direct` when no explicit mode is configured. These main-release
-settings do not describe the still-active `0.1.130` isolated deployment.
+settings do not describe the historical `0.1.130` isolated deployment, which
+was later undeployed and deleted.
+
+The Viking-only `0.1.140` values select `hybrid`. Only a successful
+`get_weather` result uses the final Talker rephrasing. The projection exposes a
+bounded set of weather facts, and output validation requires the trusted city,
+temperature, and unit. A missing or changed fact triggers one retry, then the
+deterministic formatter. Other tools and every non-success result remain
+deterministic. Weather speech includes provider-returned humidity and wind when
+available.
+
+The generic backend now supports conditional work through at most 3 planning
+rounds. A round sets `continue_after_results: true` to request another plan.
+Later plans receive accumulated trusted results through session state. A
+`complete: true` response, an empty plan, or no follow-up request ends the loop.
+Each planning call has a 6-second ceiling inside the existing 40-second backend
+deadline. Results from completed rounds remain available if later planning
+fails or times out.
+
+The first planning round retains processor `backend_thinker_llm`. Later rounds
+emit `backend_thinker_step2_llm` and `backend_thinker_step3_llm`, correlated to
+the same user turn and backend invocation. An intermediate lifecycle event can
+release the existing Talker-authored filler if it has not already played. The
+runtime never creates or repeats a static filler between rounds.
+
+The Generic Talker prompt rejects direct and indirect requests to describe its
+private operating instructions, decision rules, model roles, function names,
+or internal tool inventory. Spoken-output validation applies the same boundary
+to explicit internal vocabulary. It retries once with a private correction,
+then uses a deterministic refusal. Python does not infer the user's intent or
+select a tool.
 
 The Astra WebSocket client handles audible barge-in through these independent
 paths:
@@ -869,6 +982,12 @@ paths:
 5. A turn such as “Wait, stop. What is two plus two?” remains a substantive
    replacement. The Talker answers or delegates it instead of returning a
    cancellation-only response.
+6. On the Viking `0.1.140` Generic pipeline, bot-speech interruption requires
+   at least 2 transcribed words. When the bot is not speaking, 1 word can start
+   a normal turn. Accepted barge-ins emit a bounded
+   `user-interruption-trigger` event and `user_interruption_trigger` log with
+   the triggering transcript and word count. Smart Turn remains the separate
+   end-of-turn detector.
 
 “There is nothing pending right now” is reserved for an explicit cancellation
 when there is no active backend task, pending domain work, or interrupted bot
