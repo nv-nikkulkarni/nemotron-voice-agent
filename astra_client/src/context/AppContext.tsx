@@ -187,9 +187,6 @@ export interface AppState {
   /** LLM reasoning: the `enable_thinking` chat-template kwarg. Default is per selected model. */
   reasoning: boolean;
   setReasoning: (v: boolean) => void;
-  /** Editable LLM base URL (empty = the pipeline's built-in default). */
-  modelUrlOverride: string;
-  setModelUrlOverride: (v: string) => void;
   /** Edited system prompt (empty = the example's original prompt). */
   promptOverride: string;
   setPromptOverride: (v: string) => void;
@@ -334,7 +331,6 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
   // false, since a `true` here is exactly what leaked into Omni sessions and cost
   // ~8s of silent chain-of-thought per turn.
   const [reasoning, setReasoning] = useState(false);
-  const [modelUrlOverride, setModelUrlOverride] = useState("");
   const [promptOverride, setPromptOverride] = useState("");
 
   // --- LLM state ---
@@ -590,7 +586,7 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   const value = useMemo<AppState>(() => ({
     selectedExample, selectExample, deploymentOptions,
-    recordSession, setRecordSession, storeConsent, setStoreConsent, reasoning, setReasoning, modelUrlOverride, setModelUrlOverride, promptOverride, setPromptOverride,
+    recordSession, setRecordSession, storeConsent, setStoreConsent, reasoning, setReasoning, promptOverride, setPromptOverride,
     activePresetId, activePreset, applyPreset,
     selectedTools, toggleTool, setSelectedTools,
     demoPrompts, activePromptId, activePrompt, selectDemoPrompt, updateDemoPrompt, addDemoPrompt, removeDemoPrompt,
@@ -606,7 +602,7 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
     prompts, promptsLoading, selectedPromptKey: effectiveSelectedPromptKey, selectPrompt, addPrompt, updatePrompt, removePrompt, selectedPrompt,
     tools, toolsLoading,
   }), [selectedExample, selectExample, deploymentOptions,
-       recordSession, storeConsent, reasoning, modelUrlOverride, promptOverride,
+       recordSession, storeConsent, reasoning, promptOverride,
        activePresetId, activePreset, applyPreset, selectedTools, toggleTool, setSelectedTools,
        demoPrompts, activePromptId, activePrompt, selectDemoPrompt, updateDemoPrompt, addDemoPrompt, removeDemoPrompt,
        deploymentSelectable, availableTransports, effectiveTransport, setTransport, currentSessionId,

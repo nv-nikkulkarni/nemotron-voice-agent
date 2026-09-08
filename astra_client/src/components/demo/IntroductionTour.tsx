@@ -1,0 +1,265 @@
+// SPDX-FileCopyrightText: Copyright (c) 2024–2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: BSD-2-Clause
+
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+
+interface TourStep {
+  target: string;
+  eyebrow: string;
+  title: string;
+  body: string;
+}
+
+interface TargetRect {
+  top: number;
+  left: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
+
+const INTRODUCTION_STEPS: TourStep[] = [
+  {
+    target: '[data-tour="welcome"]',
+    eyebrow: "Welcome",
+    title: "Meet Nemotron Voice Agent",
+    body: "Talk naturally with a real-time NVIDIA voice pipeline and follow each response in the live transcript.",
+  },
+  {
+    target: '[data-tour="examples"]',
+    eyebrow: "Step 1",
+    title: "Select an experience",
+    body: "Choose the Generic grounded-tools assistant or the multimodal Omni experience. Selecting a card does not open a popup.",
+  },
+  {
+    target: '[data-tour="configure"]',
+    eyebrow: "Step 2",
+    title: "Configure only when needed",
+    body: "Choose the voice, recording preferences, and—on the Generic agent—the exact tools available to your session.",
+  },
+  {
+    target: '[data-tour="start"]',
+    eyebrow: "Step 3",
+    title: "Start talking",
+    body: "Launch the selected example directly. You can interrupt speech naturally and end the session from the header.",
+  },
+  {
+    target: '[data-tour="pipeline"]',
+    eyebrow: "Explore",
+    title: "Understand the pipeline",
+    body: "Open the architecture view to see how audio, models, tools, and services work together.",
+  },
+  {
+    target: '[data-tour="settings"]',
+    eyebrow: "Fine tune",
+    title: "Adjust session settings",
+    body: "Review audio devices, the deployment-managed model, prompts, voices, and Generic tool selection.",
+  },
+];
+
+const CONVERSATION_STEPS: TourStep[] = [
+  {
+    target: '[data-tour="conversation-tools"]',
+    eyebrow: "Live activity",
+    title: "Follow grounded tool calls",
+    body: "When the assistant checks weather, stocks, the web, or another capability, a live label appears here with the tool currently running.",
+  },
+  {
+    target: '[data-tour="conversation-latency"]',
+    eyebrow: "Performance",
+    title: "Open the latency breakdown",
+    body: "After a response, select the latency readout to inspect frontend selection, backend reasoning and tools, final response generation, voice stages, and browser playout.",
+  },
+];
+
+const SPOTLIGHT_PADDING = 10;
+const POPOVER_WIDTH = 360;
+
+function snapshot(element: Element): TargetRect {
+  const rect = element.getBoundingClientRect();
+  return {
+    top: rect.top,
+    left: rect.left,
+    right: rect.right,
+    bottom: rect.bottom,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function spotlightStyle(rect: TargetRect | null): CSSProperties {
+  if (!rect) return { opacity: 0 };
+  return {
+    top: rect.top - SPOTLIGHT_PADDING,
+    left: rect.left - SPOTLIGHT_PADDING,
+    width: rect.width + SPOTLIGHT_PADDING * 2,
+    height: rect.height + SPOTLIGHT_PADDING * 2,
+  };
+}
+
+function popoverPosition(rect: TargetRect | null): { placement: "above" | "below"; style: CSSProperties } {
+  if (!rect) {
+    return {
+      placement: "below",
+      style: { top: "50%", left: "50%", transform: "translate(-50%, -50%)" },
+    };
+  }
+  const placement = rect.bottom < window.innerHeight * 0.66 ? "below" : "above";
+  const left = Math.min(
+    Math.max(16, rect.left + rect.width / 2 - POPOVER_WIDTH / 2),
+    Math.max(16, window.innerWidth - POPOVER_WIDTH - 16),
+  );
+  return placement === "below"
+    ? { placement, style: { top: rect.bottom + 22, left } }
+    : { placement, style: { bottom: window.innerHeight - rect.top + 22, left } };
+}
+
+interface GuidedTourProps {
+  steps: TourStep[];
+  ariaLabel: string;
+  onClose: () => void;
+}
+
+function GuidedTour({ steps, ariaLabel, onClose }: Readonly<GuidedTourProps>) {
+  const [stepIndex, setStepIndex] = useState(0);
+  const [rect, setRect] = useState<TargetRect | null>(null);
+  const popoverRef = useRef<HTMLElement>(null);
+  const step = steps[stepIndex];
+
+  useLayoutEffect(() => {
+    const target = document.querySelector(step.target);
+    if (!target) return;
+
+    const update = () => setRect(snapshot(target));
+    target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const frame = window.requestAnimationFrame(update);
+    const observer = new ResizeObserver(update);
+    observer.observe(target);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [step]);
+
+  useEffect(() => {
+    popoverRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      if (event.key === "ArrowRight") setStepIndex((current) => Math.min(current + 1, steps.length - 1));
+      if (event.key === "ArrowLeft") setStepIndex((current) => Math.max(current - 1, 0));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose, steps.length]);
+
+  const position = popoverPosition(rect);
+  const lastStep = stepIndex === steps.length - 1;
+
+  return (
+    <div className="tour-layer">
+      <div className="tour-spotlight" style={spotlightStyle(rect)} aria-hidden />
+      <section
+        ref={popoverRef}
+        className="tour-popover"
+        data-placement={position.placement}
+        style={position.style}
+        role="dialog"
+        aria-modal="true"
+        aria-label={ariaLabel}
+        tabIndex={-1}
+      >
+        <span className="tour-popover__arrow" aria-hidden />
+        <div className="tour-popover__progress" aria-label={`Step ${stepIndex + 1} of ${steps.length}`}>
+          {steps.map((item, index) => (
+            <span key={item.title} className={index === stepIndex ? "active" : ""} aria-hidden />
+          ))}
+        </div>
+        <p className="tour-popover__eyebrow">{step.eyebrow} · {stepIndex + 1}/{steps.length}</p>
+        <h2>{step.title}</h2>
+        <p>{step.body}</p>
+        <div className="tour-popover__actions">
+          <button type="button" className="btn-ghost" onClick={onClose}>Skip tour</button>
+          <div>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setStepIndex((current) => Math.max(current - 1, 0))}
+              disabled={stepIndex === 0}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              className="btn-primary btn-bubbly"
+              onClick={() => {
+                if (lastStep) onClose();
+                else setStepIndex((current) => current + 1);
+              }}
+            >
+              {lastStep ? "Done" : "Next"}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function TourInvitation({
+  context,
+  onAccept,
+  onDecline,
+}: Readonly<{
+  context: "introduction" | "conversation";
+  onAccept: () => void;
+  onDecline: () => void;
+}>) {
+  const conversation = context === "conversation";
+  return (
+    <div className="tour-invite-layer">
+      <section
+        className="tour-invite"
+        role="dialog"
+        aria-modal="true"
+        aria-label={conversation ? "Conversation tour invitation" : "Interface tour invitation"}
+      >
+        <p className="tour-invite__eyebrow">Optional guide</p>
+        <h2>Take a tour?</h2>
+        <p>
+          {conversation
+            ? "Would you like a quick tour of live tool-call labels and the latency breakdown?"
+            : "Would you like a quick tour of the examples, configuration, and session controls?"}
+        </p>
+        <div className="tour-invite__actions">
+          <button type="button" className="btn-secondary" onClick={onDecline}>No</button>
+          <button type="button" className="btn-primary btn-bubbly" onClick={onAccept}>Yes</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function IntroductionTour({ onClose }: Readonly<{ onClose: () => void }>) {
+  return (
+    <GuidedTour
+      steps={INTRODUCTION_STEPS}
+      ariaLabel="Interface introduction"
+      onClose={onClose}
+    />
+  );
+}
+
+export function ConversationTour({ onClose }: Readonly<{ onClose: () => void }>) {
+  return (
+    <GuidedTour
+      steps={CONVERSATION_STEPS}
+      ariaLabel="Conversation feature introduction"
+      onClose={onClose}
+    />
+  );
+}
