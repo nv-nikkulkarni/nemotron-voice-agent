@@ -47,7 +47,7 @@ fusionv12:
         ENVIRONMENT: stg
         UI_BUILD_TIMESTAMP: "2026-08-31T22:03:25Z"
         DEMO_MODE: "true"
-        DEMO_SESSION_SECONDS: "120"
+        DEMO_SESSION_SECONDS: "600"
         DEMO_EXAMPLES: generic-frontend-backend-agent,omni-assistant-subagents
         DEMO_SELF_HOSTED_ONLY: "true"
         DEMO_RECORD_ENABLED: "true"

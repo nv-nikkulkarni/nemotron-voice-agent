@@ -12,8 +12,8 @@ CHART = ROOT / "nvcf_helm" / "Chart.yaml"
 VALUES = ROOT / "nvcf_helm" / "values.yaml"
 VIKING_VALUES = ROOT / "nvcf_helm" / "values-viking.yaml"
 
-EXPECTED_CHART_VERSION = "0.1.134"
-EXPECTED_APP_VERSION = "2.0.62"
+EXPECTED_CHART_VERSION = "0.1.139"
+EXPECTED_APP_VERSION = "2.0.67"
 EXPECTED_MAGPIE_IMAGE = "nvcr.io/nim/nvidia/magpie-tts-multilingual:1.10.0"
 EXPECTED_CHATTERBOX_IMAGE = "nvcr.io/nim/nvidia/chatterbox-tts-multilingual:1.1.0"
 
@@ -40,7 +40,7 @@ def test_frontend_backend_uses_release_modes_and_ordered_deadlines() -> None:
     app = values["app"]
 
     assert app["frontendBackendTalkerFillerMode"] == "emit"
-    assert app["frontendBackendToolResultMode"] == "talker"
+    assert app["frontendBackendToolResultMode"] == "direct"
     assert app["frontendBackendDirectToolResponse"] is False
     outer = float(app["thinkerToolTimeoutSeconds"])
     overall = float(app["genericBackendTimeoutSeconds"])
