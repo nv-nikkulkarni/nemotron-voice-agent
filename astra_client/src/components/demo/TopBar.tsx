@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2024–2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: BSD-2-Clause
 
+import { useEffect, useState } from "react";
 import { useSessionLifecycle } from "../../hooks/useSessionLifecycle";
 import { demoConfig } from "../../config";
 
@@ -19,11 +20,16 @@ export function TopBar({
   onHome: () => void;
   onSettings: () => void;
   onPipeline: () => void;
-  onTour: (active: boolean) => void;
+  onTour: () => void;
 }>) {
   const { phase, endSession } = useSessionLifecycle();
+  const [showTourHint, setShowTourHint] = useState(true);
   const active = phase === "starting" || phase === "live" || phase === "stopping";
   const stopping = phase === "stopping";
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowTourHint(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, []);
   const goHome = () => {
     onHome();                                       // close any settings/pipeline overlay
     if (active && !stopping) void endSession("user"); // end a live session -> graceful teardown
@@ -39,12 +45,20 @@ export function TopBar({
         {deployedAtLabel(demoConfig.deployedAt)}
       </time>
       <div className="clean-topbar__actions">
-        {!stopping && phase !== "starting" && (
+        {!active && showTourHint && (
+          <div className="tour-hint" role="status" aria-live="polite">
+            Click <strong>?</strong> for a tour
+          </div>
+        )}
+        {!active && (
           <button
             className="icon-btn icon-btn--tour"
-            onClick={() => onTour(active)}
-            title={active ? "Conversation guide" : "Guided introduction"}
-            aria-label={active ? "Open conversation guide" : "Open guided introduction"}
+            onClick={() => {
+              setShowTourHint(false);
+              onTour();
+            }}
+            title="Guided introduction"
+            aria-label="Open guided introduction"
           >
             ?
           </button>

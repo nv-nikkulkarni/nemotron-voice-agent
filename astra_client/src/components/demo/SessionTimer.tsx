@@ -49,8 +49,8 @@ export function SessionTimer({
       dateTime={`PT${remaining}S`}
       aria-label={`${remaining} seconds remaining in this conversation`}
     >
-      <span className="demo-timer-dot" aria-hidden />
-      {formatSessionTime(remaining)}
+      <span className="demo-timer-label" aria-hidden>Time left</span>
+      <span className="demo-timer-value">{formatSessionTime(remaining)}</span>
     </time>
   );
 }

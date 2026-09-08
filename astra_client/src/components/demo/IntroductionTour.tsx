@@ -58,21 +58,6 @@ const INTRODUCTION_STEPS: TourStep[] = [
   },
 ];
 
-const CONVERSATION_STEPS: TourStep[] = [
-  {
-    target: '[data-tour="conversation-tools"]',
-    eyebrow: "Live activity",
-    title: "Follow grounded tool calls",
-    body: "When the assistant checks weather, stocks, the web, or another capability, a live label appears here with the tool currently running.",
-  },
-  {
-    target: '[data-tour="conversation-latency"]',
-    eyebrow: "Performance",
-    title: "Open the latency breakdown",
-    body: "After a response, select the latency readout to inspect frontend selection, backend reasoning and tools, final response generation, voice stages, and browser playout.",
-  },
-];
-
 const SPOTLIGHT_PADDING = 10;
 const POPOVER_WIDTH = 360;
 
@@ -210,55 +195,11 @@ function GuidedTour({ steps, ariaLabel, onClose }: Readonly<GuidedTourProps>) {
   );
 }
 
-export function TourInvitation({
-  context,
-  onAccept,
-  onDecline,
-}: Readonly<{
-  context: "introduction" | "conversation";
-  onAccept: () => void;
-  onDecline: () => void;
-}>) {
-  const conversation = context === "conversation";
-  return (
-    <div className="tour-invite-layer">
-      <section
-        className="tour-invite"
-        role="dialog"
-        aria-modal="true"
-        aria-label={conversation ? "Conversation tour invitation" : "Interface tour invitation"}
-      >
-        <p className="tour-invite__eyebrow">Optional guide</p>
-        <h2>Take a tour?</h2>
-        <p>
-          {conversation
-            ? "Would you like a quick tour of live tool-call labels and the latency breakdown?"
-            : "Would you like a quick tour of the examples, configuration, and session controls?"}
-        </p>
-        <div className="tour-invite__actions">
-          <button type="button" className="btn-secondary" onClick={onDecline}>No</button>
-          <button type="button" className="btn-primary btn-bubbly" onClick={onAccept}>Yes</button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 export function IntroductionTour({ onClose }: Readonly<{ onClose: () => void }>) {
   return (
     <GuidedTour
       steps={INTRODUCTION_STEPS}
       ariaLabel="Interface introduction"
-      onClose={onClose}
-    />
-  );
-}
-
-export function ConversationTour({ onClose }: Readonly<{ onClose: () => void }>) {
-  return (
-    <GuidedTour
-      steps={CONVERSATION_STEPS}
-      ariaLabel="Conversation feature introduction"
       onClose={onClose}
     />
   );

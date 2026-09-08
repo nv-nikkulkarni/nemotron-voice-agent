@@ -20,11 +20,15 @@ export function SessionControls() {
   const lastSessionId = useRef("");
   if (currentSessionId) lastSessionId.current = currentSessionId;
   const reason = endedReason ?? "user";
+  const hasWebcamSidebar = selectedExample?.capabilities?.includes("webcam") ?? false;
 
   return (
     <>
       {phase === "live" && (
-        <div className="demo-hud" aria-label="Conversation time and recording status">
+        <div
+          className={`demo-hud${hasWebcamSidebar ? " demo-hud--with-webcam" : ""}`}
+          aria-label="Conversation time and recording status"
+        >
           <SessionTimer
             durationSeconds={demoConfig.sessionSeconds}
             onTimeout={() => void endSession("timeout")}
