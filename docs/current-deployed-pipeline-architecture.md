@@ -12,6 +12,8 @@ reports.
 
 **Viking qualification candidate verified:** September 9, 2026 (Asia/Kolkata)
 
+**Standalone speech functions verified:** September 8, 2026 (Asia/Kolkata)
+
 **Isolated staging candidate verified:** August 27, 2026 (Asia/Kolkata)
 
 **Active deployment source branch:** `dev/nikkulkarni/nvcf-deploy-rebased-v2`
@@ -555,6 +557,27 @@ voice/WebSocket and full SQA gates.
 | Nemotron Omni Assistant Subagents | Nemotron 3 Nano Omni 30B A3B Reasoning NVFP4 | internal to Omni audio model | Magpie; Chatterbox Multilingual | attachments, webcam |
 
 Only WebSocket transport is advertised in the NVCF deployment.
+
+### 2.5 Standalone Speech NIM Functions
+
+Three independent container-based speech functions were added on September 8,
+2026 without changing the main Helm function or Astra deployment:
+
+| Function | NIM | Function/version | Deployment | State |
+| --- | --- | --- | --- | --- |
+| `nva-nemotron-asr-streaming` | Nemotron ASR Streaming `1.3.1` | `4155ae85-73e1-4936-b47f-87b9de165651` / `f553be4a-9400-4509-bdfa-cb1d9d4005bd` | `467848f2-c59e-46ce-be10-58654d102216` | ACTIVE |
+| `nva-magpie-tts-multilingual` | Magpie TTS Multilingual `1.10.0` | `500bfea0-ba3d-4158-8276-1d04daedfdcd` / `3b5f8003-a937-4da5-8844-a3520be74e67` | `f77a6c18-31cf-4fc2-9bd9-5dea66746887` | ACTIVE |
+| `nva-chatterbox-tts-multilingual` | Chatterbox TTS Multilingual `1.1.0` | `8d3eb462-afcb-46d7-80ca-4e8b6c6fd20e` / `1c2642fb-1191-4449-9c8a-3159d2868d99` | `6b5509af-ca6d-45a8-8ebc-73e51b2c3c62` | ACTIVE |
+
+Each function uses one H100 in `nvcf-dgxc-k8s-oci-nrt-prd12-1`, exposes gRPC
+on port `50051`, and has minimum/maximum replicas `1/1` with request
+concurrency `8`. A non-root wrapper securely projects the NVCF secret named
+`NGC_API_KEY` into the environment expected by Speech NIM; no secret value is
+stored in Git or image metadata. Control-plane health is green, but functional
+gRPC inference smoke and SQA remain pending because the deployment service key
+is not a personal invocation key. See
+[Deploy Standalone Speech NIM Functions on NVCF](how-to/deploy-nvcf-speech-functions.md)
+for immutable image identities, security details, and verification commands.
 
 ---
 
