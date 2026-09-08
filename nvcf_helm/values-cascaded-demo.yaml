@@ -1,0 +1,52 @@
+# =============================================================================
+# Cascaded pipeline-builder demo — deploy overlay (~7 GPU)
+# =============================================================================
+# Turns the omni-only default into the cascaded "build your own pipeline" demo:
+# real ASR + LLM + TTS NIMs so every widget in the builder maps to a live model.
+#
+#   helm upgrade voice-agent ./helm/nemotron-voice-agent \
+#     -f ./helm/nemotron-voice-agent/values-cascaded-demo.yaml \
+#     --set ngcImagePullSecretName=<pull-secret> \
+#     --set app.existingSecret=<nvidia-api-key-secret>
+#
+# GPU budget: Nano(1) + Super tp=2(2) + Streaming-EN ASR(1) + Parakeet ASR(1)
+#             + Magpie TTS(1) + Chatterbox TTS(1) = 7 GPUs. Omni + booking OFF.
+# =============================================================================
+
+app:
+  # Lock the demo to the one general cascaded pipeline. EXAMPLE_SELECTION locks
+  # find() so /api/deployment reports it as the sole (non-selectable) pipeline —
+  # the client shows no example picker; everything is composed in the builder.
+  example: generic-assistant
+  # Only in-cluster self-hosted NIMs are offered (no hosted-LLM fallback).
+  disableCloudServices: true
+
+# --- LLMs: Nano (fast default) + Super 120B (reasoning-grade, tp=2) ---
+llm:
+  enabled: true
+llmSuper:
+  enabled: true
+
+# --- ASR: Streaming English + Parakeet RNNT Multilingual ---
+asr:
+  enabled: true
+asrParakeet:
+  enabled: true
+
+# --- TTS: Magpie (default) + Chatterbox (second swappable voice) ---
+tts:
+  enabled: true
+chatterboxTts:
+  enabled: true
+  # If the Chatterbox NIM needs a profile tag, set it here once confirmed:
+  # nimTagsSelector: "name=chatterbox-tts-multilingual,batch_size=8"
+
+# --- Off for the cascaded demo (frees GPUs; "no omni concept" in the demo) ---
+omni:
+  enabled: false
+booking:
+  enabled: false
+
+# Observability stays on.
+tracing:
+  enabled: true

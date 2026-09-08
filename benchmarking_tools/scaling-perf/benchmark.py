@@ -87,7 +87,25 @@ SERVER_METRIC_KEYS = (
     "vad_smart_turn",
     "llm_processing_time",
     "llm_tokens_per_sec",
+    "frontend_tool_selection_ttft",
+    "frontend_tool_selection_processing_time",
+    "backend_llm_ttft",
+    "backend_llm_processing_time",
+    "backend_tool_call_latency",
+    "frontend_final_response_ttft",
+    "frontend_final_response_processing_time",
 )
+
+_STAGE_TTFB_METRICS = {
+    "frontend_tool_selection_llm": "frontend_tool_selection_ttft",
+    "backend_thinker_llm": "backend_llm_ttft",
+    "frontend_final_response_llm": "frontend_final_response_ttft",
+}
+_STAGE_PROCESSING_METRICS = {
+    "frontend_tool_selection_llm": "frontend_tool_selection_processing_time",
+    "backend_thinker_llm": "backend_llm_processing_time",
+    "frontend_final_response_llm": "frontend_final_response_processing_time",
+}
 
 _SHUTDOWN_REQUESTED = False
 
@@ -345,6 +363,10 @@ class PerfClient:
             processor = str(item.get("processor", ""))
             if not isinstance(value, (int, float)):
                 continue
+            stage_key = _STAGE_TTFB_METRICS.get(processor)
+            if stage_key:
+                self.server_metric_samples[stage_key].append(float(value))
+                continue
             category = categorize_processor(processor)
             if category == "llm":
                 self.server_metric_samples["llm_ttft"].append(float(value))
@@ -359,6 +381,13 @@ class PerfClient:
             value = item.get("value")
             processor = str(item.get("processor", ""))
             if not isinstance(value, (int, float)):
+                continue
+            stage_key = _STAGE_PROCESSING_METRICS.get(processor)
+            if stage_key:
+                self.server_metric_samples[stage_key].append(float(value))
+                continue
+            if processor.startswith("backend_tool_call."):
+                self.server_metric_samples["backend_tool_call_latency"].append(float(value))
                 continue
             if categorize_processor(processor) == "llm":
                 processing_time = float(value)
@@ -763,6 +792,19 @@ class PerfClient:
                 ("vad_smart_turn", round3(server_metric_average.get("vad_smart_turn"))),
                 ("llm_processing_time", round3(server_metric_average.get("llm_processing_time"))),
                 ("llm_tokens_per_sec", round3(server_metric_average.get("llm_tokens_per_sec"))),
+                ("frontend_tool_selection_ttft", round3(server_metric_average.get("frontend_tool_selection_ttft"))),
+                (
+                    "frontend_tool_selection_processing_time",
+                    round3(server_metric_average.get("frontend_tool_selection_processing_time")),
+                ),
+                ("backend_llm_ttft", round3(server_metric_average.get("backend_llm_ttft"))),
+                ("backend_llm_processing_time", round3(server_metric_average.get("backend_llm_processing_time"))),
+                ("backend_tool_call_latency", round3(server_metric_average.get("backend_tool_call_latency"))),
+                ("frontend_final_response_ttft", round3(server_metric_average.get("frontend_final_response_ttft"))),
+                (
+                    "frontend_final_response_processing_time",
+                    round3(server_metric_average.get("frontend_final_response_processing_time")),
+                ),
             ],
         )
         return result
@@ -937,6 +979,13 @@ _SUITE_HEADERS = (
     "VAD+Smart Turn",
     "LLM Proc Time",
     "LLM Tok/s",
+    "Frontend Select TTFT",
+    "Frontend Select Proc",
+    "Backend LLM TTFT",
+    "Backend LLM Proc",
+    "Backend Tool Latency",
+    "Frontend Final TTFT",
+    "Frontend Final Proc",
     "Glitches",
 )
 
@@ -1231,6 +1280,13 @@ def _row_from_summary(summary: dict[str, Any], num_clients: int) -> dict[str, An
         "vad_smart_turn": sa.get("vad_smart_turn"),
         "llm_processing_time": sa.get("llm_processing_time"),
         "llm_tokens_per_sec": sa.get("llm_tokens_per_sec"),
+        "frontend_tool_selection_ttft": sa.get("frontend_tool_selection_ttft"),
+        "frontend_tool_selection_processing_time": sa.get("frontend_tool_selection_processing_time"),
+        "backend_llm_ttft": sa.get("backend_llm_ttft"),
+        "backend_llm_processing_time": sa.get("backend_llm_processing_time"),
+        "backend_tool_call_latency": sa.get("backend_tool_call_latency"),
+        "frontend_final_response_ttft": sa.get("frontend_final_response_ttft"),
+        "frontend_final_response_processing_time": sa.get("frontend_final_response_processing_time"),
         "audio_glitches": r["glitch_detection"]["clients_with_glitches"],
     }
 
@@ -1254,6 +1310,17 @@ def _client_row_from_result(client: dict[str, Any]) -> dict[str, Any]:
         "vad_smart_turn": _client_server_metric_average(client, "vad_smart_turn"),
         "llm_processing_time": _client_server_metric_average(client, "llm_processing_time"),
         "llm_tokens_per_sec": _client_server_metric_average(client, "llm_tokens_per_sec"),
+        "frontend_tool_selection_ttft": _client_server_metric_average(client, "frontend_tool_selection_ttft"),
+        "frontend_tool_selection_processing_time": _client_server_metric_average(
+            client, "frontend_tool_selection_processing_time"
+        ),
+        "backend_llm_ttft": _client_server_metric_average(client, "backend_llm_ttft"),
+        "backend_llm_processing_time": _client_server_metric_average(client, "backend_llm_processing_time"),
+        "backend_tool_call_latency": _client_server_metric_average(client, "backend_tool_call_latency"),
+        "frontend_final_response_ttft": _client_server_metric_average(client, "frontend_final_response_ttft"),
+        "frontend_final_response_processing_time": _client_server_metric_average(
+            client, "frontend_final_response_processing_time"
+        ),
         "audio_glitches": 1 if client.get("glitch_detected") else 0,
     }
 
@@ -1285,6 +1352,13 @@ def _metric_row_to_strings(row: dict[str, Any], label_key: str) -> list[str]:
         round3(row["vad_smart_turn"]),
         round3(row["llm_processing_time"]),
         round3(row["llm_tokens_per_sec"]),
+        round3(row["frontend_tool_selection_ttft"]),
+        round3(row["frontend_tool_selection_processing_time"]),
+        round3(row["backend_llm_ttft"]),
+        round3(row["backend_llm_processing_time"]),
+        round3(row["backend_tool_call_latency"]),
+        round3(row["frontend_final_response_ttft"]),
+        round3(row["frontend_final_response_processing_time"]),
         str(row["audio_glitches"]),
     ]
 

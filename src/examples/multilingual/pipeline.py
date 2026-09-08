@@ -274,6 +274,7 @@ async def bot(runner_args: RunnerArguments) -> None:
         settings=summary_llm_settings,
     )
 
+    # --- TTS ---
     custom_dictionary = load_ipa_dictionary()
     tts_synthesis_mode = body.get("tts_synthesis_mode", "") or default_tts.get("synthesis_mode", "")
     tts_zero_shot_audio_prompt_file = body.get("tts_zero_shot_audio_prompt_file", "") or default_tts.get(

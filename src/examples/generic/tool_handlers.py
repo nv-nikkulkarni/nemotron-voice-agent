@@ -9,18 +9,21 @@ deliver their result via ``params.result_callback``.
 
 Live data sources (when keys are configured):
   - Currency conversion:  https://api.frankfurter.app  (no key required)
-  - Stock prices:         Finnhub (``FINNHUB_API_KEY``, optional) → Yahoo Finance fallback
-  - Weather:              WeatherAPI (``WEATHERAPI_KEY``, optional) → static mock fallback
+  - Stock prices:         Finnhub live quote (``FINNHUB_API_KEY``) — no mock fallback
+  - Weather:              WeatherAPI live (``WEATHERAPI_KEY``) — no mock fallback
+  - Web search:           Perplexity Sonar (``PERPLEXITY_API_KEY``)
 
-All handlers are tolerant to network failures and fall back to static mock
-data so the pipeline keeps responding (and the default demo works) even
-when external APIs are down or the optional keys are unset.
+The live tools (stock, weather, web_search) NEVER invent data: when their key is
+unset or the upstream fails they return a speak-safe "unavailable" result instead of
+a fabricated number. convert_currency keeps a static-rate fallback (deterministic math,
+not invented market data).
 """
 
+import asyncio
 import os
 import random
+import re
 from datetime import datetime
-from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
@@ -233,142 +236,146 @@ async def handle_get_current_date_time(params: FunctionCallParams) -> None:
 # Stock prices
 # ---------------------------------------------------------------------------
 
-_COMPANY_SYMBOLS: list[dict] = [
-    {"keywords": ["apple"], "symbol": "AAPL", "name": "Apple Inc.", "price": 213.49},
-    {"keywords": ["microsoft"], "symbol": "MSFT", "name": "Microsoft Corp.", "price": 415.32},
-    {"keywords": ["google", "alphabet"], "symbol": "GOOGL", "name": "Alphabet Inc.", "price": 175.84},
-    {"keywords": ["amazon"], "symbol": "AMZN", "name": "Amazon.com Inc.", "price": 196.21},
-    {"keywords": ["tesla"], "symbol": "TSLA", "name": "Tesla Inc.", "price": 177.58},
-    {"keywords": ["nvidia"], "symbol": "NVDA", "name": "NVIDIA Corp.", "price": 875.40},
-    {"keywords": ["meta", "facebook"], "symbol": "META", "name": "Meta Platforms Inc.", "price": 527.15},
-    {"keywords": ["netflix"], "symbol": "NFLX", "name": "Netflix Inc.", "price": 648.30},
-    {"keywords": ["amd", "advanced micro"], "symbol": "AMD", "name": "Advanced Micro Devices", "price": 162.45},
-    {"keywords": ["intel"], "symbol": "INTC", "name": "Intel Corp.", "price": 30.12},
-    {"keywords": ["samsung"], "symbol": "005930.KS", "name": "Samsung Electronics", "price": 71500.0},
-    {"keywords": ["tsmc", "taiwan semiconductor"], "symbol": "TSM", "name": "TSMC", "price": 145.30},
-    {"keywords": ["broadcom"], "symbol": "AVGO", "name": "Broadcom Inc.", "price": 1320.0},
-    {"keywords": ["qualcomm"], "symbol": "QCOM", "name": "Qualcomm Inc.", "price": 168.50},
-    {"keywords": ["arm"], "symbol": "ARM", "name": "Arm Holdings", "price": 128.40},
-    {"keywords": ["salesforce"], "symbol": "CRM", "name": "Salesforce Inc.", "price": 274.60},
-    {"keywords": ["oracle"], "symbol": "ORCL", "name": "Oracle Corp.", "price": 128.90},
-    {"keywords": ["ibm"], "symbol": "IBM", "name": "IBM Corp.", "price": 189.20},
-    {"keywords": ["uber"], "symbol": "UBER", "name": "Uber Technologies", "price": 72.30},
-    {"keywords": ["airbnb"], "symbol": "ABNB", "name": "Airbnb Inc.", "price": 152.80},
-    {"keywords": ["spotify"], "symbol": "SPOT", "name": "Spotify Technology", "price": 318.50},
-    {"keywords": ["jp morgan", "jpmorgan"], "symbol": "JPM", "name": "JPMorgan Chase", "price": 198.40},
-    {"keywords": ["goldman sachs", "goldman"], "symbol": "GS", "name": "Goldman Sachs", "price": 478.20},
-    {"keywords": ["visa"], "symbol": "V", "name": "Visa Inc.", "price": 274.90},
-    {"keywords": ["mastercard"], "symbol": "MA", "name": "Mastercard Inc.", "price": 468.30},
-    {"keywords": ["johnson", "j&j"], "symbol": "JNJ", "name": "Johnson & Johnson", "price": 147.60},
-    {"keywords": ["pfizer"], "symbol": "PFE", "name": "Pfizer Inc.", "price": 27.80},
-    {"keywords": ["exxon", "exxonmobil"], "symbol": "XOM", "name": "ExxonMobil Corp.", "price": 112.40},
-    {"keywords": ["walmart"], "symbol": "WMT", "name": "Walmart Inc.", "price": 68.50},
-    {"keywords": ["disney"], "symbol": "DIS", "name": "The Walt Disney Co.", "price": 111.30},
-    {"keywords": ["boeing"], "symbol": "BA", "name": "Boeing Co.", "price": 172.60},
-    {"keywords": ["ford"], "symbol": "F", "name": "Ford Motor Co.", "price": 12.40},
-    {"keywords": ["general motors", "gm"], "symbol": "GM", "name": "General Motors Co.", "price": 46.80},
-    {"keywords": ["coca cola", "coca-cola"], "symbol": "KO", "name": "The Coca-Cola Co.", "price": 62.30},
-    {"keywords": ["pepsi", "pepsico"], "symbol": "PEP", "name": "PepsiCo Inc.", "price": 168.90},
-]
+_FINNHUB_BASE_URL = os.getenv("FINNHUB_BASE_URL", "https://finnhub.io/api/v1").rstrip("/")
+_FINNHUB_TIMEOUT = httpx.Timeout(10.0)
+
+# Fast-path so a spoken company name maps straight to its ticker without a /search
+# round-trip. Anything NOT here is resolved live via Finnhub's symbol-search endpoint.
+# These are ticker mappings only — every price is fetched live, none are stored here.
+_COMPANY_SYMBOLS: dict[str, str] = {
+    "apple": "AAPL",
+    "microsoft": "MSFT",
+    "google": "GOOGL",
+    "alphabet": "GOOGL",
+    "amazon": "AMZN",
+    "tesla": "TSLA",
+    "nvidia": "NVDA",
+    "meta": "META",
+    "facebook": "META",
+    "netflix": "NFLX",
+    "amd": "AMD",
+    "intel": "INTC",
+    "broadcom": "AVGO",
+    "qualcomm": "QCOM",
+    "arm": "ARM",
+    "salesforce": "CRM",
+    "oracle": "ORCL",
+    "ibm": "IBM",
+    "uber": "UBER",
+    "airbnb": "ABNB",
+    "spotify": "SPOT",
+    "jpmorgan": "JPM",
+    "jp morgan": "JPM",
+    "goldman sachs": "GS",
+    "visa": "V",
+    "mastercard": "MA",
+    "johnson and johnson": "JNJ",
+    "pfizer": "PFE",
+    "exxon": "XOM",
+    "exxonmobil": "XOM",
+    "walmart": "WMT",
+    "disney": "DIS",
+    "boeing": "BA",
+    "ford": "F",
+    "general motors": "GM",
+    "coca cola": "KO",
+    "coca-cola": "KO",
+    "pepsi": "PEP",
+    "pepsico": "PEP",
+}
+
+# A plain US ticker such as AAPL / BRK.B (uppercase, ≤5 letters, optional class suffix).
+_TICKER_RE = re.compile(r"^[A-Z]{1,5}(?:\.[A-Z]{1,3})?$")
 
 
-def _resolve_company_symbol(query: str) -> dict | None:
-    q = query.lower().strip()
-    if not q:
+async def _finnhub_resolve_symbol(client: httpx.AsyncClient, query: str, api_key: str) -> str | None:
+    """Resolve a company name to a Finnhub ticker via /search (best US common-stock match)."""
+    try:
+        resp = await client.get(
+            f"{_FINNHUB_BASE_URL}/search",
+            params={"q": query, "token": api_key},
+            headers={"Accept": "application/json"},
+        )
+        if resp.status_code != 200:
+            return None
+        results = (resp.json() or {}).get("result") or []
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.debug(f"finnhub symbol search failed for {query!r}: {exc}")
         return None
-    for entry in _COMPANY_SYMBOLS:
-        if any(k in q or q in k for k in entry["keywords"]):
-            return entry
-    return None
+    # Prefer a plain US common-stock ticker (no exchange/class qualifier like ".DE" or ":").
+    for r in results:
+        sym = str(r.get("symbol", "") or "")
+        if sym and "." not in sym and ":" not in sym and r.get("type") == "Common Stock":
+            return sym
+    return str((results[0].get("symbol") if results else "") or "") or None
 
 
 async def handle_get_stock_price(params: FunctionCallParams) -> None:
-    """Fetch the current stock price using Finnhub → Yahoo Finance, with a mock fallback."""
+    """Fetch the LIVE stock price for a company/ticker via Finnhub (finnhub.io).
+
+    No mock/fake data: on a missing key or upstream failure we return a speak-safe
+    "unavailable" result (never an invented price); an unknown company returns a
+    "couldn't find it" message. The API key comes from FINNHUB_API_KEY (an NVCF
+    function secret, exported from /var/secrets/secrets.json like the NGC/Perplexity keys).
+    """
     args = params.arguments or {}
     company_name = str(args.get("company_name", "") or "").strip()
     if not company_name:
         await params.result_callback({"error": "company_name is required"})
         return
-
-    resolved = _resolve_company_symbol(company_name)
-    if resolved is None:
-        await params.result_callback({"error": f"Could not find a known stock for company '{company_name}'"})
+    api_key = os.getenv("FINNHUB_API_KEY", "").strip()
+    if not api_key:
+        logger.warning("get_stock_price: FINNHUB_API_KEY unset")
+        await params.result_callback(_tool_unavailable("get the stock price"))
         return
 
-    symbol = resolved["symbol"]
-    name = resolved["name"]
-    mock_price = resolved["price"]
-
-    # 1) Finnhub
-    finnhub_key = os.getenv("FINNHUB_API_KEY", "").strip()
-    if finnhub_key:
-        try:
-            async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-                response = await client.get(
-                    "https://finnhub.io/api/v1/quote",
-                    params={"symbol": symbol, "token": finnhub_key},
-                    headers={"Accept": "application/json"},
-                )
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("c"):
-                    await params.result_callback(
-                        {
-                            "company": name,
-                            "symbol": symbol,
-                            "price": data.get("c"),
-                            "currency": "USD",
-                            "previous_close": data.get("pc"),
-                            "day_high": data.get("h"),
-                            "day_low": data.get("l"),
-                            "change": data.get("d"),
-                            "change_percent": data.get("dp"),
-                            "source": "live (finnhub)",
-                        }
-                    )
-                    return
-        except (httpx.HTTPError, ValueError) as exc:
-            logger.debug(f"finnhub lookup failed for {symbol}: {exc}")
-
-    # 2) Yahoo Finance
+    fast = _COMPANY_SYMBOLS.get(company_name.lower())
     try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            response = await client.get(
-                f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(symbol)}",
-                params={"interval": "1d", "range": "1d"},
+        async with httpx.AsyncClient(timeout=_FINNHUB_TIMEOUT) as client:
+            # Resolve to a ticker: fast-path map -> looks-like-a-ticker -> live search.
+            symbol = fast or (company_name.upper() if _TICKER_RE.match(company_name.strip()) else None)
+            if symbol is None:
+                symbol = await _finnhub_resolve_symbol(client, company_name, api_key)
+            if not symbol:
+                await params.result_callback({"error": f"I couldn't find a stock for '{company_name}'."})
+                return
+            resp = await client.get(
+                f"{_FINNHUB_BASE_URL}/quote",
+                params={"symbol": symbol, "token": api_key},
                 headers={"Accept": "application/json"},
             )
-        if response.status_code == 200:
-            data = response.json()
-            result_list = data.get("chart", {}).get("result") or []
-            meta = result_list[0].get("meta") if result_list else None
-            if meta and meta.get("regularMarketPrice") is not None:
-                await params.result_callback(
-                    {
-                        "company": name,
-                        "symbol": symbol,
-                        "price": meta.get("regularMarketPrice"),
-                        "currency": meta.get("currency", "USD"),
-                        "previous_close": meta.get("previousClose"),
-                        "day_high": meta.get("regularMarketDayHigh"),
-                        "day_low": meta.get("regularMarketDayLow"),
-                        "exchange": meta.get("exchangeName"),
-                        "source": "live (yahoo)",
-                    }
-                )
-                return
-    except (httpx.HTTPError, ValueError) as exc:
-        logger.debug(f"yahoo lookup failed for {symbol}: {exc}")
+    except httpx.HTTPError as exc:
+        logger.warning(f"get_stock_price request failed for {company_name!r}: {exc}")
+        await params.result_callback(_tool_unavailable("get the stock price"))
+        return
 
-    # 3) Mock fallback
+    if resp.status_code != 200:
+        logger.warning(f"get_stock_price non-200 for {symbol!r}: {resp.status_code}")
+        await params.result_callback(_tool_unavailable("get the stock price"))
+        return
+    try:
+        data = resp.json()
+    except ValueError:
+        await params.result_callback(_tool_unavailable("get the stock price"))
+        return
+
+    # Finnhub returns c=0 (and pc=0) for an unknown/unsupported symbol.
+    current = data.get("c")
+    if not current:
+        await params.result_callback({"error": f"I couldn't find a stock price for '{company_name}'."})
+        return
     await params.result_callback(
         {
-            "company": name,
+            "company": company_name,
             "symbol": symbol,
-            "price": mock_price,
+            "price": round(float(current), 2),
             "currency": "USD",
-            "source": "mock",
-            "note": "Live price unavailable - returning static mock data",
+            "previous_close": data.get("pc"),
+            "day_high": data.get("h"),
+            "day_low": data.get("l"),
+            "change": data.get("d"),
+            "change_percent": data.get("dp"),
+            "source": "live (finnhub)",
         }
     )
 
@@ -399,83 +406,59 @@ async def handle_generate_random_number(params: FunctionCallParams) -> None:
 # Weather
 # ---------------------------------------------------------------------------
 
-# Static mock used when WEATHERAPI_KEY is unset, so the demo works out of the
-# box. Unknown cities fall back to ``_WEATHER_MOCK_DEFAULT``.
-_WEATHER_MOCK: dict[str, dict] = {
-    "london": {"condition": "Light rain", "temp_c": 12.0, "humidity": 78, "wind_kph": 14.0, "wind_dir": "SW"},
-    "new york": {"condition": "Partly cloudy", "temp_c": 18.0, "humidity": 60, "wind_kph": 12.0, "wind_dir": "NW"},
-    "tokyo": {"condition": "Clear", "temp_c": 22.0, "humidity": 55, "wind_kph": 8.0, "wind_dir": "E"},
-    "san francisco": {"condition": "Foggy", "temp_c": 15.0, "humidity": 80, "wind_kph": 18.0, "wind_dir": "W"},
-    "mumbai": {"condition": "Humid and hot", "temp_c": 32.0, "humidity": 85, "wind_kph": 10.0, "wind_dir": "SW"},
-    "paris": {"condition": "Overcast", "temp_c": 14.0, "humidity": 70, "wind_kph": 11.0, "wind_dir": "W"},
-    "sydney": {"condition": "Sunny", "temp_c": 24.0, "humidity": 58, "wind_kph": 16.0, "wind_dir": "NE"},
-    "bangalore": {
-        "condition": "Pleasant with showers",
-        "temp_c": 26.0,
-        "humidity": 72,
-        "wind_kph": 9.0,
-        "wind_dir": "S",
-    },
-}
-_WEATHER_MOCK_DEFAULT = {
-    "condition": "Mild and clear",
-    "temp_c": 20.0,
-    "humidity": 65,
-    "wind_kph": 10.0,
-    "wind_dir": "W",
-}
-
-
-def _mock_weather(city: str, use_fahrenheit: bool) -> dict:
-    """Return a deterministic mock weather payload for ``city``."""
-    entry = _WEATHER_MOCK.get(city.lower(), _WEATHER_MOCK_DEFAULT)
-    temp_c = entry["temp_c"]
-    temp = f"{round(temp_c * 9 / 5 + 32, 1)}°F" if use_fahrenheit else f"{temp_c}°C"
-    return {
-        "city": city,
-        "condition": entry["condition"],
-        "temperature": temp,
-        "humidity": f"{entry['humidity']}%",
-        "wind": f"{entry['wind_kph']} kph {entry['wind_dir']}",
-        "source": "mock",
-        "note": "Live weather unavailable - returning static mock data (set WEATHERAPI_KEY for live data)",
-    }
+_WEATHER_BASE_URL = os.getenv("WEATHERAPI_BASE_URL", "https://api.weatherapi.com/v1").rstrip("/")
+_WEATHER_TIMEOUT = httpx.Timeout(10.0)
 
 
 async def handle_get_weather(params: FunctionCallParams) -> None:
-    """Fetch current weather for a city via WeatherAPI, falling back to mock data."""
+    """Fetch LIVE current weather for a city via WeatherAPI (api.weatherapi.com).
+
+    No mock/fake data: on a missing key or upstream failure we return a speak-safe
+    "unavailable" result (never invented weather); an unknown city returns a "couldn't
+    find it" message. The API key comes from WEATHERAPI_KEY (an NVCF function secret,
+    exported from /var/secrets/secrets.json like the NGC/Perplexity keys).
+    """
     args = params.arguments or {}
     city = str(args.get("city", "") or "").strip()
     if not city:
         await params.result_callback({"error": "city is required"})
         return
-
     use_fahrenheit = str(args.get("units", "") or "").lower().startswith("f")
     api_key = os.getenv("WEATHERAPI_KEY", "").strip()
     if not api_key:
-        await params.result_callback(_mock_weather(city, use_fahrenheit))
+        logger.warning("get_weather: WEATHERAPI_KEY unset")
+        await params.result_callback(_tool_unavailable("get the weather"))
         return
-
     try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=_WEATHER_TIMEOUT) as client:
             response = await client.get(
-                "https://api.weatherapi.com/v1/current.json",
+                f"{_WEATHER_BASE_URL}/current.json",
                 params={"key": api_key, "q": city, "aqi": "no"},
                 headers={"Accept": "application/json"},
             )
     except httpx.HTTPError as exc:
-        logger.debug(f"get_weather live lookup failed: {exc}")
-        await params.result_callback(_mock_weather(city, use_fahrenheit))
+        logger.warning(f"get_weather request failed for {city!r}: {exc}")
+        await params.result_callback(_tool_unavailable("get the weather"))
         return
 
+    if response.status_code == 400:  # WeatherAPI: no matching location
+        await params.result_callback({"error": f"I couldn't find weather for '{city}'."})
+        return
     if response.status_code != 200:
-        logger.debug(f"get_weather live lookup non-200 for {city!r}: {response.status_code}")
-        await params.result_callback(_mock_weather(city, use_fahrenheit))
+        logger.warning(f"get_weather non-200 for {city!r}: {response.status_code}")
+        await params.result_callback(_tool_unavailable("get the weather"))
+        return
+    try:
+        data = response.json()
+    except ValueError:
+        await params.result_callback(_tool_unavailable("get the weather"))
         return
 
-    data = response.json()
     loc = data.get("location", {})
     cur = data.get("current", {})
+    if not cur:
+        await params.result_callback(_tool_unavailable("get the weather"))
+        return
     temp = f"{cur.get('temp_f')}°F" if use_fahrenheit else f"{cur.get('temp_c')}°C"
     feels = f"{cur.get('feelslike_f')}°F" if use_fahrenheit else f"{cur.get('feelslike_c')}°C"
     await params.result_callback(
@@ -522,6 +505,108 @@ async def handle_get_news_headlines(params: FunctionCallParams) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Web search (Perplexity Sonar via the NVIDIA inference gateway)
+# ---------------------------------------------------------------------------
+
+# OpenAI-compatible LiteLLM proxy. Key + endpoint come from env (set by the chart from a
+# secret, like the NVIDIA key). Empty key -> the tool reports it isn't configured.
+_PPLX_BASE_URL = os.getenv("PERPLEXITY_BASE_URL", "https://inference-api.nvidia.com/v1").rstrip("/")
+_PPLX_MODEL = os.getenv("PERPLEXITY_MODEL", "perplexity/perplexity/sonar")
+_CITATION_RE = re.compile(r"\[\d+\]")  # strip "[9]"-style citation markers (unspeakable)
+
+
+def _tool_unavailable(action: str) -> dict:
+    """A speak-safe tool-failure result.
+
+    NEVER return raw error strings / HTTP codes as a tool result: the LLM relays tool
+    output to the user (the prompt tells it to answer from what the tool returns), so a
+    raw `{"error": "…HTTP 429"}` gets read aloud. Instead hand the model a friendly line
+    to speak and an explicit instruction not to mention the failure details.
+    """
+    return {
+        "status": "unavailable",
+        "assistant_should_say": f"I wasn't able to {action} right now. Would you like me to try again?",
+        "instruction": "Say the assistant_should_say text (or a close paraphrase). Do NOT mention "
+        "errors, status codes, or that a tool failed.",
+    }
+
+
+_WEB_SEARCH_RETRY_STATUSES = {429, 500, 502, 503, 504}
+_WEB_SEARCH_MAX_ATTEMPTS = 2
+
+
+async def handle_web_search(params: FunctionCallParams) -> None:
+    """Answer a query with live web search via Perplexity Sonar.
+
+    Transient upstream failures (rate-limit / 5xx / timeout) are retried once, then fall
+    back to a speak-safe "unavailable" result — never a raw HTTP error the bot would read.
+    """
+    args = params.arguments or {}
+    query = str(args.get("query") or "").strip()
+    if not query:
+        await params.result_callback({"error": "query is required"})
+        return
+    api_key = os.getenv("PERPLEXITY_API_KEY", "").strip()
+    if not api_key:
+        logger.warning("web_search: PERPLEXITY_API_KEY unset")
+        await params.result_callback(_tool_unavailable("search the web"))
+        return
+    payload = {
+        "model": _PPLX_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a concise web-search assistant for a voice agent. Answer in one or "
+                    "two short spoken sentences with the key fact. Do not use markdown, lists, "
+                    "URLs, or bracketed citation numbers."
+                ),
+            },
+            {"role": "user", "content": query},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 400,
+    }
+    data = None
+    for attempt in range(1, _WEB_SEARCH_MAX_ATTEMPTS + 1):
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"{_PPLX_BASE_URL}/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json=payload,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            break
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            logger.warning(f"web_search HTTP {status} (attempt {attempt}): {exc.response.text[:200]}")
+            if status in _WEB_SEARCH_RETRY_STATUSES and attempt < _WEB_SEARCH_MAX_ATTEMPTS:
+                await asyncio.sleep(0.5 * attempt)
+                continue
+            await params.result_callback(_tool_unavailable("look that up"))
+            return
+        except Exception as exc:  # noqa: BLE001 — timeouts / transport / decode
+            logger.warning(f"web_search error (attempt {attempt}): {exc}")
+            if attempt < _WEB_SEARCH_MAX_ATTEMPTS:
+                await asyncio.sleep(0.5 * attempt)
+                continue
+            await params.result_callback(_tool_unavailable("look that up"))
+            return
+
+    answer = _CITATION_RE.sub("", (data.get("choices") or [{}])[0].get("message", {}).get("content", "")).strip()
+    if not answer:
+        await params.result_callback(_tool_unavailable("find an answer for that"))
+        return
+    result: dict = {"answer": answer}
+    sources = data.get("citations") or data.get("search_results")
+    if sources:  # kept for the transcript/UI; not spoken
+        result["sources"] = sources[:3]
+    await params.result_callback(result)
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -533,4 +618,5 @@ TOOL_HANDLERS = {
     "generate_random_number": handle_generate_random_number,
     "get_weather": handle_get_weather,
     "get_news_headlines": handle_get_news_headlines,
+    "web_search": handle_web_search,
 }

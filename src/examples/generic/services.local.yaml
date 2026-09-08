@@ -42,6 +42,7 @@ server:
       server: "chatterbox-tts-service:50051"
       voice_id: "Chatterbox-Multilingual.en-US.Male"
       model: "chatterbox-tts-multilingual"
+      max_tts_chunk_chars: 240
       function_id: ""
       synthesis_mode: per_sentence
     magpie-zeroshot-tts:

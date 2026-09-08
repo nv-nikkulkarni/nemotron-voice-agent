@@ -1,0 +1,4 @@
+interface:
+  display_name: "Nemotron Voice Agent Operations"
+  short_description: "Operate and qualify Astra + NVCF deployments"
+  default_prompt: "Use $operate-nemotron-voice-agent to inspect, deploy, qualify, or troubleshoot this project safely."

@@ -52,7 +52,7 @@ def test_remove_attachment_releases_stored_payload() -> None:
         kind="image",
         name="capture.jpg",
         content_type="image/jpeg",
-        data=b"image",
+        data=b"\xff\xd8\xff\x00image",
         source="capture",
     )
     remove_attachment("session", attachment.id)

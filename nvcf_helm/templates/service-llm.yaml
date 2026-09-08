@@ -1,0 +1,21 @@
+{{- if .Values.llm.enabled -}}
+# Service name is fixed to "nvidia-llm" — this is the hostname the app reads
+# from src/examples/*/services.local.yaml (PLATFORM=workstation).
+apiVersion: v1
+kind: Service
+metadata:
+  name: nvidia-llm
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llm
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: llm
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+{{- end }}

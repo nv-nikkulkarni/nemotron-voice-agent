@@ -1,0 +1,22 @@
+{{- if .Values.turn.enabled -}}
+# coturn uses hostNetwork=true so the TURN signaling port is already exposed
+# on the node. This Service provides a stable DNS name for the app to
+# reference when building the TURN_URL value.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-coturn
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: coturn
+spec:
+  type: {{ .Values.turn.service.type }}
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: coturn
+  ports:
+    - name: signaling
+      port: {{ .Values.turn.service.signalingPort }}
+      targetPort: signaling
+      protocol: UDP
+{{- end }}
