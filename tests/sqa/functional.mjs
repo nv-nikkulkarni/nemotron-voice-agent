@@ -42,21 +42,35 @@ async function landingChecks(browser) {
   await page.goto(H.BASE, { waitUntil: "domcontentloaded", timeout: 30000 });
   const deploymentReady = await H.waitForDeploymentReady(page);
   try {
+    const invitation = page.locator('.tour-invite[aria-label="Interface tour invitation"]');
+    const tour = page.locator('.tour-popover[aria-label="Interface introduction"]');
+    const invitationVisible = await invitation.isVisible().catch(() => false);
+    rec("landing/tour-invitation-opens", invitationVisible);
+    rec("landing/no-animation-before-consent", !(await tour.isVisible().catch(() => false)));
+    if (invitationVisible) await invitation.getByRole("button", { name: /Yes/i }).click();
+    await tour.waitFor({ state: "visible", timeout: 3000 }).catch(() => {});
+    rec("landing/tour-starts-after-yes", await tour.isVisible().catch(() => false));
+    if (await tour.isVisible().catch(() => false)) await tour.getByRole("button", { name: /skip tour/i }).click();
     const title = await page.locator(".startview__title").innerText().catch(() => "");
     rec("landing/title", /nemotron/i.test(title), JSON.stringify(title.replace(/\n/g, " ")));
     rec("landing/deployment-ready", deploymentReady, "example cards rendered");
     const cards = await page.locator(".example-card").count();
     rec("landing/two-cards", cards === 2, `found ${cards}`);
-    rec("landing/no-global-start-button", (await page.getByRole("button", { name: /start conversation/i }).count()) === 0);
+    rec("landing/launch-bar-visible", await page.locator(".startview__launch").isVisible().catch(() => false));
+    rec("landing/no-in-card-actions", (await page.locator(".example-card__actions, .example-card__cta, .example-card__configure").count()) === 0);
     rec("landing/config-controls-hidden", (await page.locator(".consent-toggle, .record-toggle").count()) === 0);
     // Beta badge only on omni
     const betaOnOmni = await page.locator(".example-card").filter({ hasText: /omni/i }).locator(".example-card__beta").count();
     const betaOnGeneric = await page.locator(".example-card").filter({ hasText: /generic/i }).locator(".example-card__beta").count();
     rec("landing/beta-badge-omni-only", betaOnOmni === 1 && betaOnGeneric === 0, `omni=${betaOnOmni} generic=${betaOnGeneric}`);
 
-    // Selecting a card opens its per-example configuration modal.
-    await page.locator(".example-card").filter({ hasText: /generic/i }).click(); await H.sleep(300);
+    // Any point on a card selects it without opening configuration.
+    const genericCard = page.locator(".example-card").filter({ hasText: /generic/i });
+    await genericCard.click(); await H.sleep(300);
     const popup = page.locator(".ex-config");
+    rec("select/full-card-selected", (await genericCard.getAttribute("aria-pressed")) === "true");
+    rec("select/card-does-not-open-modal", !(await popup.isVisible().catch(() => false)));
+    await page.locator(".startview__launch").getByRole("button", { name: /^configure$/i }).click();
     rec("select/config-modal-visible", await popup.isVisible().catch(() => false));
     const start = popup.getByRole("button", { name: /start conversation/i });
     rec("select/start-enabled-after-pick", await start.isEnabled(), "generic configured");
@@ -86,8 +100,31 @@ async function lifecycleChecks(browser) {
   await H.sleep(1200);
   try {
     await H.selectExample(page, { example: "generic", model: "lightning" });
-    const c1 = await H.startConversation(page);
+    const c1 = await H.startConversation(page, { dismissConversationTour: false });
     rec("lifecycle/connect", c1.connected, `${c1.connectMs}ms`);
+    const liveInvitation = page.locator('.tour-invite[aria-label="Conversation tour invitation"]');
+    const liveTour = page.locator('.tour-popover[aria-label="Conversation feature introduction"]');
+    await liveInvitation.waitFor({ state: "visible", timeout: 3000 }).catch(() => {});
+    rec("lifecycle/conversation-tour-invitation", await liveInvitation.isVisible().catch(() => false));
+    rec("lifecycle/no-conversation-animation-before-consent", !(await liveTour.isVisible().catch(() => false)));
+    await liveInvitation.getByRole("button", { name: /Yes/i }).evaluate((element) => element.click()).catch(() => {});
+    await liveTour.waitFor({ state: "visible", timeout: 3000 }).catch(() => {});
+    rec("lifecycle/conversation-tour-after-yes", await liveTour.isVisible().catch(() => false));
+    const firstTourTitle = await liveTour.locator("h2").innerText().catch(() => "");
+    rec("lifecycle/tour-tool-label", /tool call/i.test(firstTourTitle), firstTourTitle);
+    await liveTour.getByRole("button", { name: /^next$/i }).evaluate((element) => element.click()).catch(() => {});
+    const secondTourTitle = await liveTour.locator("h2").innerText().catch(() => "");
+    rec("lifecycle/tour-latency", /latency breakdown/i.test(secondTourTitle), secondTourTitle);
+    await liveTour.getByRole("button", { name: /skip tour/i }).evaluate((element) => element.click()).catch(() => {});
+    const replay = page.getByRole("button", { name: /open conversation guide/i });
+    rec("lifecycle/tour-replay-control", await replay.isVisible().catch(() => false));
+    await replay.evaluate((element) => element.click()).catch(() => {});
+    await liveInvitation.waitFor({ state: "visible", timeout: 1500 }).catch(() => {});
+    rec("lifecycle/tour-replay-invitation", await liveInvitation.isVisible().catch(() => false));
+    await liveInvitation.getByRole("button", { name: /Yes/i }).evaluate((element) => element.click()).catch(() => {});
+    await liveTour.waitFor({ state: "visible", timeout: 1500 }).catch(() => {});
+    rec("lifecycle/tour-reopens", await liveTour.isVisible().catch(() => false));
+    await liveTour.getByRole("button", { name: /skip tour/i }).evaluate((element) => element.click()).catch(() => {});
     const chip = await page.locator(".conv-session-id code").innerText().catch(() => "");
     rec("lifecycle/session-id-chip", /\w{6,}/.test(chip), chip);
     // Mid-conversation: open Settings + Pipeline-info overlays; session must survive.

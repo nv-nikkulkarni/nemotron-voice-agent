@@ -3,7 +3,7 @@
 
 // The live-session hero band: a greenish turbulent orb whose shell reacts to the
 // mic input intensity, a caption reflecting who is speaking, and a small
-// end-to-end latency readout. Clicking the readout opens a breakdown overlay
+// end-to-end latency readout. Clicking the readout expands a bounded side panel
 // showing where the time went (end-of-utterance detection + each server stage),
 // parsed from pipecat's `latency-breakdown` server message.
 
@@ -13,6 +13,11 @@ import { useRTVIClientEvent } from "@pipecat-ai/client-react";
 import { useAudioAnalysers } from "../../hooks/useAudioAnalysers";
 import { SphereWaveVisualizer } from "./SphereWaveVisualizer";
 import { installMasterAudioTap, outputRms } from "../../demo/masterAudioTap";
+import {
+  mergeAgentStageMetrics,
+  parseAgentStageMetrics,
+  type AgentStageMetricSnapshot,
+} from "../../demo/frontendBackendStageMetrics";
 
 interface LatRow { label: string; ms: number; kind: string }
 
@@ -44,6 +49,7 @@ export function ConversationOrb() {
   const [thinking, setThinking] = useState(false);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [breakdown, setBreakdown] = useState<LatRow[] | null>(null);
+  const [agentBreakdown, setAgentBreakdown] = useState<AgentStageMetricSnapshot | null>(null);
   const [showBreakdown, setShowBreakdown] = useState(false);
   // Tool the model just chose to call (from the server `tool-call` message). Shown in a
   // small box while the tool runs; cleared when the bot starts speaking the result.
@@ -59,7 +65,14 @@ export function ConversationOrb() {
   );
   useRTVIClientEvent(
     RTVIEvent.UserStoppedSpeaking,
-    useCallback(() => { setUserSpeaking(false); setThinking(true); }, []),
+    useCallback(() => {
+      setUserSpeaking(false);
+      setThinking(true);
+      setLatencyMs(null);
+      setBreakdown(null);
+      setAgentBreakdown(null);
+      setPlayoutMs(null);
+    }, []),
   );
   useRTVIClientEvent(
     RTVIEvent.BotStartedSpeaking,
@@ -85,6 +98,16 @@ export function ConversationOrb() {
   useEffect(() => { installMasterAudioTap(); }, []);
   useEffect(() => () => { if (playoutTimerRef.current) clearInterval(playoutTimerRef.current); }, []);
 
+  useRTVIClientEvent(
+    RTVIEvent.Metrics,
+    useCallback((metrics: unknown) => {
+      const updates = parseAgentStageMetrics(metrics);
+      if (updates.length > 0) {
+        setAgentBreakdown((current) => mergeAgentStageMetrics(current, updates));
+      }
+    }, []),
+  );
+
   // Latency + breakdown come from pipecat's UserBotLatencyObserver over RTVI:
   //  - `user-bot-latency`  : the headline server response time (VAD-stop → first bot audio)
   //  - `latency-breakdown` : per-stage timeline (end-of-utterance + ASR/LLM/tool/TTS)
@@ -95,7 +118,14 @@ export function ConversationOrb() {
       if (message?.type === "user-bot-latency") setLatencyMs((message.latency ?? 0) * 1000);
       else if (message?.type === "latency-breakdown") setBreakdown(parseBreakdown(message.events || []));
       // `tool-call` : the LLM chose a tool and is about to call it (show the box).
-      else if (message?.type === "tool-call") setActiveTool(message.tool ?? null);
+      // Also mirror the existing RTVI event as a browser event for automation. A
+      // tool can start and finish inside one React render batch, so the visible
+      // badge alone is not a reliable event log for a Playwright assertion.
+      else if (message?.type === "tool-call") {
+        const tool = message.tool ?? null;
+        setActiveTool(tool);
+        if (tool) window.dispatchEvent(new CustomEvent("nva:tool-call", { detail: { tool } }));
+      }
       else if (message?.type === "tool-call-done") setActiveTool(null);
     }, []),
   );
@@ -106,10 +136,11 @@ export function ConversationOrb() {
   else if (thinking) { caption = "Thinking…"; state = "thinking"; }
   else if (userSpeaking) { caption = "Listening to you…"; state = "user"; }
 
-  const hasBreakdown = !!breakdown && breakdown.length > 0;
+  const hasAgentBreakdown = !!agentBreakdown && agentBreakdown.rows.length > 0;
+  const hasBreakdown = hasAgentBreakdown || (!!breakdown && breakdown.length > 0);
 
   return (
-    <div className="conv-orb-band">
+    <div className="conv-orb-band" data-tour="conversation-tools">
       <div className="conv-orb-canvas conv-sphere-canvas">
         <SphereWaveVisualizer userAnalyser={userAnalyser} botAnalyser={botAnalyser} thinking={thinking} />
       </div>
@@ -126,7 +157,11 @@ export function ConversationOrb() {
         </div>
       )}
 
-      <div className="conv-latency">
+      <aside
+        className={`conv-latency${showBreakdown && hasBreakdown ? " is-expanded" : ""}`}
+        data-tour="conversation-latency"
+        aria-label="Conversation latency"
+      >
         <button
           type="button"
           className="conv-latency__btn"
@@ -145,8 +180,30 @@ export function ConversationOrb() {
               <span>Latency breakdown</span>
               <button type="button" className="lat-breakdown__x" onClick={() => setShowBreakdown(false)} aria-label="Close">×</button>
             </div>
+            {hasAgentBreakdown && (
+              <>
+                <div className="lat-breakdown__section">
+                  <span>Frontend / Backend agent</span>
+                  {agentBreakdown?.turnId && <span>{agentBreakdown.turnId}</span>}
+                </div>
+                <ul className="lat-breakdown__list" aria-label="Frontend and backend agent latency">
+                  {agentBreakdown!.rows.map((row) => (
+                    <li
+                      key={row.id}
+                      className={`lat-row lat-row--${row.kind}`}
+                      title={row.outcome ? `Outcome: ${row.outcome}` : undefined}
+                    >
+                      <span className="lat-row__dot" aria-hidden />
+                      <span className="lat-row__label">{row.label}</span>
+                      <span className="lat-row__ms">{Math.round(row.valueMs)} ms</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {!!breakdown?.length && <div className="lat-breakdown__section">Realtime voice pipeline</div>}
             <ul className="lat-breakdown__list">
-              {breakdown!.map((r, i) => (
+              {breakdown?.map((r, i) => (
                 <li key={`${r.kind}-${i}`} className={`lat-row lat-row--${r.kind}`}>
                   <span className="lat-row__dot" aria-hidden />
                   <span className="lat-row__label">{r.label}</span>
@@ -176,7 +233,7 @@ export function ConversationOrb() {
             </p>
           </div>
         )}
-      </div>
+      </aside>
     </div>
   );
 }
