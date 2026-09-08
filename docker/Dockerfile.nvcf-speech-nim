@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: BSD-2-Clause
+
+ARG BASE_IMAGE=nvcr.io/nim/nvidia/nemotron-asr-streaming:1.3.1
+FROM ${BASE_IMAGE}
+
+# NVCF delivers function-version secrets as /var/secrets/secrets.json, while
+# Speech NIM expects NGC_API_KEY in its process environment. Keep the upstream
+# NIM unchanged apart from this small startup adapter.
+COPY --chmod=0555 docker/nvcf-speech-nim-entrypoint.sh /opt/nva/bin/nvcf-speech-nim-entrypoint.sh
+
+ENTRYPOINT ["/opt/nva/bin/nvcf-speech-nim-entrypoint.sh"]
+CMD []
