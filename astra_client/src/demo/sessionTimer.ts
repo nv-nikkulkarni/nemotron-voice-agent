@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2024–2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: BSD-2-Clause
 
-export const DEFAULT_SESSION_SECONDS = 5 * 60;
+export const DEFAULT_SESSION_SECONDS = 10 * 60;
 
 export function normalizeSessionSeconds(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);

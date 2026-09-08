@@ -16,23 +16,23 @@ const {
   sessionTimerTone,
 } = await import(pathToFileURL(compiledPath).href);
 
-test("defaults invalid durations to five minutes and accepts positive overrides", () => {
-  assert.equal(DEFAULT_SESSION_SECONDS, 300);
-  assert.equal(normalizeSessionSeconds(undefined), 300);
-  assert.equal(normalizeSessionSeconds(0), 300);
-  assert.equal(normalizeSessionSeconds("invalid"), 300);
+test("defaults invalid durations to ten minutes and accepts positive overrides", () => {
+  assert.equal(DEFAULT_SESSION_SECONDS, 600);
+  assert.equal(normalizeSessionSeconds(undefined), 600);
+  assert.equal(normalizeSessionSeconds(0), 600);
+  assert.equal(normalizeSessionSeconds("invalid"), 600);
   assert.equal(normalizeSessionSeconds(12.9), 12);
 });
 
 test("uses an absolute deadline so delayed ticks do not extend a session", () => {
-  assert.equal(remainingSessionSeconds(301_000, 1_000), 300);
-  assert.equal(remainingSessionSeconds(301_000, 300_001), 1);
-  assert.equal(remainingSessionSeconds(301_000, 301_000), 0);
-  assert.equal(remainingSessionSeconds(301_000, 999_999), 0);
+  assert.equal(remainingSessionSeconds(601_000, 1_000), 600);
+  assert.equal(remainingSessionSeconds(601_000, 600_001), 1);
+  assert.equal(remainingSessionSeconds(601_000, 601_000), 0);
+  assert.equal(remainingSessionSeconds(601_000, 999_999), 0);
 });
 
 test("formats the countdown and applies warning thresholds", () => {
-  assert.equal(formatSessionTime(300), "05:00");
+  assert.equal(formatSessionTime(600), "10:00");
   assert.equal(formatSessionTime(61), "01:01");
   assert.equal(formatSessionTime(0), "00:00");
   assert.equal(sessionTimerTone(61), "");
