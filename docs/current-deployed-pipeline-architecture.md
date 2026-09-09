@@ -10,16 +10,20 @@ reports.
 
 **Production snapshot verified:** September 7, 2026 (Asia/Kolkata)
 
-**Viking qualification candidate verified:** September 8, 2026 (Asia/Kolkata)
+**Viking qualification candidate verified:** September 9, 2026 (Asia/Kolkata)
 
 **Isolated staging candidate verified:** August 27, 2026 (Asia/Kolkata)
 
-**Deployed source branch:** `dev/nikkulkarni/nvcf-deploy-rebased`
+**Active deployment source branch:** `dev/nikkulkarni/nvcf-deploy-rebased-v2`
+
+**Legacy deployment-source backup:**
+`dev/nikkulkarni/nvcf-deploy-rebased-backup_09_09_26`
 
 **Current release source:** `82697e8f45c6de3dbc5565962113933c8c0ae951`
 
-**Viking candidate source:** behavior `3d7d8dc`, documentation `d7e8551`,
-release `5a4db3f`, and Viking configuration `eab0584`
+**Viking candidate source:** reconstructed branch head
+`a5c0570b8fd41dbeb86e228b38619a8f6695038e`; the deployed runtime artifacts
+remain chart `0.1.140` and app `2.0.68`
 
 **UI behavior source:** `178e45b647d7cb1f78c192cbd06b82887283ebf4`
 
@@ -375,7 +379,7 @@ was later gracefully undeployed and removed from the project inventory.
 
 ### 2.4 Viking Qualification Candidate 0.1.140
 
-Viking Helm release `p7`, revision 4, runs chart `0.1.140` and app `2.0.68` in
+Viking Helm release `p7`, revision 5, runs chart `0.1.140` and app `2.0.68` in
 namespace `nva-p7`. This is a Viking-only candidate. It has not changed or
 qualified the main NVCF function or Astra deployment. The production
 `nvcf_helm/values.yaml` file is unchanged.
@@ -388,10 +392,11 @@ The candidate provenance and immutable artifacts are:
 | Documentation source | `d7e8551` |
 | Release source and OCI revision | `5a4db3fa14a0ea5ac077ffcb1c6117aead745dea` |
 | Viking configuration source and branch head | `eab0584` |
+| Reconstructed active branch head | `a5c0570b8fd41dbeb86e228b38619a8f6695038e` on `dev/nikkulkarni/nvcf-deploy-rebased-v2` |
 | Helm chart | `0.1.140`, `appVersion: 2.0.68` |
 | App image | `nvcr.io/0491162300748285/nemotron-voice-agent:2.0.68`; pushed digest `sha256:00f6537af2086c190ecbd2d7330ed57e96745baa6835358b0a6f2ed2b68c77d2` |
-| Local UI image | `nemotron-voice-agent-ui:2.0.76-5a4db3f`; local image ID `sha256:df5b9597ce8216a3c27bcc2153e25aa16c48858abf7f0aafdd29ecbb6378c301` |
-| Local UI runtime | Container `nva-ui-local-2-0-76-5a4db3f` on `0.0.0.0:7860`; backend `http://10.78.18.44:30786`; build timestamp `2026-09-08T18:06:00Z` |
+| Local UI image | `nemotron-voice-agent-ui:2.0.76-a5c0570`; local image ID `sha256:d725a94f19e6f61b5670ecac5173a9c7dffb5a01304df6b0a543ab20836eace9` |
+| Local UI runtime | Container `nva-ui-local-2-0-76-a5c0570` on `0.0.0.0:7860`; backend `http://10.78.18.44:30786`; build timestamp `2026-09-09T08:49:27Z` |
 | Local UI advertisement | 600-second sessions; Generic Frontend/Backend Agent and Omni Assistant Subagents enabled; bundles `index-BpjfWqpT.js` and `index-7D6fAwDC.css` |
 
 Revision 3 failed during startup because recovered application code enforces
@@ -414,6 +419,15 @@ value. Helm revision 4 then reached the following state:
   returned HTTP 200 responses.
 - Capture reported enabled, consent-based, upload-required, and backed by the
   shared S3-compatible store.
+
+On September 9, Helm revision 5 reapplied the byte-equivalent rendered chart
+from the reconstructed `-v2` source branch. All five application replicas were
+Ready on app `2.0.68`. Kubernetes preserved the existing app, prewarmer, model,
+Redis, and SeaweedFS pods because the rendered workload specification did not
+change. The rebuilt local UI returned HTTP 200 for `/`, generated the expected
+600-second runtime configuration, and proxied `/api/services` to Viking. The
+previous local image `nemotron-voice-agent-ui:2.0.76-5a4db3f` remains available
+as a rollback artifact.
 
 Focused validation recorded the following results:
 
