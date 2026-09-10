@@ -37,6 +37,10 @@ current source branch; it does not mean the deployed environment runs or passed 
 | Misinformation answer only says “cannot verify” | overly hedged safety response | state the evidence boundary and direct to established evidence | Implemented |
 | Tool call badge absent although work completed | internal tool event was not propagated or badge is transient | restore `on_tool_started` event; adjudicate composite work from durable results, not badge alone | Implemented |
 | Multi-tool turn starts quickly but takes about a minute to finish | overly long response plus TTS playback | cap web result to two sentences and multi-tool result to three short sentences/about 450 characters | Implemented |
+| Post-tool result re-calls `call_backend` | Lightning misreads Pipecat asynchronous started-plus-final envelope | Generic default/production use trusted direct result; Viking hybrid rephrases successful weather only | Implemented |
+| “How did you calculate my BMI?” reaches generic failure | broad BMI delegation rule conflicts with cached replay guard | methodology questions DIRECT; new computations DELEGATE; do not replay prior number | Implemented and live-evaluated |
+| Public news/backend question is refused after internal-safety turn | private-mechanics guard overmatches normal language or carries stale boundary | narrow to first-person/private disclosures and reset on new public topic; add regression before edit | Open focused hardening |
+| Latest lookup is promised but not executed | Talker emits DIRECT promise instead of native call | prompt-only current/latest/stale-answer/“go ahead” delegation examples | Implemented; provider truth remains a risk |
 
 Do not fix model nondeterminism by adding a Python intent router. Python can validate an
 LLM-authored call but cannot infer the intended domain tool.

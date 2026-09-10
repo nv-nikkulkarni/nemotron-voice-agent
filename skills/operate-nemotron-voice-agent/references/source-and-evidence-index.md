@@ -40,9 +40,22 @@ serving.
 | manual source/assets | `docs/architecture-manual/` |
 | generic domain guide | `docs/how-to/configure-frontend-backend-domains.md` |
 | TTS behavior | `docs/how-to/configure-tts.md` |
+| current operational snapshot | `skills/operate-nemotron-voice-agent/references/current-state-snapshot.md` |
+| session RCA catalog | `skills/operate-nemotron-voice-agent/references/session-casebook.md` |
+| branch/recovery history | `skills/operate-nemotron-voice-agent/references/git-history-and-recovery.md` |
+| credentials and access | `skills/operate-nemotron-voice-agent/references/credentials-and-access.md` |
+| performance semantics | `skills/operate-nemotron-voice-agent/references/performance-and-optimization.md` |
 
 Use this skill for durable operational knowledge. Use dated reports for exact candidate
 outcomes.
+
+The surviving architecture-manual package contains a roughly 1.3 MB Word handbook, a
+reproducible `build_manual.py`, build report, NVIDIA/NIM artwork, and nine 2800×1575-style
+schematics covering end-to-end topology, trust/routing, session sequence, Generic flow,
+Omni workers, multi-replica sharing, capture, promotion, and failure isolation. It was
+validated as OOXML/media content without LibreOffice renderer-exact pagination. Rebuild it
+from the source package when architecture changes; do not hand-edit the binary as the only
+update.
 
 ## Deployment Ownership
 
@@ -69,7 +82,8 @@ Render Helm before treating values as effective manifests.
 | Talker/Thinker prompts | `src/examples/frontend_backend_agent/prompts.yaml` |
 | model and TTS catalogs | `src/examples/frontend_backend_agent/services.*.yaml` |
 | domain allowlist and contract | `src/examples/frontend_backend_agent/src/domain.py` |
-| Talker liveness/repeat guards | `src/examples/frontend_backend_agent/src/reliable_talker.py` |
+| Talker liveness/repeat/grounding guards | `src/examples/frontend_backend_agent/src/reliable_talker.py` |
+| correlated agent metrics | `src/examples/frontend_backend_agent/src/stage_metrics.py` |
 | call/cancel handlers | `src/examples/frontend_backend_agent/src/tool_handlers.py` |
 | barge-in state | `src/examples/frontend_backend_agent/src/barge_in.py` |
 | internal ToolSpec | `src/examples/frontend_backend_agent/src/tools.py` |
@@ -133,7 +147,7 @@ Fulfilled design plans were consolidated into this skill and removed from the ac
 Their exact pre-consolidation text remains recoverable from Git at commit `70fe69ab` under
 `docs/archive/2026-08/`.
 
-Key implementation commits on the production source branch include:
+Historical pre-v2 implementation commits include:
 
 | Commit | Durable Meaning |
 |---|---|
@@ -153,6 +167,9 @@ Key implementation commits on the production source branch include:
 
 Commit IDs are historical anchors. Verify the current branch because later squashes or
 rebases can change IDs.
+
+The current v2 logical commit stack is authoritative for active work and is documented in
+[Git History and Recovery](git-history-and-recovery.md#primary-v2-commit-stack).
 
 ## Search Recipes
 

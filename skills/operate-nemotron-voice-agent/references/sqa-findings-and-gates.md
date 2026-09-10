@@ -189,7 +189,7 @@ Require ten interrupted turns. Each replacement must register, obsolete speech m
 within the agreed acoustic tolerance, and the new turn must complete. Test:
 
 - interruption during direct speech;
-- interruption during code-authored filler;
+- interruption during Talker-authored filler;
 - active backend cancellation;
 - speech-only interruption after backend completion;
 - a stop plus substantive replacement;
@@ -371,6 +371,47 @@ and Chatterbox TTS Multilingual from `1.0.0` to `1.1.0`. Both services select th
 The candidate is not packaged, deployed, or qualified. Run image-pull, readiness,
 pronunciation, voice-catalog, streaming, latency, and concurrency gates in Viking before
 creating an NVCF/Astra staging version.
+
+### Isolated 0.1.130
+
+The isolated NVCF/Astra `-2` rollout used app/UI 2.0.58 from source `76ebbbd4` and chart
+0.1.130. It was owner-authorized despite an earlier Viking conversation-oracle failure.
+Deployment smoke passed. Tuned Suite A produced audio on 15/15 turns and selected Weather
+3/3, Stock 2/2, Search 1/1, BMI 1/1, and Random 1/1 with no hard failure, warning, hang,
+browser error, bad HTTP response, or unexpected WebSocket closure.
+
+Historical comprehensive Generic, Omni media/webcam, UI/capture, and eight mixed sessions
+also passed before the strict concurrency gate. The 8-by-10 matrix completed 80/80 with
+audio and no silence/browser/WS errors, but failed 10 turns: one Toronto repeat drifted to
+Pune, eight synchronized Super plans hit the 15-second boundary, and one later correct turn
+had an independent-ASR HTTP 403. This was nine product failures plus one oracle failure,
+not proven Redis cross-talk.
+
+The deployment was never fully qualified or promoted. Its surviving images later became
+evidence for SSD source reconstruction. The function and versions were subsequently
+deleted. Treat the preserved report as exact-artifact history, not proof for current v2.
+
+### Main 0.1.139
+
+The owner authorized the main NVCF/Astra rollout before full SQA was green. At the last
+formal summary, Suites A and B had failures while C and D formally passed. NVCF control
+plane and Astra UI smokes were healthy, but the release remains unqualified. The former
+isolated `-2` function was later removed.
+
+### Viking 0.1.140
+
+Chart 0.1.140/app 2.0.68 runs on Viking and has strong focused evidence:
+
+- 574 Python unit tests;
+- Talker 160/160 and Thinker 100/100 live-model evaluations;
+- repeated weather, dependent second-round, and random-number scenarios 20/20 each;
+- UI metric tests/build/lint and Helm lint/render;
+- real-audio identity/weather/stock smoke; and
+- synthetic false-interruption session `de91f2cf7010` with uploaded capture.
+
+Full A-D, human microphone barge-in, complete webcam/capture/NGC matrices, and human
+pronunciation listening remain pending. The candidate is Viking-deployed but not fully
+qualified and must not be promoted from focused evidence alone.
 
 ## Pronunciation Qualification
 

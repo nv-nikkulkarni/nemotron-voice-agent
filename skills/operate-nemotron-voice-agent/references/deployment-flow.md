@@ -24,7 +24,7 @@ flowchart LR
     UI["Immutable UI image"]
     CHART["Immutable Helm chart"]
     V["Viking local Kubernetes"]
-    S["NVCF + Astra isolated -2 staging"]
+    S["Recreate NVCF + Astra isolated -2 staging"]
     P["NVCF production + retained Astra UI"]
     PRD["Future true Astra prd environment"]
 
@@ -101,8 +101,8 @@ is not proof that the Deployment injects the key everywhere.
 Every new function version needs the complete secret set. NVCF mounts them at
 `/var/secrets/secrets.json`; it does not inherit a previous function version's values.
 
-Required names are documented in
-[Runtime Architecture](runtime-architecture.md#trust-and-secret-boundaries).
+Required names and safe injection paths are documented in
+[Credentials and Access](credentials-and-access.md).
 
 Use a dedicated `NGC_API_KEY` for model access and capture publication. Keep the NVCF
 invocation key separate where possible.
@@ -118,6 +118,9 @@ Use Fusion-managed Vault values for:
 Astra nginx injects those values into upstream requests. The UI image does not contain
 them. Load the installed `fusion` skill before any Fusion, Vault, or Astra mutation.
 
+Reading that skill does not itself authorize installing or upgrading the Fusion CLI. If
+its version gate requires a host mutation, obtain the user's approval first.
+
 After Fusion login, verify authentication and target environment before deploying. An
 expired token blocks accurate consumer checks; do not guess which values file is unused.
 
@@ -126,7 +129,8 @@ expired token blocks accurate consumer checks; do not guess which values file is
 ### Preflight
 
 1. Verify the branch and clean commit.
-2. Verify chart `version`, `appVersion`, app tag, and Viking app tag agree.
+2. Verify the chart `version`; confirm `appVersion`, the target overlay app tag, and the
+   intended release matrix are internally consistent; render the target values file.
 3. Render and lint Helm.
 4. Confirm required namespace Secrets exist without printing their values.
 5. List current pods, images, UIDs, and readiness.
@@ -161,6 +165,27 @@ Require:
 - Chatterbox speech with no dictionary; and
 - Omni voice plus media when changed.
 
+Use the checked-in browser/SQA harness for `/api/session-config` and WebSocket smoke rather
+than inventing a request body from memory. The active UI and server contract can evolve;
+an old example body may select the wrong pipeline. When inspecting `/api/deployment`,
+extract only the catalog fields required for the check and do not print its full prompts or
+internal service URLs into reports.
+
+A safe public metadata projection is:
+
+```bash
+curl -fsS "${NVA_BASE_URL}/api/deployment" | jq '{
+  active: (.active | {id,key,label,slots,capabilities,domainProfile,default_session_language}),
+  selectable,
+  options: [.options[] | {id,key,label,slots,capabilities,domainProfile,default_session_language}],
+  transports,
+  audio
+}'
+```
+
+Set `NVA_BASE_URL` to the intended UI origin. Deliberately omit every `defaults` object:
+that is where full prompts and internal service endpoints can appear.
+
 Then run the full gates in
 [SQA Findings and Gates](sqa-findings-and-gates.md).
 
@@ -171,6 +196,27 @@ A failed Viking candidate never advances to NVCF/Astra.
 Use isolated names that cannot be confused with the retained live deployment. The project
 historically uses `nemotron-voice-agent-2` for NVCF and an Astra app with the same `-2`
 identity.
+
+For a read-only control-plane inventory, authenticate the NGC CLI, explicitly select the
+NGC organization/team context, and query versions and deployments separately:
+
+```bash
+ngc cf fn list \
+  --org <org> --team <team> \
+  --name-pattern 'nemotron-voice-agent' \
+  --format_type json
+
+ngc cf fn deploy list \
+  --org <org> --team <team> \
+  --format_type json
+```
+
+The function list reports function-version state; the deployment list reports deployment
+state. Correlate them by function/version identifiers and record the observation time. Use
+`ngc cf fn list <function-id>` and `ngc cf fn info
+<function-id>:<function-version-id>` to narrow follow-up inspection. Confirm these forms
+with the installed CLI's `--help` because older releases differ. Never print mounted
+function-version secret values during a status check.
 
 1. Create a new NVCF function version with the exact qualified chart artifact.
 2. Supply the full function-version secret set.
@@ -219,7 +265,7 @@ Treat these signals independently:
 | Helm render/lint pass | manifests are structurally valid |
 | NVCF `ACTIVE` | control plane accepted the deployment |
 | pod Ready | Kubernetes probe passes |
-| `/health=200` | FastAPI responds |
+| backend `/health=200` with expected body/content type | FastAPI responds; an HTML SPA fallback does not count |
 | `/api/deployment` | app registry and catalog resolve |
 | `/api/session-config` | selected model services pass deep readiness |
 | WebSocket `101` and audio | real streaming path works |
