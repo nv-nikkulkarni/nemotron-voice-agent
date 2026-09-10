@@ -54,9 +54,15 @@ NVCF hosts the application and inference workloads.
 
 ## Browser and Astra Boundary
 
-The browser receives only public runtime values, including the deployment timestamp,
-visible examples, demo limits, and feature flags. It must never receive the NVCF invocation
-key or provider keys.
+The intended boundary is that the browser receives only sanitized public runtime values,
+including the deployment timestamp, visible examples, demo limits, and feature flags. It
+must never receive the NVCF invocation key or provider keys.
+
+The current public `/api/deployment` response has also exposed detailed system prompts and
+internal cluster service URLs. Treat that as a known data-minimization defect, not as the
+desired contract. It is not evidence that credentials leaked, but do not paste or archive
+the full response in tickets, reports, or command transcripts. Inspect only the fields
+needed for the check and redact prompt text and internal endpoints.
 
 Astra nginx routes:
 
@@ -148,9 +154,9 @@ flowchart LR
     TTS --> OUT["Browser speaker"]
 ```
 
-This is not a ReAct observe/replan loop. The Thinker emits one bounded plan. Python
-validates and executes it. The Talker does not see weather, stock, search, BMI, or random
-schemas.
+This is not a free-form ReAct loop. The Thinker emits a bounded JSON plan and may request a
+later planning round using accumulated results, up to three rounds. Python validates and
+executes it. The Talker does not see weather, stock, search, BMI, or random schemas.
 
 The Talker selects exactly one mode:
 
@@ -165,16 +171,16 @@ deterministic spoken fallback. The runtime never chooses a domain tool itself.
 Successful grounded `response_text` can bypass a second Talker inference. This prevents
 duplicate speech and repeated delegation after a completed asynchronous result.
 
-Code-authored fillers are deterministic:
+Generic filler text is authored by the Talker in the same native `call_backend` completion.
+It is optional, query-grounded, 3–12 words, at most 96 characters, and emitted at most once
+after a short threshold. Invalid or absent filler is suppressed; the runtime never inserts
+a static fallback. Filler is progress speech and is not appended to LLM conversation
+context.
 
-| Capability | Filler |
-|---|---|
-| Weather or forecast | “Let me check the latest weather.” |
-| Stock or share price | “Let me look up the latest price.” |
-| Web search, news, or research | “Let me look that up.” |
-| BMI | “Let me work that out.” |
-| Composite request | “Let me check those details.” |
-| Other delegated work | “Let me check that.” |
+Generic source and production use direct trusted tool-result delivery to avoid the
+Pipecat asynchronous started-plus-final envelope causing a second delegation. Viking uses
+hybrid mode: only successful weather is rephrased, with city/temperature/unit grounding;
+other results remain direct.
 
 ## Omni Subagents Turn
 
@@ -318,6 +324,13 @@ The versioned pronunciation registry stores:
 - IPA for the NVIDIA TTS NIM request; and
 - category metadata.
 
+The reconciled registry contains 200 graphemes across AI models, companies, countries,
+currency/financial/time abbreviations, 36 global cities, 37 Indian cities, NVIDIA products,
+platforms, technology leaders, 20 common ticker symbols, and world leaders. Explicit recent
+entries include `USD`, `GAAP`, `UTC`, and `TSLA`. Broad coverage requires exact-word and
+natural-sentence listening because a forced mapping can degrade speech that was already
+correct.
+
 `load_ipa_dictionary` accepts the rich registry and legacy flat IPA files. It returns IPA
 only for Magpie models and no dictionary for Chatterbox. The TTS NIM itself is unchanged.
 
@@ -333,14 +346,16 @@ The browser is untrusted and receives no upstream secret. Astra nginx holds the 
 invocation credential. NVCF mounts function-version secrets in
 `/var/secrets/secrets.json`; the app entrypoint exports named values.
 
-Required secret names include:
+Required function-version configuration includes these credentials:
 
 - `NVIDIA_API_KEY`;
 - `NGC_API_KEY`;
 - `PERPLEXITY_API_KEY`;
 - `WEATHERAPI_KEY`;
-- `FINNHUB_API_KEY`; and
-- `SESSION_CAPTURE_NGC`.
+- `FINNHUB_API_KEY`.
+
+`SESSION_CAPTURE_NGC` is also required in the same version-scoped configuration interface,
+but it is a destination identifier, not a credential.
 
 Every NVCF function version must receive the complete set again. Do not assume inheritance.
 Use a dedicated NGC key for registry upload rather than relying on the invocation key.
@@ -350,8 +365,10 @@ namespace and network isolation. Treat this as an explicit deployment boundary.
 
 ## Readiness and Observability
 
-`/health` proves FastAPI responsiveness only. NVCF `ACTIVE` proves control-plane rollout,
-not functional model readiness. Verify:
+The backend's own `/health` response proves FastAPI responsiveness only. Through Astra or
+another UI proxy, validate the response content type and body as well as the status: an
+SPA fallback can return HTML with HTTP 200 and prove nothing about backend health. NVCF
+`ACTIVE` proves control-plane rollout, not functional model readiness. Verify:
 
 - `/api/deployment` for advertised examples and models;
 - `/api/session-config` for deep selected-service readiness;
