@@ -1,4 +1,8 @@
 interface:
   display_name: "Nemotron Voice Agent Operations"
-  short_description: "Operate and qualify Astra + NVCF deployments"
-  default_prompt: "Use $operate-nemotron-voice-agent to inspect, deploy, qualify, or troubleshoot this project safely."
+  short_description: "Operate, qualify, troubleshoot, and hand off NVA"
+  brand_color: "#76B900"
+  default_prompt: "Use $operate-nemotron-voice-agent to orient to the project, verify current deployment truth, and continue the requested work safely."
+
+policy:
+  allow_implicit_invocation: true

@@ -12,15 +12,15 @@
 
 ## Release Status Risks
 
-These statements describe the last checked-in evidence as of August 30, 2026. Reverify
+These statements describe the reconciled evidence as of September 10, 2026. Reverify
 before reporting live status.
 
 | Risk | Last Recorded State | Closure |
 |---|---|---|
-| Retained production was not fully SQA-green | chart `0.1.103` had three P0 defects | qualify a newer exact artifact through every gate |
-| Isolated `-2` staging is rejected | recorded deployment remained on `0.1.115` | deploy only a fully Viking-qualified candidate and rerun staging |
-| Latest checked-in source is not deployed | `0.1.123`/`2.0.51` updates both TTS NIMs but is unbuilt and unqualified | package the chart, then run Viking full qualification before staging |
-| One matrix pass can be overstated | `0.1.120` passed repeated-tool and automated pronunciation only | complete comprehensive, corner, barge-in, failure, safety, webcam, capture, reconnect, and listening |
+| Main NVCF/Astra is not fully SQA-green | `0.1.139`/`2.0.67` is owner-deployed; A/B failed and full gate is not green | qualify a newer exact artifact through every gate |
+| No isolated `-2` staging exists | former function and all versions were removed | recreate only after Viking is fully green |
+| Newer source runs only on Viking | `0.1.140`/`2.0.68` passed focused checks only | finish A-D, human barge-in, webcam, capture/NGC, and listening before promotion |
+| One focused matrix can be overstated | current v2 has strong live-model and focused audio results | complete every independent promotion gate |
 | True Astra production does not exist | retained live UI used Astra `stg` infrastructure | create a separate Astra `prd` deployment with required governance |
 
 Do not collapse these into “production is good” or “staging is current.”
@@ -68,6 +68,10 @@ The guards cover empty output, substantial replay, and explicit-repeat subject d
 do not infer intent. New phrasing outside the explicit repeat vocabulary can still rely on
 model behavior. Expand tests before expanding Python matching.
 
+The private-mechanics guard can also overmatch normal public words such as “backend” and
+become sticky across turns. Keep first-person/context boundaries narrow and add a focused
+regression before changing it.
+
 ### Safety Is Prompt and Model Dependent
 
 The prompt explicitly covers major categories, but no external safety classifier is in this
@@ -77,6 +81,9 @@ custom path. Verify isolated black-box safety after model or prompt changes.
 
 WeatherAPI, Finnhub, and Perplexity introduce quota, latency, and credential risk. The app
 fails closed but degraded upstreams reduce live capability.
+
+Perplexity can return a fluent, non-empty, factually wrong response. The current structural
+validation cannot prove provider truth; a provider answer can contaminate later context.
 
 ## Media, Capture, and Storage Risks
 

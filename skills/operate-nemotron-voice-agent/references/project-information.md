@@ -114,7 +114,7 @@ below. Recheck `nvcf_helm/values.yaml` before using them operationally.
 | Chatterbox TTS | `chatterbox-tts-multilingual:1.1.0` | 1 GPU |
 | Redis | `redis:7.2.4-debian-12-r12` | CPU |
 | SeaweedFS | `seaweedfs:4.41` | CPU |
-| App | `nemotron-voice-agent:2.0.51` | five CPU replicas |
+| App | production default `2.0.67`; Viking override `2.0.68` | five CPU replicas |
 
 The complete NVCF topology requests seven of eight H100 GPUs. The spare GPU is headroom,
 not another service.
@@ -147,7 +147,7 @@ A `DomainSpec` supplies:
 - backend factory;
 - runtime context;
 - optional TTS transformation;
-- code-authored filler policy;
+- Talker-authored, planner-authored, or compatibility filler policy;
 - internal `ToolSpec` registry; and
 - query and concurrency limits.
 
@@ -177,7 +177,7 @@ cannot widen server capabilities beyond the repository-owned allowlist.
 |---|---|---|
 | `get_weather` | WeatherAPI | `WEATHERAPI_KEY` |
 | `get_stock_price` | Finnhub | `FINNHUB_API_KEY` |
-| `web_search` | Perplexity Sonar through NVIDIA inference | `PERPLEXITY_API_KEY` |
+| `web_search` | Perplexity Sonar API; base URL is configurable | `PERPLEXITY_API_KEY` |
 | `calculate_bmi` | local Python | none |
 | `generate_random_number` | local Python | none |
 
@@ -223,8 +223,9 @@ remain backups unless the user explicitly changes that policy.
 
 | Branch | Purpose |
 |---|---|
-| `dev/nikkulkarni/nvcf-deploy-rebased` | source of truth for the active custom production deployment |
-| `dev/nikkulkarni/domain-configurable-frontend-backend-agent` | focused reusable-domain development history |
+| `dev/nikkulkarni/nvcf-deploy-rebased-v2` | current deployment-development source of truth |
+| `dev/nikkulkarni/generic-frontend-backend-agent-v2` | focused reusable-domain development history |
+| `dev/nikkulkarni/nvcf-deploy-rebased-backup_09_09_26` | immutable pre-v2 recovery backup |
 | `develop` | upstream integration base |
 
 The former `dev/nikkulkarni/prod-sqa-remediation-0.1.103` work was merged into the NVCF
@@ -233,22 +234,20 @@ states. Do not delete backup refs or GitLab branches as part of ordinary feature
 
 ## Release Truth
 
-At the August 30, 2026 source snapshot:
+At the September 10, 2026 reconciliation:
 
-- the checked-in chart source is the unbuilt and unqualified `0.1.123` candidate;
-- the checked-in app/UI version is `2.0.51`;
-- `0.1.122` was built and pushed but was not Viking-qualified or deployed;
-- `0.1.123` updates only the chart inputs to Magpie `1.10.0` and Chatterbox
-  `1.1.0`; it has not been packaged, deployed, or qualified;
-- the last recorded isolated `nemotron-voice-agent-2` staging deployment remained on
-  rejected `0.1.115`;
-- the last recorded retained production function remained on chart `0.1.103` and app
-  `2.0.32`; and
-- the retained Astra UI was still deployed in Astra `stg` infrastructure even though it
-  targeted the production NVCF function.
+- the active v2 source contains chart `0.1.140` and `appVersion: 2.0.68`;
+- Viking release `p7` revision 5 runs `0.1.140`/`2.0.68` and passed focused, not full,
+  qualification;
+- the main NVCF function serves `0.1.139`/`2.0.67`, with `0.1.138`/`2.0.66` as its sole
+  inactive rollback;
+- the former isolated `-2` function and its versions were removed;
+- the last Fusion-verified Astra UI was `2.0.75-178e45b` in physical Astra `stg`; and
+- full SQA was not green for the main NVCF/Astra rollout.
 
-These are historical records, not a live status claim. Query Fusion, NVCF, Astra
-`/config.js`, `/api/deployment`, and `/api/session-capture/status` before reporting status.
+Read [Current State Snapshot](current-state-snapshot.md) for exact identities and evidence
+dates. Query Fusion, NVCF, Viking, Astra `/config.js`, `/api/deployment`, and capture status
+before reporting a new current state.
 
 ## Product Invariants
 

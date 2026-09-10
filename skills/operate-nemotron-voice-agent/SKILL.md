@@ -1,7 +1,6 @@
 ---
 name: operate-nemotron-voice-agent
 description: Operate, deploy, qualify, troubleshoot, and hand off the NVIDIA Nemotron Voice Agent project across Viking Kubernetes, NVCF, and Astra. Use for project orientation, architecture questions, Generic Frontend/Backend or Omni behavior, Redis and SeaweedFS concurrency, session capture to NGC, model and TTS configuration, SQA execution or findings, incident RCA, release promotion, rollback, branch hygiene, evidence retention, and known deployment gotchas.
-version: "2.0.0"
 ---
 
 # Operate Nemotron Voice Agent
@@ -28,18 +27,41 @@ for the custom Astra, NVCF, Viking, concurrency, capture, and SQA stack.
 Read [Project Information](references/project-information.md) for the repository map,
 supported experiences, model roles, branch policy, and checked-in release state.
 
+Read [Current State Snapshot](references/current-state-snapshot.md) before reporting what
+is deployed. It separates the current v2 source branch, Viking candidate, main NVCF
+function, Astra UI, dedicated speech functions, and last-known versus live-verified facts.
+
 ## Route the Task
 
 - For an end-to-end explanation, request routing, pod ownership, concurrency, Redis,
   SeaweedFS, capture, barge-in, or pronunciation behavior, read
   [Runtime Architecture](references/runtime-architecture.md).
+- For exact Generic Frontend/Backend prompts, tools, result modes, multi-round planning,
+  reliability guards, and RTVI metrics, read
+  [Agent, Prompts, Tools, and Metrics](references/agent-prompts-tools-and-metrics.md).
+- For the curated React UI, tour, timer, settings, latency visualization, reconnect,
+  feedback, or capture coordinator, read [Astra Client](references/astra-client.md).
 - For builds, Viking, NVCF, Astra, Vault, promotion, rollback, capacity, or deployment
   status, read [Deployment Flow](references/deployment-flow.md). Also load the installed
   `fusion` skill before using Fusion or Astra.
+- For credential names, safe retrieval and injection, NVCF gRPC metadata, NGC artifact
+  types, and secret-scan rules, read
+  [Credentials and Access](references/credentials-and-access.md).
 - For real-audio testing, Playwright, pass criteria, report interpretation, promotion
   gates, or prior findings, read [SQA Findings and Gates](references/sqa-findings-and-gates.md).
 - For root-cause analysis or a recurring operational symptom, read
   [Incident and Mitigation Ledger](references/incident-and-mitigation-ledger.md).
+- For a known session ID, read [Session Casebook](references/session-casebook.md) before
+  making a new claim about the root cause or mitigation.
+- For branch history, v1/v2 snapshot reconstruction, rebases, squashes, backup policy,
+  recovery provenance, or Git gotchas, read
+  [Git History and Recovery](references/git-history-and-recovery.md).
+- For benchmarking, latency interpretation, saturation, capacity, prewarming, and future
+  deployment optimization, read
+  [Performance and Optimization](references/performance-and-optimization.md).
+- For the recovered workstation, Docker/Fusion/kubectl setup, missing generated evidence,
+  and local tooling limitations, read
+  [Host Recovery and Tooling](references/host-recovery-and-tooling.md).
 - For release decisions or remaining risk, read
   [Known Bugs and Risks](references/known-bugs-and-risks.md).
 - For the exact files that own a behavior, read
