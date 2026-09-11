@@ -12,7 +12,7 @@
 
 ## Release Status Risks
 
-These statements describe the reconciled evidence as of September 10, 2026. Reverify
+These statements describe the reconciled evidence as of September 11, 2026. Reverify
 before reporting live status.
 
 | Risk | Last Recorded State | Closure |
@@ -21,7 +21,7 @@ before reporting live status.
 | No isolated `-2` staging exists | former function and all versions were removed | recreate only after Viking is fully green |
 | Newer source runs only on Viking | `0.1.140`/`2.0.68` passed focused checks only | finish A-D, human barge-in, webcam, capture/NGC, and listening before promotion |
 | One focused matrix can be overstated | current v2 has strong live-model and focused audio results | complete every independent promotion gate |
-| True Astra production does not exist | retained live UI used Astra `stg` infrastructure | create a separate Astra `prd` deployment with required governance |
+| Astra production is not fully qualified | `prd` is Healthy/Synced and greeting smokes passed; no user-turn or full SQA ran | retain `stg`; complete production voice, tool, media, capture, and full SQA gates |
 
 Do not collapse these into “production is good” or “staging is current.”
 
