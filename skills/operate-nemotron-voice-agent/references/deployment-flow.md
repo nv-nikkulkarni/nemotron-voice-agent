@@ -25,8 +25,8 @@ flowchart LR
     CHART["Immutable Helm chart"]
     V["Viking local Kubernetes"]
     S["Recreate NVCF + Astra isolated -2 staging"]
-    P["NVCF production + retained Astra UI"]
-    PRD["Future true Astra prd environment"]
+    P["NVCF production + Astra staging UI"]
+    PRD["Astra prd replica"]
 
     SRC --> APP
     SRC --> UI
@@ -36,17 +36,17 @@ flowchart LR
     CHART --> V
     V -->|"all gates green"| S
     S -->|"explicit go/no-go"| P
-    P -->|"separate platform migration"| PRD
+    P -->|"Fusion replication + NSPECT"| PRD
 ```
 
 - **Viking:** local Kubernetes qualification with local UI/proxy and existing inference
   services where possible.
 - **Isolated staging:** a separately named NVCF function and Astra app, historically using
   a `-2` suffix, so it cannot affect the retained live UI.
-- **Production:** the retained serving NVCF function and Astra app.
-- **True Astra production:** an Astra `prd` cluster, role, Vault path, ingress, and NSPECT
-  boundary. A UI in Astra `stg` that points to a production NVCF function is not a true
-  Astra production deployment.
+- **Production:** the retained serving NVCF function plus the Astra `prd` replica. Fusion
+  promoted it on September 11, 2026, while retaining the Astra `stg` source deployment.
+- **Astra production boundary:** a distinct `prd` cluster, role, Vault path, ingress, and
+  NSPECT record. Platform health and greeting smoke do not replace full SQA.
 
 Never skip Viking because an image built successfully. Never call isolated staging
 production because it uses production-like NIMs.

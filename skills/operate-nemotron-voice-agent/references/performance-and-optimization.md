@@ -181,7 +181,8 @@ Prioritize evidence-backed work:
 9. replace shallow proxy `/health` with an unambiguous backend readiness route/contract;
 10. consider durable shared object storage if capture survival across SeaweedFS restart is
     required; and
-11. provision a true Astra `prd` boundary when governance and environment isolation matter.
+11. retain the Astra `prd` boundary and measure it separately from `stg` after completing
+    the production qualification gates.
 
 Treat these as hypotheses until measured:
 

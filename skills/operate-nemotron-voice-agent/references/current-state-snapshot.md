@@ -14,13 +14,15 @@
 ## Purpose and Evidence Date
 
 Use this file for orientation, then query the live systems again before mutating or
-reporting them. The snapshot was reconciled on **September 10, 2026** after a workstation
-disk failure and repository reconstruction.
+reporting them. The snapshot was reconciled on **September 11, 2026** after the Astra
+staging-to-production replication.
 
 Evidence labels mean:
 
-- **Live-verified:** queried from the platform on September 10, 2026.
-- **Publicly verified:** returned by the public Astra endpoint on September 10, 2026.
+- **Live-verified:** queried from the applicable platform on the date stated in its
+  section. Astra promotion state was queried on September 11, 2026; Viking and NVCF
+  state below retain their September 10 evidence dates.
+- **Publicly verified:** returned by the public Astra endpoint on September 11, 2026.
 - **Checked-in:** read from current source at the exact branch head below.
 - **Historically verified:** retained in a dated report or deployment source of truth.
 - **Unqualified:** deployed or smoke-tested, but the full required gate set is not green.
@@ -146,26 +148,33 @@ asynchronous started-plus-final result envelope.
 
 ## Astra UI
 
-The last authoritative Fusion-controlled snapshot is historical because Fusion
-authentication had expired by the September 10 reconciliation. Run
-`fusion login --reauth`, load the `fusion` skill, and export/read the app before asserting
-that it is still current.
+Fusion 0.34.0 used native `fusion deploy replicate` to copy
+`nemotron-voice-agent-deploy` from staging to production on September 11, 2026. Staging
+remains retained. The promotion used NSPECT
+`NSPECT-EN4P-2958`; task
+`deployment-helmchart-replicate-stg-prd-1789126548-56d49eee` completed in 141 seconds.
+Fusion copied the Vault secret server-side, generated production values/environment
+commits, and completed Argo onboarding without printing secret values.
 
-Last live-verified serving values:
+Live-verified serving values:
 
 | Item | Value |
 |---|---|
 | Astra app | `nemotron-voice-agent-deploy` |
-| Public URL | `https://nemotron-voice-agent-deploy-backend.stg.astra.nvidia.com` |
-| Physical environment | Astra `stg`, not a true `prd` deployment |
+| Production URL | `https://nemotron-voice-agent-deploy-backend.prd.astra.nvidia.com` |
+| Production state | `Healthy` and `Synced` on `astraprd01-ocp-pdx04` |
+| Production revision | `8b0d7572294c`; created September 11, 2026, at 11:37:43 UTC |
+| Staging URL | `https://nemotron-voice-agent-deploy-backend.stg.astra.nvidia.com` |
+| Staging state | Retained, `Healthy` and `Synced` on `astrastg01-ocp-pdx04`; current revision `8b0d7572294c`, source revision before replication `2a3a6e9de649` |
 | UI tag | `2.0.75-178e45b` |
 | UI source | `178e45b647d7cb1f78c192cbd06b82887283ebf4` |
 | Values source | `fe8df15f78a0d2d7e2bad6eb0268ddcdd8420fd7` |
 | UI image digest | OCI index `sha256:33565f212723680ba06d023f15915ead1b55ede450276074a28f4cc022288071`, AMD64 `sha256:d8dc3730cfa4d294f7eb6ececf8c7dae05ee29e3b8411beca495c1e3db91ec3a` |
-| Vault path | `fusion/astra/nemotron-voice-agent-astra/nemotron-voice-agent-deploy/stg` |
+| Production Vault path | `fusion/astra/nemotron-voice-agent-astra/nemotron-voice-agent-deploy/prd` |
+| Staging Vault path | `fusion/astra/nemotron-voice-agent-astra/nemotron-voice-agent-deploy/stg` |
 | Deployment layer | `nemotron-voice-agent-astra` |
 
-The public endpoint returned these values on September 10:
+The production public endpoint returned these values on September 11:
 
 - deployment timestamp `2026-09-07T21:00:50Z`;
 - `sessionSeconds: 600`;
@@ -173,10 +182,27 @@ The public endpoint returned these values on September 10:
 - `selfHostedOnly: true`; and
 - session recording enabled.
 
-The browser-visible bundle names differed from the last checked-in deployment snapshot.
-Treat this as a reason to query `/config.js` and `/api/deployment`, not as proof of a bad
-deployment. `/health` returned SPA HTML with HTTP 200 through Astra rather than backend
-health JSON; this is a reverse-proxy routing gotcha and a shallow health signal.
+`/api/deployment` advertised both examples, WebSocket transport, 16 kHz input audio, and
+22.05 kHz output audio. Capture reported enabled, configured, ready, and required, with
+the NGC CLI and key present and S3 as the store backend. `/health` returned SPA HTML with
+HTTP 200 through Astra rather than backend health JSON; this is a reverse-proxy routing
+gotcha and not backend proof.
+
+The generated production JWT path is `jwt/astraprd01-ocp-pdx04/`, and the production
+role uses the `-prd` suffix. The exported `project.nspect_id` field is blank even though
+the Fusion task audit records the NSPECT ID twice. Treat this as a platform metadata
+nuance, not a promotion failure.
+
+Lightweight real WebSocket greeting smokes passed through the production endpoint:
+
+- Generic session `ffafd9929115` connected, reached `bot_ready`, delivered 2.29 seconds
+  of 22.05 kHz welcome audio with first audio in 0.610 seconds, and had no receiver error.
+- Omni session `8c689400b924` connected, reached `bot_ready`, delivered 2.99 seconds of
+  22.05 kHz welcome audio with first audio in 2.596 seconds, and had no receiver error.
+
+These were deep-readiness and greeting smokes only. They did not send a user turn and do
+not constitute full voice or SQA qualification. The NVCF backend remains chart `0.1.139`
+and app `2.0.67`.
 
 ## Dedicated Speech NVCF Functions
 
@@ -207,9 +233,9 @@ function IDs to use these dedicated functions.
 
 ## Immediate Safe Next Actions
 
-1. Reauthenticate Fusion and refresh Astra/Vault/Argo state before any Astra claim.
-2. Finish full Viking A-D, microphone barge-in, webcam, capture-to-NGC, and human TTS
-   qualification for `0.1.140` before promotion.
+1. Run production user-turn voice, tool, media, and capture smoke against the `prd` URL,
+   then run the full SQA gates before calling the promotion qualified.
+2. Retain the Astra staging deployment until the production validation is complete.
 3. Preserve NVCF `0.1.139` as serving and `0.1.138` as rollback until a fully qualified
    replacement is ACTIVE and smoke-tested.
 4. Back up or push the dedicated speech-functions branch after a secret/history scan.
