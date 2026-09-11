@@ -234,7 +234,7 @@ states. Do not delete backup refs or GitLab branches as part of ordinary feature
 
 ## Release Truth
 
-At the September 10, 2026 reconciliation:
+At the September 11, 2026 reconciliation:
 
 - the active v2 source contains chart `0.1.140` and `appVersion: 2.0.68`;
 - Viking release `p7` revision 5 runs `0.1.140`/`2.0.68` and passed focused, not full,
@@ -242,7 +242,8 @@ At the September 10, 2026 reconciliation:
 - the main NVCF function serves `0.1.139`/`2.0.67`, with `0.1.138`/`2.0.66` as its sole
   inactive rollback;
 - the former isolated `-2` function and its versions were removed;
-- the last Fusion-verified Astra UI was `2.0.75-178e45b` in physical Astra `stg`; and
+- Fusion-verified Astra `stg` and `prd` both serve UI `2.0.75-178e45b` at Argo revision
+  `8b0d7572294c`; and
 - full SQA was not green for the main NVCF/Astra rollout.
 
 Read [Current State Snapshot](current-state-snapshot.md) for exact identities and evidence

@@ -122,7 +122,7 @@ NVCF secrets are version-scoped and must be supplied every time.
 | New deployment cannot be distinguished visually | no UI artifact timestamp | render build/deployed time in small UI text and `/config.js` | Implemented |
 | Latency breakdown disappears | Frontend/Backend pipeline did not emit expected observer events | wire latency observer/event output in active pipeline and test through UI | Implemented |
 | Secure tunnel warns and asks for username/password | tunnel trust/interstitial or access protection, not app auth | configure the chosen proxy/tunnel; verify direct local UI separately | Operational |
-| “Production” Astra URL still contains `stg` | retained UI lives in Astra staging infrastructure while targeting prod NVCF | treat true Astra `prd` as a separate promotion with prd Vault/role/ingress/NSPECT | Open platform task |
+| “Production” Astra URL still contained `stg` | retained UI lived in Astra staging infrastructure while targeting prod NVCF | Fusion replicated the exact UI to `prd` with a separate Vault/role/ingress and NSPECT; retain `stg` until full production SQA | Platform promotion complete; full qualification pending |
 | Fusion inspection fails | CLI token expired or wrong environment | run Fusion login/reauth and verify target before mutation | Operational |
 
 ## SQA Oracle Failures

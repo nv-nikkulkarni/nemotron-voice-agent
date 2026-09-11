@@ -8,7 +8,7 @@ for durable architecture, deployment, SQA, incident, and risk knowledge. Query N
 Astra before reporting current status, and keep exact candidate outcomes in versioned SQA
 reports.
 
-**Production snapshot verified:** September 7, 2026 (Asia/Kolkata)
+**Production snapshot verified:** September 11, 2026 (Asia/Kolkata)
 
 **Viking qualification candidate verified:** September 9, 2026 (Asia/Kolkata)
 
@@ -29,7 +29,8 @@ remain chart `0.1.140` and app `2.0.68`
 
 **UI deployment-values source:** `fe8df15f78a0d2d7e2bad6eb0268ddcdd8420fd7`
 
-**Astra Argo revision:** `2a3a6e9d`
+**Astra Argo revision:** staging and production `8b0d7572294c`; staging source
+before replication `2a3a6e9de649`
 
 **Scope:** browser UI, Astra proxy, NVCF function, Helm workloads, Pipecat pipelines, model services, Redis, SeaweedFS, capture-to-NGC, concurrency, secrets, operations, and promotion
 
@@ -87,7 +88,14 @@ The retained experience is a two-platform system:
 5. **Redis and SeaweedFS solve different concurrency problems.** Redis carries small live coordination/configuration and media streams; SeaweedFS is the shared S3-compatible staging store for capture artifacts. Both are required for replica-safe session capture.
 6. **Session capture is entirely in the app process.** Pipeline teardown and browser consent are independent signals recorded in Redis. Exactly one replica wins a token-owned lock, reads artifacts from SeaweedFS, builds a tarball, and publishes an NGC resource version named with the session ID.
 7. **The two selectable experiences are Generic Assistant and Nemotron Omni Assistant Subagents.** Generic is a cascaded ASR → text LLM → tools → TTS pipeline. Omni uses an audio-capable model plus a Pipecat worker bus with Speaker, Media Analyzer, Webcam, and Thinker roles, followed by external TTS.
-8. **The owner directed an unqualified main production rollout.** The main NVCF function runs chart `0.1.139` and app `2.0.67` as the only ACTIVE project deployment; `0.1.138` is its sole INACTIVE rollback. The isolated `-2` function and all its versions were deleted after graceful undeploy. The main Astra app runs UI `2.0.75` in physical `stg` infrastructure, not a true Astra `prd` deployment.
+8. **Astra now serves the same UI in staging and production.** Fusion replicated
+   `nemotron-voice-agent-deploy` from `stg` to `prd` under NSPECT
+   `NSPECT-EN4P-2958`. Production is `Healthy` and `Synced` on
+   `astraprd01-ocp-pdx04`; staging remains retained. Both environments use UI
+   `2.0.75-178e45b` and the unchanged main NVCF backend at chart `0.1.139` and
+   app `2.0.67`. Public HTTP/configuration smoke and lightweight Generic and
+   Omni WebSocket greeting smokes passed. No user-turn or full SQA qualification
+   ran.
 9. **A newer candidate runs only on Viking.** Chart `0.1.140` runs app
    `2.0.68` with bounded dependent planning, guarded internal-mechanics output,
    weather-only hybrid rephrasing, and a bot-aware interruption threshold. The
@@ -99,8 +107,8 @@ The retained experience is a two-platform system:
 flowchart TB
     U["User browser<br/>React + Pipecat Client SDK<br/>mic, speaker, webcam, uploads"]
 
-    subgraph ASTRA["Astra — retained live UI, currently in stg infrastructure"]
-      ING["Astra ingress<br/>*.stg.astra.nvidia.com"]
+    subgraph ASTRA["Astra — production UI; staging source retained"]
+      ING["Astra prd ingress<br/>*.prd.astra.nvidia.com"]
       UI["nginx-unprivileged :7860<br/>serves astra_client SPA<br/>renders runtime config.js"]
       VX["Vault → ExternalSecret<br/>NVCF_HOST<br/>NVCF_FUNCTION_ID<br/>NVIDIA_API_KEY"]
       VX --> UI
@@ -190,9 +198,11 @@ flowchart TB
 | App image | `nvcr.io/0491162300748285/nemotron-voice-agent:2.0.67`; OCI index `sha256:5e4184b7ad995fa656870e8a33ccd90037be5585227727ad25970ee8093f3e0e`; AMD64 manifest `sha256:1e8cabb7dbf38a035e4cdb902b01ae8d9630865b9202693157c8ea8eac594515` | Published artifact and active chart |
 | App source | `82697e8f45c6de3dbc5565962113933c8c0ae951` | Pushed current branch and immutable release source |
 | Deleted main versions | `453e2bce-d59b-4683-9d20-74e56c021003` (`0.1.103`) and failed `d5d70d49-2e25-47cf-9ccf-974216c51958` (`0.1.138`) | Deleted during cleanup |
-| Astra app | `nemotron-voice-agent-deploy` | Fusion update succeeded |
-| Astra URL | `https://nemotron-voice-agent-deploy-backend.stg.astra.nvidia.com` | Live-verified |
-| Astra state and revision | `Synced` and `Healthy`; Argo revision `2a3a6e9d` | Live-verified |
+| Astra app | `nemotron-voice-agent-deploy` | Fusion replication succeeded |
+| Astra production URL | `https://nemotron-voice-agent-deploy-backend.prd.astra.nvidia.com` | Publicly verified |
+| Astra production state and revision | `Synced` and `Healthy` on `astraprd01-ocp-pdx04`; Argo revision `8b0d7572294c`; created September 11, 2026, at 11:37:43 UTC | Live-verified through Fusion |
+| Astra staging URL | `https://nemotron-voice-agent-deploy-backend.stg.astra.nvidia.com` | Retained source deployment |
+| Astra staging state and revision | Retained, `Synced`, and `Healthy` on `astrastg01-ocp-pdx04`; current Argo revision `8b0d7572294c`; source revision before replication `2a3a6e9de649` | Live-verified |
 | Astra UI image | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.75-178e45b`; OCI index `sha256:33565f212723680ba06d023f15915ead1b55ede450276074a28f4cc022288071`; AMD64 manifest `sha256:d8dc3730cfa4d294f7eb6ececf8c7dae05ee29e3b8411beca495c1e3db91ec3a` | Live-verified from Fusion export |
 | Superseded UI artifact | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.74-178e45b`; OCI index `sha256:5de39a452664fddbb6a3edac0a0a7cb27d7a7ea6fde4138e5e2a9b1ad236d593`; AMD64 manifest `sha256:b64bccb6d44aa23ddffd999bdbc879f5f92d57cbb99bad2d8f05b60c50d8c00b` | Briefly deployed; runtime content was correct, but the OCI revision label referenced a nonexistent expanded SHA |
 | Known-good UI rollback | `artifactory.nvidia.com/it-astra-docker-local/nemotron-voice-agent/nemotron-voice-agent-ui:2.0.73-56e7738`; OCI index `sha256:92070edbd42e90a0b5d796ede42e797f66b7f3e93531ebe4bbd7865ae963a638`; AMD64 manifest `sha256:6d9ad5589e75690fb2b72de52e74d1821a343ffbc480615303f31ffd9c806394` | Previous deployed UI artifact |
@@ -204,12 +214,16 @@ flowchart TB
 | UI deployment-values source | `fe8df15f78a0d2d7e2bad6eb0268ddcdd8420fd7` | GitHub deployment-values commit |
 | Deployment source | `dev/nikkulkarni/nvcf-deploy-rebased` at `82697e8f45c6de3dbc5565962113933c8c0ae951` | Pushed and current |
 | UI build timestamp | `2026-09-07T21:00:50Z` | Live-verified from Fusion export and public `config.js` |
-| Astra infrastructure environment | Operational production UI in physical `stg` infrastructure | Live-verified |
+| Astra infrastructure environment | Production replica in physical `prd`; source deployment retained in physical `stg` | Live-verified |
+| Astra promotion task | `deployment-helmchart-replicate-stg-prd-1789126548-56d49eee`; completed in 141 seconds through Fusion 0.34.0 with NSPECT `NSPECT-EN4P-2958` | Fusion task audit |
+| Astra production Vault path | `fusion/astra/nemotron-voice-agent-astra/nemotron-voice-agent-deploy/prd` | Fusion-generated production values |
 | Isolated `-2` NVCF | No function in current project inventory; versions `0.1.115`, `0.1.123`, `0.1.129`, and `0.1.130` were deleted after graceful undeploy | Live-verified cleanup |
-| Capture status | Enabled, upload required, upload ready, and zero pending items | Live-verified through Astra |
+| Capture status | `enabled`, `target_configured`, `upload_ready`, `upload_required`, `ngc_cli_present`, and `ngc_key_present` are true; `store_backend` is `s3` | Publicly verified through production Astra |
 | Public runtime config | `sessionSeconds=600`; Generic Frontend/Backend Agent and Omni Assistant Subagents enabled | Live-verified from `config.js` |
 | Public bundles | Stable root loaded `index-BmrhTPv2.js` and `index-7D6fAwDC.css` | Live-verified |
-| Public smoke | Bundle strings contain the Omni identifier, **End-to-end latency**, **Browser-observed end-to-end latency**, and **Time to first audio**; CSS contains the `right: 326px` and mobile `right: 318px` timer rules | Focused public UI smoke |
+| Production public HTTP smoke | Root returned HTTP 200 HTML; `config.js` returned HTTP 200 JavaScript; `/api/deployment` advertised Generic and Omni, WebSocket transport, 16 kHz input, and 22.05 kHz output. `/health` returned SPA HTML with HTTP 200 and is not backend proof | Focused public UI/configuration smoke |
+| UI bundle feature smoke | Bundle strings contain the Omni identifier, **End-to-end latency**, **Browser-observed end-to-end latency**, and **Time to first audio**; CSS contains the `right: 326px` and mobile `right: 318px` timer rules | Historical focused UI smoke for the preserved UI artifact |
+| Production WebSocket greeting smoke | Generic session `ffafd9929115`: connected, `bot_ready=true`, 2.29 seconds of 22.05 kHz welcome audio, first audio in 0.610 seconds, and no receiver error. Omni session `8c689400b924`: connected, `bot_ready=true`, 2.99 seconds of 22.05 kHz welcome audio, first audio in 2.596 seconds, and no receiver error | Checked-in Python harness; deep-readiness/greeting smoke only, with no user turn |
 | Prior UI validation | Unit tests, scoped lint, and production build passed for UI `2.0.73` | Historical validation; not current full SQA |
 | Behavior validation | Exact BMI replay 10/10; full Talker live matrix 140/140; focused unit tests 7/7; related agent and Helm suite 136 passed | Targeted tests and live model evaluation |
 | Formal SQA phase status | A and B failed; C and D are formal passes | Preserved formal phase results |
@@ -219,8 +233,17 @@ Chart `0.1.139` and app `2.0.67` are ACTIVE on the main NVCF function. The
 prior `0.1.138` version is now INACTIVE and is the sole rollback. The redundant
 `0.1.103` version and the failed `0.1.138` version were deleted. The isolated
 `-2` function was gracefully undeployed, and all 4 of its versions were
-deleted. It no longer appears in the project inventory. The main Astra health
-endpoint remains HTTP 200.
+deleted. It no longer appears in the project inventory. The Astra staging app
+remains available, and the production replica is `Healthy` and `Synced`.
+
+Fusion copied the required Vault secret server-side during replication. No
+secret value was printed. The generated production configuration changes the
+JWT authentication path to `jwt/astraprd01-ocp-pdx04/`, uses the `-prd` role
+suffix, and reads `dataFrom` key
+`fusion/astra/nemotron-voice-agent-astra/nemotron-voice-agent-deploy/prd`.
+The exported `project.nspect_id` field is blank even though the Fusion task
+audit records `NSPECT-EN4P-2958` twice. Treat that discrepancy as a platform
+metadata nuance, not a failed promotion.
 
 The current chart explicitly selects `direct` Generic tool-result delivery.
 Trusted deterministic backend text therefore reaches speech without a second
@@ -459,23 +482,25 @@ This evidence is a focused Viking smoke, not complete qualification. Full SQA
 suites A through D and the manual human-microphone interruption reproduction
 remain pending. The automated non-verbal equivalent passed.
 
-### 2.5 Important Naming Truth: “Live/Prod” Versus Astra `prd`
+### 2.5 Astra Staging and Production Truth
 
-The retained UI is called the production app in project operations, and it points to the production NVCF function. It is **not yet an Astra production-environment deployment**.
+The UI now has an Astra production-environment replica. The staging deployment
+is retained as the promotion source and rollback reference. Both point to the
+same production NVCF function.
 
 ```text
-Current:
+Retained source:
   Astra stg cluster + stg ingress + stg Vault path
-      → retained live UI
+      → staging UI
       → production NVCF function
 
-Target:
+Promoted production:
   Astra prd cluster + prd ingress + prd Vault path
       → production UI
       → production NVCF function
 ```
 
-The checked-in retained values explicitly contain:
+The retained staging values explicitly contain:
 
 - `fusionv12.environment: stg`
 - `project.deploymentEnv: stg`
@@ -484,7 +509,11 @@ The checked-in retained values explicitly contain:
 - Vault role ending `-stg`
 - shared secret path ending `/stg`
 
-A true Astra production promotion requires a production deployment on `astraprd01-ocp-pdx04`, a production Vault path, generated production ingress/role values, and an NSPECT ID. Do not remove the retained live `stg` app until the `prd` app is deployed and qualified.
+Fusion completed the `stg` to `prd` replication on September 11, 2026. The
+production replica uses `astraprd01-ocp-pdx04`, a `.prd.astra.nvidia.com`
+ingress, the production Vault path, production JWT/role values, and NSPECT
+`NSPECT-EN4P-2958`. Retain staging until production passes the real
+voice/WebSocket and full SQA gates.
 
 ### 2.6 Live Feature Advertisement
 
@@ -1646,8 +1675,8 @@ flowchart LR
     UI --> LOCAL
     LOCAL --> STG["NVCF + Astra preview qualification"]
     STG --> PROD_N["New production NVCF function version"]
-    PROD_N --> LIVE_UI["Retained/live Astra UI target"]
-    LIVE_UI --> PRD["Future true Astra prd promotion"]
+    PROD_N --> LIVE_UI["Astra staging UI qualification"]
+    LIVE_UI --> PRD["Replicate exact UI to Astra prd"]
 ```
 
 ### 19.2 Standard qualification path
@@ -2019,20 +2048,34 @@ historical resource path was followed. It is redundant, is not consumed by NVCF
 deployment, and remains retained until deletion is explicitly authorized. Neither chart
 publication nor checksum verification qualifies the chart on Viking.
 
-### 19.4 True Astra production promotion
+### 19.4 Astra Production Promotion Record
 
-Required boundary:
+Fusion 0.34.0 used native `fusion deploy replicate` to copy
+`nemotron-voice-agent-deploy` from `stg` to `prd`
+under NSPECT `NSPECT-EN4P-2958`. Task
+`deployment-helmchart-replicate-stg-prd-1789126548-56d49eee` completed in
+141 seconds. The task copied the Vault secret server-side, generated the
+production values/environment commits, and onboarded the application to Argo.
+It did not expose secret values.
 
-1. obtain a valid NSPECT ID;
-2. replicate/create `nemotron-voice-agent-deploy` from `stg` to `prd` through the production Fusion control plane;
-3. target `astraprd01-ocp-pdx04`;
-4. create/populate the independent Vault path ending `/prd`;
-5. generate/verify `prd` environment, ingress, JWT path, role, and shared-secret path;
-6. deploy the exact already-qualified UI image;
-7. test HTTP, WebSocket, real voice, tools, media, concurrency, and capture;
-8. only then delete the retained `stg` incarnation.
+The production application is `Healthy` and `Synced` on
+`astraprd01-ocp-pdx04` at revision `8b0d7572294c`. It preserves UI image tag
+`2.0.75-178e45b`, UI timestamp `2026-09-07T21:00:50Z`, the 600-second session
+limit, and the Generic Frontend/Backend and Omni Assistant Subagents examples.
+The NVCF backend remains chart `0.1.139` and app `2.0.67`.
 
-### 19.4 Rollback units
+Public smoke verified the root page, `config.js`, and `/api/deployment`. The
+deployment advertises both examples, WebSocket transport, 16 kHz input audio,
+and 22.05 kHz output audio. Capture reports enabled, configured, ready, and
+required, with the NGC CLI and key present and S3 as its store backend.
+`/health` returned the single-page application HTML with HTTP 200, so it is not
+backend-health proof. Lightweight real WebSocket greeting smokes passed for
+Generic session `ffafd9929115` and Omni session `8c689400b924`, including
+`bot_ready` and welcome audio with no receiver error. These smokes did not send
+a user turn and do not replace full voice or SQA qualification. Keep staging
+until those production gates pass.
+
+### 19.5 Rollback Units
 
 - **UI rollback:** restore the previous JFrog image tag in the Astra deployment repository and let ArgoCD sync.
 - **NVCF rollback:** redeploy a known immutable function version/chart and repoint Astra Vault if the function ID changes.
@@ -2061,7 +2104,7 @@ Do not paste key values into shell history or reports.
 ### 20.2 Public HTTP smoke checks
 
 ```bash
-BASE=https://nemotron-voice-agent-deploy-backend.stg.astra.nvidia.com
+BASE=https://nemotron-voice-agent-deploy-backend.prd.astra.nvidia.com
 curl -fsS "$BASE/health"
 curl -fsS "$BASE/api/deployment"
 curl -fsS "$BASE/api/services?pipeline_mode=generic-assistant"
@@ -2178,7 +2221,10 @@ When documentation conflicts with executable configuration, the active immutable
 
 ## 23. Known limitations and open risks
 
-1. **Astra is not yet in `prd`.** The live UI remains on Astra staging infrastructure.
+1. **Astra production is promoted but unqualified.** The `prd` application is
+   `Healthy` and `Synced`, and its public HTTP/configuration smoke passed. Full
+   Generic and Omni WebSocket greeting smokes passed, but user-turn voice tests
+   and full SQA remain pending. Staging is retained.
 2. **Lightning automatic tool choice is model-dependent.** Reasoning-on qualification is strong, but long-session/history effects and nondeterminism require repeated testing.
 3. **No application-level session affinity exists.** Correctness relies on Redis/shared storage; a WebSocket cannot survive its owning pod’s failure.
 4. **Redis is a single ephemeral 256 MiB pod carrying binary media.** It is a correctness and capacity dependency with no persistence/HA.
@@ -2213,8 +2259,8 @@ When documentation conflicts with executable configuration, the active immutable
 | capture state | Redis two-signal coordination hash in `src/session_capture/state.py` |
 | prewarmer | chart pod that calls model services directly before/among user sessions |
 | pinned board | Omni Speaker context section holding subagent findings/current live view |
-| operational production | the currently retained user-facing UI/function pair |
-| Astra `prd` | actual Astra production control plane/cluster/environment, not yet used by the retained UI |
+| operational production | the user-facing Astra production UI and production NVCF function pair |
+| Astra `prd` | Astra production control plane on `astraprd01-ocp-pdx04`; promoted September 11, 2026 |
 
 ---
 
