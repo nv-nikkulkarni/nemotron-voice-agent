@@ -239,8 +239,9 @@ At the September 11, 2026 reconciliation:
 - the active v2 source contains chart `0.1.140` and `appVersion: 2.0.68`;
 - Viking release `p7` revision 5 runs `0.1.140`/`2.0.68` and passed focused, not full,
   qualification;
-- the main NVCF function serves `0.1.139`/`2.0.67`, with `0.1.138`/`2.0.66` as its sole
-  inactive rollback;
+- the main NVCF function serves `0.1.139`/`2.0.67`; the former
+  `0.1.138`/`2.0.66` inactive rollback was deleted after explicit authorization, so no
+  ready NVCF rollback remains;
 - the former isolated `-2` function and its versions were removed;
 - Fusion-verified Astra `stg` and `prd` both serve UI `2.0.75-178e45b` at Argo revision
   `8b0d7572294c`; and
