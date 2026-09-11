@@ -186,9 +186,9 @@ flowchart TB
 | NVCF function name | `nemotron-voice-agent` | Live-verified |
 | NVCF function ID | `81862ff8-4931-4f1e-9655-caa5b0bc5911` | Live-verified |
 | Active function version | `256d5eb0-6dc1-480b-8420-4aebcd49f29d`, chart `0.1.139`, app `2.0.67` | Live-verified |
-| Sole rollback version | `013cb57e-76b7-4567-a3f3-513461ea11da`, chart `0.1.138`, app `2.0.66`, `INACTIVE` | Live-verified |
+| NVCF rollback availability | None. Version `013cb57e-76b7-4567-a3f3-513461ea11da`, chart `0.1.138`, app `2.0.66`, was deleted after explicit authorization | Live-verified after cleanup |
 | NVCF deployment ID | `a3677b64-2b21-42d2-bb8a-16509b0e435a` | Live-verified |
-| NVCF lifecycle | `0.1.139` is the only `ACTIVE` project deployment; `0.1.138` is `INACTIVE` | Live-verified after cleanup |
+| NVCF lifecycle | `0.1.139` is the only project version and remains `ACTIVE`; no inactive project version remains | Live-verified after cleanup |
 | NVCF backend | H100 OCI `prd12` | Live-verified |
 | Prior `0.1.138` instance | `sr-03fd3e3e-d64d-4535-b85a-634ce9fefd98-miniservice` | Historical live verification |
 | NVCF instance type | `OCI.GPU.H100_8x` / `H100` | Live-verified |
@@ -197,7 +197,7 @@ flowchart TB
 | Helm chart | `0491162300748285/nemotron-voice-agent:0.1.139`; package SHA-256 `bc61a86dec3d39a597a23e673b4aa601c0d76a429aafc11fde24c9692583c18f`; `UPLOAD_COMPLETE` at `2026-09-07 14:15:06 UTC` | Published artifact and active version |
 | App image | `nvcr.io/0491162300748285/nemotron-voice-agent:2.0.67`; OCI index `sha256:5e4184b7ad995fa656870e8a33ccd90037be5585227727ad25970ee8093f3e0e`; AMD64 manifest `sha256:1e8cabb7dbf38a035e4cdb902b01ae8d9630865b9202693157c8ea8eac594515` | Published artifact and active chart |
 | App source | `82697e8f45c6de3dbc5565962113933c8c0ae951` | Pushed current branch and immutable release source |
-| Deleted main versions | `453e2bce-d59b-4683-9d20-74e56c021003` (`0.1.103`) and failed `d5d70d49-2e25-47cf-9ccf-974216c51958` (`0.1.138`) | Deleted during cleanup |
+| Deleted main versions | `453e2bce-d59b-4683-9d20-74e56c021003` (`0.1.103`), failed `d5d70d49-2e25-47cf-9ccf-974216c51958` (`0.1.138`), and former rollback `013cb57e-76b7-4567-a3f3-513461ea11da` (`0.1.138`) | Deleted during cleanup |
 | Astra app | `nemotron-voice-agent-deploy` | Fusion replication succeeded |
 | Astra production URL | `https://nemotron-voice-agent-deploy-backend.prd.astra.nvidia.com` | Publicly verified |
 | Astra production state and revision | `Synced` and `Healthy` on `astraprd01-ocp-pdx04`; Argo revision `8b0d7572294c`; created September 11, 2026, at 11:37:43 UTC | Live-verified through Fusion |
@@ -230,8 +230,10 @@ flowchart TB
 | Qualification decision | **OWNER-DIRECTED ROLLOUT; A/B FAILED; C/D FORMAL PASS; UNQUALIFIED** | The release has no complete green SQA qualification |
 
 Chart `0.1.139` and app `2.0.67` are ACTIVE on the main NVCF function. The
-prior `0.1.138` version is now INACTIVE and is the sole rollback. The redundant
-`0.1.103` version and the failed `0.1.138` version were deleted. The isolated
+prior `0.1.138` rollback was deleted after explicit authorization. The main
+function now has no inactive version and no immediately selectable NVCF
+rollback. The redundant `0.1.103` and failed `0.1.138` versions were also
+deleted. The isolated
 `-2` function was gracefully undeployed, and all 4 of its versions were
 deleted. It no longer appears in the project inventory. The Astra staging app
 remains available, and the production replica is `Healthy` and `Synced`.
@@ -252,7 +254,8 @@ Talker inference.
 The first `0.1.138` version used `--json-secret-file`, which created one
 nested secret named `secrets`. Required startup checks could not resolve the
 individual keys, and all five app pods restarted. Two deployment attempts
-failed. The corrected `0.1.138` version, now the INACTIVE rollback, uses six individual secret names:
+failed. The corrected `0.1.138` version used six individual secret names before
+its authorized deletion:
 `FINNHUB_API_KEY`, `PERPLEXITY_API_KEY`, `NGC_API_KEY`, `NVIDIA_API_KEY`,
 `SESSION_CAPTURE_NGC`, and `WEATHERAPI_KEY`. No secret values are recorded.
 
@@ -1231,9 +1234,11 @@ reach different state stores. Keep the old version available while the new
 version starts and warms, perform a controlled cutover, and retire the old
 version before stateful qualification.
 
-The current project inventory follows this steady-state boundary:
-`0.1.139` is the only ACTIVE version, `0.1.138` is the sole INACTIVE rollback,
-and the former isolated `-2` NVCF function has been removed.
+The current project inventory follows this steady-state boundary: `0.1.139` is
+the only main-function version and remains ACTIVE, no inactive project version
+or ready NVCF rollback remains, and the former isolated `-2` NVCF function has
+been removed. A rollback now requires recreating a known immutable version and
+repointing Astra if its function identifier changes.
 
 ---
 
@@ -2064,6 +2069,12 @@ The production application is `Healthy` and `Synced` on
 limit, and the Generic Frontend/Backend and Omni Assistant Subagents examples.
 The NVCF backend remains chart `0.1.139` and app `2.0.67`.
 
+On September 11, 2026, the inactive `0.1.138` rollback version
+`013cb57e-76b7-4567-a3f3-513461ea11da` was deleted after explicit
+authorization. The serving `0.1.139` version and deployment were not changed,
+and all three dedicated speech deployments remained ACTIVE. The main function
+therefore has no ready NVCF rollback version.
+
 Public smoke verified the root page, `config.js`, and `/api/deployment`. The
 deployment advertises both examples, WebSocket transport, 16 kHz input audio,
 and 22.05 kHz output audio. Capture reports enabled, configured, ready, and
@@ -2078,7 +2089,7 @@ until those production gates pass.
 ### 19.5 Rollback Units
 
 - **UI rollback:** restore the previous JFrog image tag in the Astra deployment repository and let ArgoCD sync.
-- **NVCF rollback:** redeploy a known immutable function version/chart and repoint Astra Vault if the function ID changes.
+- **NVCF rollback:** no ready rollback version exists. Recreate a known immutable function version/chart and repoint Astra Vault if the function ID changes.
 - **Secret rollback:** restore previous Vault/function-version secret values; remember NVCF versions are immutable and may require recreation rather than mutation.
 - **Data rollback:** Redis/SeaweedFS are ephemeral and not a rollback mechanism. NGC versions are the durable capture record.
 

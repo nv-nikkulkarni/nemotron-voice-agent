@@ -122,7 +122,7 @@ Subagents with a 600-second session limit.
 
 ## Main NVCF Function
 
-Live-verified on September 10, 2026:
+Live-verified on September 11, 2026:
 
 | Item | Value |
 |---|---|
@@ -135,12 +135,14 @@ Live-verified on September 10, 2026:
 | Scale/concurrency | min 1, max 1, request concurrency ceiling 100 |
 | Chart package | `0491162300748285/nemotron-voice-agent:0.1.139`, SHA-256 `bc61a86dec3d39a597a23e673b4aa601c0d76a429aafc11fde24c9692583c18f` |
 | App image | `2.0.67`, OCI index `sha256:5e4184b7ad995fa656870e8a33ccd90037be5585227727ad25970ee8093f3e0e`, AMD64 `sha256:1e8cabb7dbf38a035e4cdb902b01ae8d9630865b9202693157c8ea8eac594515` |
-| Rollback version | `013cb57e-76b7-4567-a3f3-513461ea11da`, `0.1.138` / `2.0.66`, INACTIVE |
+| Rollback availability | None. The former `0.1.138` / `2.0.66` version `013cb57e-76b7-4567-a3f3-513461ea11da` was deleted after explicit authorization |
 | Qualification | owner-directed deployment; full SQA not green |
 
-Exactly one project version was ACTIVE and one rollback INACTIVE. Earlier redundant main
-versions were deleted. The former isolated `nemotron-voice-agent-2` function was gracefully
-undeployed and all its versions deleted.
+Exactly one project version remains, and it is ACTIVE. No inactive project version or ready
+NVCF rollback remains. Earlier redundant main versions were deleted. The former isolated
+`nemotron-voice-agent-2` function was gracefully undeployed, and all its versions were
+deleted. The serving deployment and the three dedicated speech deployments remained ACTIVE
+during the final inactive-version cleanup.
 
 The production chart explicitly uses Generic `direct` tool-result delivery. It therefore
 speaks trusted grounded backend text without asking Lightning to interpret Pipecat's
@@ -236,8 +238,8 @@ function IDs to use these dedicated functions.
 1. Run production user-turn voice, tool, media, and capture smoke against the `prd` URL,
    then run the full SQA gates before calling the promotion qualified.
 2. Retain the Astra staging deployment until the production validation is complete.
-3. Preserve NVCF `0.1.139` as serving and `0.1.138` as rollback until a fully qualified
-   replacement is ACTIVE and smoke-tested.
+3. Preserve NVCF `0.1.139` as serving. No ready NVCF rollback remains, so recreate a known
+   immutable version before any serving-version replacement or risky backend change.
 4. Back up or push the dedicated speech-functions branch after a secret/history scan.
 5. Rotate credentials that were pasted into prior chat history; never copy those values
    into Git, docs, shell history, or this skill.
