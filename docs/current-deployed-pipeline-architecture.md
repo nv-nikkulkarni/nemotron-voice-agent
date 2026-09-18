@@ -282,6 +282,33 @@ revision label referenced a nonexistent expanded behavior SHA. UI `2.0.73` is
 the known-good functional rollback. UI `2.0.72`, UI `2.0.71`, UI `2.0.70`, and
 UI `2.0.68` preserve older deployment history.
 
+### 2.1.1 Standalone Lightning NVCF Function
+
+Observed on September 18, 2026:
+
+| Item | Value | Evidence class |
+|---|---|---|
+| Function | `nva-nemotron-3-5-lightning` | Live-verified |
+| Function/version | `9e6b5886-1474-4108-80d6-0cff9ba41fab` / `f419f631-bc0f-4d0e-90e8-0cbf70de5181` | Live-verified |
+| Deployment/instance | `09f84b02-7ac3-499e-a025-78a571b38663` / `sr-da8de044-a83f-407f-b8fb-b7ad57729378-miniservice` | Live-verified |
+| Backend/shape | `nvcf-dgxc-k8s-oci-nrt-prd12-1`; `OCI.GPU.H100_1x`; min/max `1/1`; concurrency `8` | Live-verified |
+| Chart/service | `0491162300748285/nemotron-voice-agent:0.1.139`; `nemotron-lightning` | Live-verified |
+| Image | `nvcr.io/0491162300748285/nemotron-lightning-selfcontained:2.0.9-variant`; digest `sha256:67294eff48e39459267c01bdbd0fd37adcd01b76b6c022464884c775f7492e91` | Live-verified |
+| Source | `3bd7ffb`; override `nvcf_helm/values-lightning-standalone.yaml` | Pushed source |
+| Routes | inference `/v1/chat/completions:8000`; health `/v1/health/ready:8000` | Live-verified |
+| State | `ACTIVE` / `RUNNING` | Health-gate evidence only |
+| Qualification | Chat, tool-call, concurrency, latency, and served-model-ID checks remain pending | Unqualified |
+
+The deployment reuses chart `0.1.139` and applies the Lightning-only override
+at deployment time. Its rendered configuration scales the application to zero
+and disables every unrelated model and state service. The only function-version
+secret name is `NVIDIA_API_KEY`; no value is recorded.
+
+The NGC control-plane credential returned `HTTP 401` at the public inference
+route, which confirms that it is not an invocation credential. No
+invocation-authorized key was available for a functional smoke. The main NVCF
+function and both Astra environments remained unchanged.
+
 ### 2.2 Historical Isolated Staging Candidate
 
 The isolated `nemotron-voice-agent-2` NVCF function was gracefully undeployed.

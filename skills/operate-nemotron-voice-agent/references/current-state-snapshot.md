@@ -8,20 +8,23 @@
 4. [Local UI and Utilities](#local-ui-and-utilities)
 5. [Main NVCF Function](#main-nvcf-function)
 6. [Astra UI](#astra-ui)
-7. [Dedicated Speech NVCF Functions](#dedicated-speech-nvcf-functions)
-8. [Immediate Safe Next Actions](#immediate-safe-next-actions)
+7. [Standalone Lightning NVCF Function](#standalone-lightning-nvcf-function)
+8. [Dedicated Speech NVCF Functions](#dedicated-speech-nvcf-functions)
+9. [Immediate Safe Next Actions](#immediate-safe-next-actions)
 
 ## Purpose and Evidence Date
 
 Use this file for orientation, then query the live systems again before mutating or
 reporting them. The snapshot was reconciled on **September 11, 2026** after the Astra
-staging-to-production replication.
+staging-to-production replication. The standalone Lightning section was refreshed on
+**September 18, 2026**.
 
 Evidence labels mean:
 
 - **Live-verified:** queried from the applicable platform on the date stated in its
-  section. Astra promotion state was queried on September 11, 2026; Viking and NVCF
-  state below retain their September 10 evidence dates.
+  section. Standalone Lightning was queried on September 18, 2026; Astra promotion
+  state was queried on September 11, 2026; Viking and the main NVCF function retain
+  their earlier evidence dates.
 - **Publicly verified:** returned by the public Astra endpoint on September 11, 2026.
 - **Checked-in:** read from current source at the exact branch head below.
 - **Historically verified:** retained in a dated report or deployment source of truth.
@@ -205,6 +208,37 @@ Lightweight real WebSocket greeting smokes passed through the production endpoin
 These were deep-readiness and greeting smokes only. They did not send a user turn and do
 not constitute full voice or SQA qualification. The NVCF backend remains chart `0.1.139`
 and app `2.0.67`.
+
+## Standalone Lightning NVCF Function
+
+Live-verified on September 18, 2026:
+
+| Item | Value |
+|---|---|
+| Function name | `nva-nemotron-3-5-lightning` |
+| Function ID | `9e6b5886-1474-4108-80d6-0cff9ba41fab` |
+| Version ID | `f419f631-bc0f-4d0e-90e8-0cbf70de5181` |
+| Deployment ID | `09f84b02-7ac3-499e-a025-78a571b38663` |
+| Instance/pod | `sr-da8de044-a83f-407f-b8fb-b7ad57729378-miniservice` / `mini-service-nemotron-voice-agent-llm-lightning-588fcf6c444zxjn` |
+| Backend/shape | `nvcf-dgxc-k8s-oci-nrt-prd12-1`; `OCI.GPU.H100_1x`; min/max `1/1`; concurrency `8` |
+| Chart/service | `0491162300748285/nemotron-voice-agent:0.1.139`; `nemotron-lightning` |
+| Image | `nvcr.io/0491162300748285/nemotron-lightning-selfcontained:2.0.9-variant`; digest `sha256:67294eff48e39459267c01bdbd0fd37adcd01b76b6c022464884c775f7492e91` |
+| Source/override | `3bd7ffb`; `nvcf_helm/values-lightning-standalone.yaml` |
+| Routes | inference `/v1/chat/completions:8000`; health `/v1/health/ready:8000` |
+| Secret name | `NVIDIA_API_KEY` |
+| State | `ACTIVE` / `RUNNING`; health-gate evidence only |
+| Qualification | Unqualified; chat, tool-call, concurrency, latency, and served-model-ID checks remain pending |
+
+The deployment reuses chart `0.1.139` and applies the checked-in
+Lightning-only override through the NVCF deployment configuration. The
+isolation audit confirmed `app.replicas: 0` and every unrelated model, state,
+capture, tracing, and prewarming component disabled.
+
+The NGC control-plane key returned `HTTP 401` at the public inference route,
+as expected because it is not an invocation credential. No
+invocation-authorized key was available for a functional smoke. The main
+`nemotron-voice-agent` function and Astra staging and production deployments
+were not modified.
 
 ## Dedicated Speech NVCF Functions
 

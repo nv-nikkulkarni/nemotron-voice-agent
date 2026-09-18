@@ -165,6 +165,7 @@ llm:
 
 ## Reference
 
+- [Deploy Standalone Nemotron 3.5 Lightning on NVCF](deploy-nvcf-lightning-function.md): isolate Lightning behind an OpenAI-compatible NVCF endpoint without deploying the voice application.
 - [Troubleshooting guide](../06-troubleshooting.md): self-hosted startup/runtime failures (tool-parser `HTTP 400`, reasoning leaking into speech, `nemotron_v3` parser not found, CUDA-graph / precision aborts) and cloud rate limits (`HTTP 429`).
 - [Configure Services](configure-services.md): how the catalog is loaded, switched, and overridden.
 - [NIM for LLMs documentation](https://docs.nvidia.com/nim/large-language-models/latest/): [support matrix](https://docs.nvidia.com/nim/large-language-models/latest/reference/support-matrix.html), [model profiles and selection](https://docs.nvidia.com/nim/large-language-models/latest/deployment/model-profiles-and-selection.html), [GPU memory / OOM troubleshooting](https://docs.nvidia.com/nim/large-language-models/latest/troubleshooting/memory.html).
