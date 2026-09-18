@@ -1,0 +1,74 @@
+# Standalone Nemotron 3.5 Lightning NVCF function overlay.
+#
+# This overlay intentionally keeps the main voice-agent function and all of its
+# stateful services out of the deployment. NVCF exposes the `nemotron-lightning`
+# Service on port 8000 as an OpenAI-compatible HTTP endpoint.
+#
+# Credentials are supplied as function-version secrets at deployment time. Do
+# not add credential values to this file.
+
+nvcf: true
+nimReadyImmediate: false
+
+# The base chart always renders the application Service/Deployment. Scale the
+# application Deployment to zero so the only running workload is Lightning.
+app:
+  replicas: 0
+
+sessionCapture:
+  enabled: false
+
+sessionStore:
+  enabled: false
+
+redis:
+  enabled: false
+
+seaweedfs:
+  enabled: false
+
+asr:
+  enabled: false
+
+asrParakeet:
+  enabled: false
+
+tts:
+  enabled: false
+
+chatterboxTts:
+  enabled: false
+
+llm:
+  enabled: false
+
+llmSuper:
+  enabled: false
+
+llmLightning:
+  enabled: true
+  vanilla: true
+  cache:
+    nvcf: true
+
+# Use the native-blob org mirror. Unlike a cross-repository layer mount, every
+# image blob is owned by the project registry and can be pulled by NVCF.
+llmLightningImage:
+  repository: nvcr.io/0491162300748285/nemotron-lightning-selfcontained
+  tag: 2.0.9-variant
+  pullPolicy: IfNotPresent
+
+omni:
+  enabled: false
+
+booking:
+  enabled: false
+
+turn:
+  enabled: false
+
+prewarm:
+  enabled: false
+
+tracing:
+  enabled: false
