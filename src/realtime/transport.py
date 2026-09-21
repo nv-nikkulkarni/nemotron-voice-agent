@@ -263,17 +263,30 @@ class RealtimeManualResponseGate(FrameProcessor):
         *,
         instructions_renderer: RealtimeInstructionsRenderer | None = None,
         session_instructions: str | None = None,
+        canonical_prompt_messages: list[dict[str, Any]] | None = None,
+        instruction_context: LLMContext | None = None,
+        instruction_renderer: RealtimeInstructionsRenderer | None = None,
     ) -> None:
-        """Bind the canonical context and its explicit public-prompt renderer."""
+        """Bind Talker history and independently verify Thinker session instructions."""
         self._llm_context = context
-        if instructions_renderer is None:
+        if canonical_prompt_messages is not None:
+            rendered = copy.deepcopy(canonical_prompt_messages)
+        elif instructions_renderer is not None:
+            if session_instructions is None:
+                raise TypeError("Realtime instruction rendering requires the canonical session instructions")
+            rendered = self._render_instructions(instructions_renderer, session_instructions)
+        else:
             return
-        if session_instructions is None:
-            raise TypeError("Realtime instruction rendering requires the canonical session instructions")
-        rendered = self._render_instructions(instructions_renderer, session_instructions)
         messages = list(context.get_messages())
         if messages[: len(rendered)] != rendered:
-            raise ValueError("Realtime instruction renderer does not reproduce the canonical prompt prefix")
+            raise ValueError("Realtime Talker prompt does not reproduce its canonical prompt prefix")
+        if instruction_context is not None:
+            if session_instructions is None or instruction_renderer is None:
+                raise TypeError("Realtime Thinker instruction verification requires instructions and a renderer")
+            expected_instructions = self._render_instructions(instruction_renderer, session_instructions)
+            thinker_messages = list(instruction_context.get_messages())
+            if thinker_messages[: len(expected_instructions)] != expected_instructions:
+                raise ValueError("Realtime Thinker prompt does not contain session.instructions verbatim")
         self._instructions_renderer = instructions_renderer
         self._canonical_prompt_messages = copy.deepcopy(rendered)
 
@@ -1362,8 +1375,9 @@ class RealtimeManualResponseGate(FrameProcessor):
                         param="response.audio.output.format",
                         error_type="server_error",
                     )
+            frozen_messages = copy.deepcopy(list(canonical_context.get_messages()))
             context = RealtimeResponseLLMContext(
-                copy.deepcopy(list(canonical_context.get_messages())),
+                frozen_messages,
                 tools=(NOT_GIVEN if canonical_context.tools is NOT_GIVEN else copy.deepcopy(canonical_context.tools)),
                 tool_choice=(
                     "auto"
@@ -1377,7 +1391,11 @@ class RealtimeManualResponseGate(FrameProcessor):
                 max_output_tokens=snapshot["max_output_tokens"],
                 parallel_tool_calls=snapshot["parallel_tool_calls"],
                 truncation=snapshot["truncation"],
-                preserve_prompt_messages=len(self._canonical_prompt_messages or ()),
+                # Service-owned responses such as the client-tool round freeze an
+                # empty context, so the canonical prompt prefix can be longer than
+                # the messages being frozen. The prefix is bounded by what is
+                # actually present.
+                preserve_prompt_messages=min(len(self._canonical_prompt_messages or ()), len(frozen_messages)),
                 run_owner_id=owner_id,
                 activation_generation=activation_generation,
             )
@@ -2362,6 +2380,14 @@ async def prepare_realtime_tools(transport: Any, llm: LLMService) -> tuple[Tools
     prepared: MCPPreparedTools = await context.mcp_runtime.prepare_session(llm)
     schema = project_function_tools(prepared.pipeline_tools) if prepared.pipeline_tools else None
     return schema, prepared.pipeline_tool_choice
+
+
+def bind_realtime_session_prompt_updates(transport: Any, owner: Any) -> None:
+    """Bind an adapter-owned atomic Talker/Thinker prompt coordinator."""
+    context = _CONTEXTS.get(transport)
+    if context is None:
+        raise RuntimeError("Realtime prompt updates require a Realtime transport")
+    context.serializer.set_session_prompt_update_owner(owner)
 
 
 def bind_realtime_context(
