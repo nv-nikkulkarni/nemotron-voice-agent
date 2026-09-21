@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from examples.frontend_backend_agent.generic.backend import GenericThinkerBackend
+from examples.frontend_backend_agent.generic.client_tools import build_client_tool_specs
 from examples.frontend_backend_agent.generic.planner import NvidiaGenericPlanner
 from examples.frontend_backend_agent.generic.tools import TOOLS, TOOLS_SCHEMA, resolve_enabled_tools
 from examples.frontend_backend_agent.src.domain import DomainBuildContext, DomainSpec
@@ -25,12 +26,16 @@ def _runtime_context() -> str:
 
 
 def _build_backend(context: DomainBuildContext) -> GenericThinkerBackend:
-    enabled_tools = resolve_enabled_tools(context.tool_names)
-    enabled_specs = tuple(TOOLS[name] for name in enabled_tools)
+    server_tools = resolve_enabled_tools(context.tool_names)
+    enabled_specs = tuple(TOOLS[name] for name in server_tools)
+    client_specs = build_client_tool_specs(context.client_tools)
+    enabled_tools = (*server_tools, *client_specs)
     planner = NvidiaGenericPlanner(
         llm=context.thinker_llm,
         system_prompt=context.thinker_prompt,
         enabled_tools=enabled_specs,
+        client_tools=context.client_tools,
+        client_instructions=context.client_instructions,
         max_tokens=context.thinker_max_tokens,
         stage_metrics=context.stage_metrics,
         model_name=context.thinker_model_name,
@@ -39,6 +44,13 @@ def _build_backend(context: DomainBuildContext) -> GenericThinkerBackend:
         planner=planner,
         tools=TOOLS,
         enabled_tools=enabled_tools,
+        client_tools=client_specs,
+        client_tool_executor=context.client_tool_executor,
+        client_tool_timeout_seconds=parse_env_float(
+            "GENERIC_CLIENT_TOOL_TIMEOUT_SECONDS",
+            25.0,
+            min_value=1.0,
+        ),
         overall_timeout_seconds=parse_env_float("GENERIC_BACKEND_TIMEOUT_SECONDS", 40.0, min_value=1.0),
         planner_timeout_seconds=parse_env_float("GENERIC_PLANNER_TIMEOUT_SECONDS", 6.0, min_value=1.0),
         on_tool_started=context.on_tool_started,

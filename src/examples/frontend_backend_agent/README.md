@@ -9,8 +9,13 @@ structured result to the Talker. The generic backend can use up to 3 planning
 rounds when later work depends on an earlier tool result.
 
 The OpenAI Realtime WebSocket can run this complete server-owned system or
-expose client-owned delegation functions. Refer to [Configure
-Tools](../../../docs/how-to/use-realtime-gateway.md#configure-tools).
+expose client-owned delegation functions. Select
+`nvidia/nemotron-realtime-generic-frontend-backend` to route client functions
+through the Generic Thinker. The Talker still sees only `call_backend` and
+`cancel_backend`; it receives a bounded capability digest instead of client
+argument schemas. The Thinker receives the complete client schemas and the
+client instructions as untrusted, lower-precedence domain policy. Refer to
+[Configure Tools](../../../docs/how-to/use-realtime-gateway.md#configure-tools).
 
 ![Frontend/Backend Agent architecture](images/frontend-backend-agent-architecture.png)
 
@@ -220,9 +225,31 @@ The following environment variables bound shared and domain-specific orchestrati
 | `THINKER_TOOL_TIMEOUT_SECONDS` | `45.0` | Bounds the shared Talker-to-backend function handler |
 | `GENERIC_PLANNER_TIMEOUT_SECONDS` | `6.0` | Bounds each generic Thinker planning round; the backend permits at most 3 rounds |
 | `GENERIC_BACKEND_TIMEOUT_SECONDS` | `40.0` | Bounds the generic planner and tool execution together |
+| `GENERIC_CLIENT_TOOL_TIMEOUT_SECONDS` | `25.0` | Bounds one parked Realtime client-tool batch before the backend returns a grounded failure |
 | `GENERIC_WEB_SEARCH_TIMEOUT_SECONDS` | `20.0` | Bounds the complete web-search tool execution inside the backend deadline |
+| `GENERIC_THINKER_MAX_TOKENS` | Catalog value | Overrides the Generic Thinker completion ceiling without changing the airline domain |
+| `GENERIC_THINKER_REASONING_BUDGET` | Catalog value | Overrides the Generic Thinker reasoning budget without changing the airline domain |
+| `REALTIME_CAPABILITY_MODE` | `static` | Uses the deterministic capability digest. `model` enables the validated, cached grouping path and fails closed to `static`. |
 | `AIRLINE_PLANNER_TIMEOUT_SECONDS` | `30.0` | Bounds airline Thinker planning; capped at the overall airline deadline |
 | `AIRLINE_BACKEND_TIMEOUT_SECONDS` | `30.0` | Bounds airline planning and tool execution together |
+
+For Generic Realtime sessions, the initial `session.update` freezes client
+tools and instructions into both model prompts. A later update that changes
+either field returns `unsupported_live_session_update`; reconnect to avoid a
+window where the Talker and Thinker disagree. The backend validates each
+client call against its declared JSON Schema, surfaces independent calls as one
+batch, waits at most 25 seconds, and resumes with the correlated outputs.
+Duplicate failures, late outputs, cancellation, and superseded generations fail
+closed. Parked state remains in the WebSocket process and is not restored after
+a disconnect.
+
+The default `static` capability digest uses the first normalized sentence of
+each effective tool description and caps each sentence at 110 characters. The
+optional `model` path sends only bounded names, description prefixes, required
+argument names, and client instructions to the Talker model. It accepts a
+strict JSON grouping, rejects invented names and policy text, caches valid
+results under the Redis `sb:cap:` namespace when Redis is available, and
+silently falls back to the static digest on any failure.
 
 The Generic Talker supplies `filler_text` in the same native `call_backend`
 selection. The runtime validates that candidate as 3 to 12 words, at most 96

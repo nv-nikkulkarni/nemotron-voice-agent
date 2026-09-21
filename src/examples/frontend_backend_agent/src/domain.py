@@ -42,6 +42,9 @@ class DomainBuildContext:
     on_tool_started: Callable[[str], Awaitable[None]] | None = None
     stage_metrics: Any = None
     thinker_model_name: str = ""
+    client_tools: tuple[Mapping[str, Any], ...] = ()
+    client_instructions: str = ""
+    client_tool_executor: Any = None
 
 
 FillerPolicy = Literal["code_authored", "planner_authored", "talker_authored"]
