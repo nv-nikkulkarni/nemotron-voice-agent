@@ -7,19 +7,24 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from openai import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
 
-from examples.frontend_backend_agent.generic.client_tools import ClientToolRoundExecutor, ClientToolSpec
+from examples.frontend_backend_agent.generic.client_tools import (
+    ClientToolRoundExecutor,
+    ClientToolSpec,
+    build_client_tool_specs,
+)
 from examples.frontend_backend_agent.generic.dispatcher import (
     PlanValidationError,
     combine_accumulated_results,
     dispatch_plan,
 )
-from examples.frontend_backend_agent.generic.planner import GenericPlanner
+from examples.frontend_backend_agent.generic.planner import GenericPlanner, GenericPlannerSessionUpdate
 from examples.frontend_backend_agent.generic.result_formatters import planner_failure, timeout_failure
 from examples.frontend_backend_agent.generic.state import GenericThinkerSessionState
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent
@@ -32,6 +37,24 @@ _PLANNER_MAX_ATTEMPTS = 2
 _PLANNER_RETRY_BACKOFF_SECONDS = 0.2
 _RETRIABLE_PLANNER_EXCEPTIONS = (TimeoutError, APIConnectionError, APITimeoutError, InternalServerError, RateLimitError)
 _MAX_PLANNING_ROUNDS = 3
+
+
+@dataclass(frozen=True, slots=True)
+class GenericBackendSessionUpdate:
+    """Prepared planner and client-tool state for one session transaction."""
+
+    planner: GenericPlannerSessionUpdate
+    client_tools: dict[str, ClientToolSpec]
+    enabled_tools: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class GenericBackendSessionSnapshot:
+    """Rollback snapshot for the dynamic Generic backend policy."""
+
+    planner: GenericPlannerSessionUpdate
+    client_tools: dict[str, ClientToolSpec]
+    enabled_tools: tuple[str, ...]
 
 
 class GenericThinkerBackend:
@@ -63,12 +86,68 @@ class GenericThinkerBackend:
         self._client_tools = dict(client_tools or {})
         self._client_tool_executor = client_tool_executor
         self._client_tool_timeout_seconds = max(1.0, client_tool_timeout_seconds)
+        self._server_enabled_tools = tuple(name for name in enabled_tools if name in self._tools)
         self._enabled_tools = enabled_tools
         self._overall_timeout_seconds = max(1.0, overall_timeout_seconds)
         self._planner_timeout_seconds = min(max(1.0, planner_timeout_seconds), self._overall_timeout_seconds)
         self._on_tool_started = on_tool_started
         self._stage_metrics = stage_metrics
         self.state = state or GenericThinkerSessionState()
+
+    @property
+    def session_instruction_context(self):
+        """Return the Thinker context that owns session.instructions verbatim."""
+        return self._planner.session_instruction_context
+
+    def render_session_instructions(self, instructions: str) -> list[dict[str, Any]]:
+        """Render the exact client-owned Thinker instruction message."""
+        return self._planner.render_session_instructions(instructions)
+
+    def prepare_session_update(
+        self,
+        *,
+        instructions: str,
+        client_tools: Sequence[Mapping[str, Any]],
+    ) -> GenericBackendSessionUpdate:
+        """Validate a live prompt/tool update without changing active state."""
+        if self.state.active_task is not None and not self.state.active_task.done():
+            raise RuntimeError("Generic planner policy cannot change during an active backend call")
+        client_specs = build_client_tool_specs(client_tools)
+        planner_update = self._planner.prepare_session_update(
+            instructions=instructions,
+            client_tools=client_tools,
+        )
+        return GenericBackendSessionUpdate(
+            planner=planner_update,
+            client_tools=client_specs,
+            enabled_tools=(*self._server_enabled_tools, *client_specs),
+        )
+
+    def snapshot_session_update(self) -> GenericBackendSessionSnapshot:
+        """Capture dynamic planner and client-tool state for rollback."""
+        return GenericBackendSessionSnapshot(
+            planner=self._planner.snapshot_session_update(),
+            client_tools=dict(self._client_tools),
+            enabled_tools=self._enabled_tools,
+        )
+
+    def commit_session_update(self, prepared: GenericBackendSessionUpdate) -> None:
+        """Install one prepared dynamic planner and client-tool policy."""
+        if not isinstance(prepared, GenericBackendSessionUpdate):
+            raise TypeError("Generic backend session update has an invalid receipt")
+        if self.state.active_task is not None and not self.state.active_task.done():
+            raise RuntimeError("Generic planner policy cannot change during an active backend call")
+        self._planner.commit_session_update(prepared.planner)
+        self._client_tools = dict(prepared.client_tools)
+        self._enabled_tools = prepared.enabled_tools
+
+    def restore_session_update(self, snapshot: GenericBackendSessionSnapshot) -> None:
+        """Restore dynamic planner and client-tool state after a failed commit."""
+        if not isinstance(snapshot, GenericBackendSessionSnapshot):
+            raise TypeError("Generic backend rollback has an invalid snapshot")
+        self._planner.restore_session_update(snapshot.planner)
+        self._client_tools = dict(snapshot.client_tools)
+        self._enabled_tools = snapshot.enabled_tools
 
     async def call(
         self,
@@ -228,7 +307,7 @@ class GenericThinkerBackend:
         except PlanValidationError:
             payload = combine_accumulated_results(accumulated_results) if accumulated_results else planner_failure()
         except Exception as exc:  # noqa: BLE001 - planner boundary fails closed
-            logger.warning(f"Generic Thinker planning failed: {type(exc).__name__}")
+            logger.warning(f"Generic Thinker planning failed: {type(exc).__name__}: {exc}")
             payload = combine_accumulated_results(accumulated_results) if accumulated_results else planner_failure()
         self.state.add_event(
             ThinkerLifecycleEvent(marker="IntermediateResponse", call_id=call_id, query=query, payload=payload)

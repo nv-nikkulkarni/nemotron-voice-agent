@@ -1208,7 +1208,12 @@ class RealtimeSessionController:
         active_tool_names = {
             tool["name"] for tool in effective_tools if isinstance(tool, dict) and isinstance(tool.get("name"), str)
         }
-        if name not in active_tool_names:
+        # Server- and delegate-owned tools come from the trusted runtime registry
+        # rather than the client-facing session, so they are never required to
+        # appear in the advertised tool set. Gating them on it would reject the
+        # Frontend/Backend delegate contract, whose tools are deliberately hidden
+        # from the Realtime client.
+        if name not in (self.server_tools | self.delegate_tools) and name not in active_tool_names:
             raise RealtimeProtocolError(
                 message=f"Model requested inactive or unknown tool {name!r}",
                 code="unknown_tool",

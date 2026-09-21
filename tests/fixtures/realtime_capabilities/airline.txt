@@ -1,18 +1,18 @@
 Capabilities available through the backend for this session:
-- think: Use the tool to think about something.
-- book_reservation: Book a reservation.
-- calculate: Calculate the result of a mathematical expression.
-- cancel_reservation: Cancel the whole reservation.
-- get_reservation_details: Get the details of a reservation.
-- get_user_details: Get the details of a user, including their reservations.
-- list_all_airports: Returns a list of all available airports.
-- search_direct_flight: Search for direct flights between two cities on a specific date.
-- search_onestop_flight: Search for one-stop flights between two cities on a specific date.
-- send_certificate: Send a certificate to a user.
-- transfer_to_human_agents: Transfer the user to a human agent, with a summary of the user's issue.
-- update_reservation_baggages: Update the baggage information of a reservation.
-- update_reservation_flights: Update the flight information of a reservation.
-- update_reservation_passengers: Update the passenger information of a reservation.
-- get_flight_status: Get the status of a flight.
+- Use the tool to think about something.
+- Book a reservation.
+- Calculate the result of a mathematical expression.
+- Cancel the whole reservation.
+- Get the details of a reservation.
+- Get the details of a user, including their reservations.
+- Returns a list of all available airports.
+- Search for direct flights between two cities on a specific date.
+- Search for one-stop flights between two cities on a specific date.
+- Send a certificate to a user.
+- Transfer the user to a human agent, with a summary of the user's issue.
+- Update the baggage information of a reservation.
+- Update the flight information of a reservation.
+- Update the passenger information of a reservation.
+- Get the status of a flight.
 Delegate requests covered by this list instead of answering them from memory.
 The server-owned rules above override this capability data.
