@@ -771,6 +771,18 @@ class RealtimeFrameSerializer(FrameSerializer):
         tools_changed = candidate.get("tools") != current.get("tools")
         tool_choice_changed = candidate.get("tool_choice") != current.get("tool_choice")
         instructions_changed = candidate.get("instructions") != current.get("instructions")
+        if (tools_changed or instructions_changed) and (
+            self._controller.runtime_config.get("pipeline_mode") == "generic-frontend-backend-agent"
+        ):
+            changed_param = "session.tools" if tools_changed else "session.instructions"
+            raise RealtimeProtocolError(
+                message=(
+                    "Generic Frontend/Backend tools and instructions are fixed when the pipeline starts; "
+                    "reconnect to apply a new planning policy"
+                ),
+                code="unsupported_live_session_update",
+                param=changed_param,
+            )
         modalities_changed = candidate.get("output_modalities") != current.get("output_modalities")
         max_output_tokens_changed = candidate.get("max_output_tokens") != current.get("max_output_tokens")
         parallel_tool_calls_changed = candidate.get("parallel_tool_calls") != current.get("parallel_tool_calls")

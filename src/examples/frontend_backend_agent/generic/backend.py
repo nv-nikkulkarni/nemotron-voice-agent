@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 from openai import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
 
+from examples.frontend_backend_agent.generic.client_tools import ClientToolRoundExecutor, ClientToolSpec
 from examples.frontend_backend_agent.generic.dispatcher import (
     PlanValidationError,
     combine_accumulated_results,
@@ -47,6 +48,9 @@ class GenericThinkerBackend:
         planner: GenericPlanner,
         enabled_tools: tuple[str, ...],
         tools: Mapping[str, ToolSpec],
+        client_tools: Mapping[str, ClientToolSpec] | None = None,
+        client_tool_executor: ClientToolRoundExecutor | None = None,
+        client_tool_timeout_seconds: float = 25.0,
         overall_timeout_seconds: float = 40.0,
         planner_timeout_seconds: float = 6.0,
         state: GenericThinkerSessionState | None = None,
@@ -56,6 +60,9 @@ class GenericThinkerBackend:
         """Create a backend with bounded planner and end-to-end deadlines."""
         self._planner = planner
         self._tools = dict(tools)
+        self._client_tools = dict(client_tools or {})
+        self._client_tool_executor = client_tool_executor
+        self._client_tool_timeout_seconds = max(1.0, client_tool_timeout_seconds)
         self._enabled_tools = enabled_tools
         self._overall_timeout_seconds = max(1.0, overall_timeout_seconds)
         self._planner_timeout_seconds = min(max(1.0, planner_timeout_seconds), self._overall_timeout_seconds)
@@ -170,6 +177,7 @@ class GenericThinkerBackend:
         on_progress: Callable[[ThinkerLifecycleEvent], Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
         accumulated_results: list[dict[str, Any]] = []
+        seen_client_calls: set[str] = set()
         try:
             async with asyncio.timeout(self._overall_timeout_seconds):
                 for planning_round in range(1, _MAX_PLANNING_ROUNDS + 1):
@@ -192,6 +200,10 @@ class GenericThinkerBackend:
                         backend_call_id=call_id,
                         accumulated_results=accumulated_results,
                         tool_ordinal_offset=len(accumulated_results),
+                        client_tools=self._client_tools,
+                        client_tool_executor=self._client_tool_executor,
+                        client_tool_timeout_seconds=self._client_tool_timeout_seconds,
+                        seen_client_calls=seen_client_calls,
                     )
                     if len(accumulated_results) == result_count_before_dispatch:
                         accumulated_results.append(round_payload)

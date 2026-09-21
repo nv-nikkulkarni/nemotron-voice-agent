@@ -80,6 +80,7 @@ class _RealtimeTransportContext:
     response_gate: RealtimeManualResponseGate
     mcp_runtime: RealtimeMCPRuntime
     idle_timeout: RealtimeServerVADIdleTimeout
+    execute_client_tool_round: RealtimeClientToolRoundExecutor
     asr_input_sequencer: RealtimeASRInputSequencer | None = None
     manual_commit_publications: _RealtimeManualCommitPublications | None = None
     observer: RealtimeLifecycleObserver | None = None
@@ -137,6 +138,10 @@ FusedServiceResponseSnapshot = tuple[
     Callable[[], None],
 ]
 RealtimeInstructionsRenderer = Callable[[str], list[dict[str, Any]]]
+RealtimeClientToolRoundExecutor = Callable[
+    [tuple[tuple[str, dict[str, Any]], ...], float],
+    Awaitable[list[str | dict[str, Any]]],
+]
 
 
 class _RealtimeManualCommitPublications:
@@ -2122,6 +2127,102 @@ def create_realtime_transport(
         if isinstance(frame, InterruptionFrame):
             serializer.cancel_output_audio(frame.id)
 
+    async def _execute_pipeline_client_tool_round(
+        calls: tuple[tuple[str, dict[str, Any]], ...],
+        timeout_secs: float,
+    ) -> list[str | dict[str, Any]]:
+        """Publish one deterministic client-tool response and await its outputs."""
+        if not calls:
+            return []
+        initial_generation = controller.interruption_generation
+        call_records = tuple((new_realtime_id("call"), name, copy.deepcopy(arguments)) for name, arguments in calls)
+        call_ids = tuple(call_id for call_id, _name, _arguments in call_records)
+        await client_tool_broker.register_direct_calls(
+            tuple((call_id, name) for call_id, name, _arguments in call_records),
+            timeout_secs=timeout_secs,
+        )
+        activated = False
+        abort: Callable[[], None] | None = None
+        try:
+            async with asyncio.timeout(timeout_secs):
+                prepared = await response_gate.prepare_deferred_service_response_snapshot(LLMContext([]))
+                if prepared is None:
+                    raise asyncio.CancelledError
+                run_context, _setup_frames, activate, abort = prepared
+                activation_generation = run_context.activation_generation
+                if activation_generation != initial_generation:
+                    abort()
+                    raise asyncio.CancelledError
+                response_id = await activate()
+                if response_id is None:
+                    raise asyncio.CancelledError
+                activated = True
+
+                async def _publish_round() -> None:
+                    async with controller.response_transition_lock:
+                        response_gate.validate_activation_generation(activation_generation)
+                        if controller.active_response_id != response_id:
+                            raise RuntimeError("Pipeline client-tool response lost ownership")
+                        events: list[dict[str, Any]] = []
+                        for call_id, public_name, arguments in call_records:
+                            pipeline_name = controller.pipeline_name_for_client_tool(public_name)
+                            if pipeline_name is None:
+                                raise RealtimeProtocolError(
+                                    message=f"Client tool {public_name!r} is not active for this session",
+                                    code="unknown_tool",
+                                    param="session.tools",
+                                )
+                            events.extend(
+                                controller.start_function_call(
+                                    call_id=call_id,
+                                    name=pipeline_name,
+                                    arguments=arguments,
+                                )
+                            )
+                        events.extend(controller.finish_response(status="completed"))
+                    await _emit_batch(events)
+
+                await serializer.run_connection_state_transition(_publish_round)
+                wait_task = asyncio.ensure_future(
+                    asyncio.gather(
+                        *(
+                            client_tool_broker.wait_direct_output(call_id=call_id, name=name)
+                            for call_id, name, _arguments in call_records
+                        )
+                    )
+                )
+                try:
+                    while not wait_task.done():
+                        if controller.interruption_generation != activation_generation:
+                            await client_tool_broker.cancel_direct_calls(call_ids)
+                            wait_task.cancel()
+                            with suppress(asyncio.CancelledError):
+                                await wait_task
+                            raise asyncio.CancelledError
+                        await asyncio.sleep(0.05)
+                    return list(await wait_task)
+                finally:
+                    if not wait_task.done():
+                        wait_task.cancel()
+        except TimeoutError:
+            await client_tool_broker.cancel_direct_calls(call_ids)
+            return [
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "client_tool_timeout",
+                        "message": f"Client tool {name!r} did not return within the parked-plan deadline",
+                    },
+                }
+                for _call_id, name, _arguments in call_records
+            ]
+        except BaseException:
+            await client_tool_broker.cancel_direct_calls(call_ids)
+            raise
+        finally:
+            if not activated and abort is not None:
+                abort()
+
     _CONTEXTS[transport] = _RealtimeTransportContext(
         controller=controller,
         serializer=serializer,
@@ -2132,6 +2233,7 @@ def create_realtime_transport(
         response_gate=response_gate,
         mcp_runtime=mcp_runtime,
         idle_timeout=idle_timeout,
+        execute_client_tool_round=_execute_pipeline_client_tool_round,
         manual_commit_publications=manual_commit_publications,
     )
 
@@ -2146,6 +2248,12 @@ def realtime_controller(transport: Any) -> RealtimeSessionController | None:
     """Return the controller for a Realtime-backed transport."""
     context = _CONTEXTS.get(transport)
     return context.controller if context is not None else None
+
+
+def realtime_client_tool_executor(transport: Any) -> RealtimeClientToolRoundExecutor | None:
+    """Return the connection-scoped deterministic client-tool round executor."""
+    context = _CONTEXTS.get(transport)
+    return context.execute_client_tool_round if context is not None else None
 
 
 def realtime_input_audio_processors(transport: Any) -> list[FrameProcessor]:

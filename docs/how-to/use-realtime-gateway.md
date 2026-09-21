@@ -85,7 +85,8 @@ The repository defines these profiles:
 | `nvidia/nemotron-realtime-multilingual` | Multilingual cascaded pipeline |
 | `nvidia/nemotron-realtime-omni` | Direct Omni pipeline with optional client-owned functions |
 | `nvidia/nemotron-realtime-omni-subagents` | Omni multi-agent pipeline without client-defined functions |
-| `nvidia/nemotron-realtime-frontend-backend` | Frontend/Backend Agent with trusted delegation functions |
+| `nvidia/nemotron-realtime-frontend-backend` | Airline Frontend/Backend Agent with trusted delegation functions |
+| `nvidia/nemotron-realtime-generic-frontend-backend` | Generic Frontend/Backend Agent with server and client tools planned by its hidden Thinker |
 
 Select a model in the WebSocket URL:
 
@@ -427,7 +428,9 @@ send `function_call_output` for the trusted call.
 
 ### Run a Client-Owned Function
 
-Declare a client-owned function in an initial or live session update:
+Declare a client-owned function in an initial or live session update. The
+Generic Frontend/Backend profile accepts its tools and instructions only in the
+initial update; reconnect to change either planner input:
 
 ```json
 {
@@ -479,6 +482,43 @@ applies to the next user turn.
 The client-tool deadline defaults to 120 seconds. A timeout produces a
 structured failure and keeps the connection available for a recovery response.
 Tool-call state does not survive disconnection.
+
+### Run the Generic Frontend/Backend Profile
+
+Use `nvidia/nemotron-realtime-generic-frontend-backend` when the client owns
+domain functions but the server must retain bounded planning and grounded
+speech. This profile applies the following ownership boundary:
+
+- The Lightning Talker sees only `call_backend` and `cancel_backend`.
+- The Super Thinker receives the full server and client tool contracts. Client
+  instructions are fenced as untrusted policy below the server planning rules.
+- Python validates the complete plan before the first side effect. Server tools
+  run in process; client tools suspend the plan and use standard
+  `function_call_output` events.
+- Independent client calls from one planning round share one Response A. The
+  backend waits up to `GENERIC_CLIENT_TOOL_TIMEOUT_SECONDS`, which defaults to
+  25 seconds, before it returns one grounded failure.
+- The backend retains one parked plan per session. Barge-in, cancellation, a
+  newer generation, a late result, or a repeated failed call cannot revive
+  stale work.
+
+The Talker supplies a short, query-grounded `filler_text` in its original
+`call_backend` arguments. After Response A closes, the pipeline can emit that
+precomputed text as a separate response without another model inference or a
+new user turn. The final tool result uses a later pipeline-created response.
+A rejected or missing filler remains silent; the runtime never substitutes a
+static phrase.
+
+The profile defaults to a deterministic capability digest. Set
+`REALTIME_CAPABILITY_MODE=model` only for an explicit experiment. The optional
+path validates schema-constrained output, rejects invented tools and internal
+policy text, caches by instructions, tools, tool choice, and profile, and falls
+back to the static digest without blocking setup.
+
+Do not interpret this source implementation as a qualified deployment. The
+32,768-token model context and reduced sequence limits in the dedicated Viking
+evaluation values must pass model-startup, live Realtime, and benchmark gates
+before promotion.
 
 ### Run Long-Running Delegation
 
