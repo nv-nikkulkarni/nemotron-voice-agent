@@ -1,5 +1,6 @@
 ---
 name: operate-nemotron-voice-agent
+version: "2.2.0"
 description: Operate, deploy, qualify, troubleshoot, and hand off the NVIDIA Nemotron Voice Agent project across Viking Kubernetes, NVCF, and Astra. Use for project orientation, architecture questions, Generic Frontend/Backend or Omni behavior, Redis and SeaweedFS concurrency, session capture to NGC, model and TTS configuration, SQA execution or findings, incident RCA, release promotion, rollback, branch hygiene, evidence retention, and known deployment gotchas.
 ---
 

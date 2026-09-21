@@ -174,7 +174,12 @@ class WebcamAgent(BaseWorker):
         session_id = str(payload.get("session_id") or "").strip()
         conversation_context = str(payload.get("conversation_context") or "").strip()
         previous_observation = str(payload.get("previous_observation") or "").strip()
-        has_baseline = payload.get("has_baseline") is True and bool(previous_observation)
+        raw_has_baseline = payload.get("has_baseline")
+        has_baseline = (
+            bool(previous_observation)
+            if raw_has_baseline is None
+            else raw_has_baseline is True and bool(previous_observation)
+        )
         try:
             window_seconds = float(payload.get("window_seconds") or self._window_seconds)
         except (TypeError, ValueError):
@@ -262,7 +267,7 @@ class WebcamAgent(BaseWorker):
         conversation: str = "",
         *,
         previous_observation: str = "",
-        has_baseline: bool = False,
+        has_baseline: bool | None = None,
     ) -> tuple[str, dict[str, Any], str]:
         """Describe the recent-window video and score gestures.
 
@@ -270,8 +275,13 @@ class WebcamAgent(BaseWorker):
         visible subject; ``previous_observation`` is stale unless those frames
         still show it.
         """
+        if has_baseline is None:
+            has_baseline = bool(previous_observation)
         baseline = _baseline_preamble(previous_observation, has_baseline)
-        steering = _steering_preamble(conversation)
+        steering = _steering_preamble(
+            conversation,
+            previous_observation if has_baseline else "",
+        )
         prompt = f"{baseline}{steering}\n{self._prompt}"
         content = [video_message_part(mp4), text_message_part(prompt)]
         context = LLMContext(

@@ -12,8 +12,10 @@ CHART = ROOT / "nvcf_helm" / "Chart.yaml"
 VALUES = ROOT / "nvcf_helm" / "values.yaml"
 VIKING_VALUES = ROOT / "nvcf_helm" / "values-viking.yaml"
 
-EXPECTED_CHART_VERSION = "0.1.139"
-EXPECTED_APP_VERSION = "2.0.67"
+EXPECTED_CHART_VERSION = "0.1.140"
+EXPECTED_CHART_APP_VERSION = "2.0.68"
+EXPECTED_PRODUCTION_APP_VERSION = "2.0.67"
+EXPECTED_VIKING_APP_VERSION = "2.0.68"
 EXPECTED_MAGPIE_IMAGE = "nvcr.io/nim/nvidia/magpie-tts-multilingual:1.10.0"
 EXPECTED_CHATTERBOX_IMAGE = "nvcr.io/nim/nvidia/chatterbox-tts-multilingual:1.1.0"
 
@@ -22,16 +24,16 @@ def _load(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def test_release_metadata_and_environment_overlays_use_exact_app_artifact() -> None:
-    """Keep every deployment path pinned to the same immutable app release."""
+def test_release_metadata_and_environment_overlays_use_intended_app_artifact() -> None:
+    """Keep chart, production, and Viking release identities explicit."""
     chart = _load(CHART)
     values = _load(VALUES)
     viking_values = _load(VIKING_VALUES)
 
     assert str(chart["version"]) == EXPECTED_CHART_VERSION
-    assert str(chart["appVersion"]) == EXPECTED_APP_VERSION
-    assert str(values["appImage"]["tag"]) == EXPECTED_APP_VERSION
-    assert str(viking_values["appImage"]["tag"]) == EXPECTED_APP_VERSION
+    assert str(chart["appVersion"]) == EXPECTED_CHART_APP_VERSION
+    assert str(values["appImage"]["tag"]) == EXPECTED_PRODUCTION_APP_VERSION
+    assert str(viking_values["appImage"]["tag"]) == EXPECTED_VIKING_APP_VERSION
 
 
 def test_frontend_backend_uses_release_modes_and_ordered_deadlines() -> None:
