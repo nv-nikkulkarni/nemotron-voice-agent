@@ -324,7 +324,7 @@ async def dispatch_plan(
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.warning(f"client-owned tool round failed: {type(exc).__name__}")
+            logger.warning(f"client-owned tool round failed: {type(exc).__name__}: {exc}")
             for index, call in items:
                 payloads[index] = format_client_result(
                     call.name,

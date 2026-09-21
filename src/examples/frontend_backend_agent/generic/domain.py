@@ -58,16 +58,24 @@ def _build_backend(context: DomainBuildContext) -> GenericThinkerBackend:
     )
 
 
+def _build_realtime_prompt_coordinator(**kwargs):
+    from examples.frontend_backend_agent.generic.realtime_prompts import GenericRealtimePromptCoordinator
+
+    return GenericRealtimePromptCoordinator(**kwargs)
+
+
 def create_domain_spec() -> DomainSpec:
     """Return the generic domain's prompts, tools, backend, and speech policy."""
     return DomainSpec(
         key="generic",
         label="Generic Assistant",
         thinker_prompt_key="generic_thinker",
+        talker_prompt_key="generic_talker",
         talker_tools_schema=TOOLS_SCHEMA,
         build_backend=_build_backend,
         runtime_context=_runtime_context,
         filler_policy="talker_authored",
         tool_registry=TOOLS,
+        realtime_prompt_coordinator_factory=_build_realtime_prompt_coordinator,
         max_query_chars=2000,
     )

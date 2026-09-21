@@ -21,6 +21,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.nvidia.llm import NvidiaLLMService
 
 from examples.shared.nvidia_llm import NvidiaLLMService as RealtimeNvidiaLLMService
+from examples.shared.text_tool_calls import harvest_text_tool_calls
 
 if TYPE_CHECKING:
     from examples.frontend_backend_agent.src.stage_metrics import StageMetricsCoordinator, StageSpan
@@ -285,7 +286,7 @@ class ReliableNvidiaLLMService(NvidiaLLMService):
                 attempt=1,
                 reason=first_invalid_reason,
                 outcome="retrying",
-            ).warning("Talker produced an invalid response; retrying once")
+            ).warning(f"Talker produced an invalid response; retrying once (reason={first_invalid_reason})")
             retry_context = _build_retry_context(context, _direct_correction(first_invalid_reason))
             retry_stream = await self._start_completion_stream(retry_context)
             retry_chunks = await _collect_stream(retry_stream, self._observe_stage_chunk)
@@ -305,7 +306,10 @@ class ReliableNvidiaLLMService(NvidiaLLMService):
                 first_reason=first_invalid_reason,
                 terminal_reason=retry_invalid_reason,
                 outcome="fallback",
-            ).error("Talker response remained invalid after retry; emitting deterministic spoken fallback")
+            ).error(
+                "Talker response remained invalid after retry; emitting deterministic spoken fallback "
+                f"(first={first_invalid_reason}, terminal={retry_invalid_reason})"
+            )
             await self._push_llm_text(fallback)
             return
 
@@ -348,7 +352,10 @@ class ReliableNvidiaLLMService(NvidiaLLMService):
             first_reason=first_invalid_reason,
             terminal_reason=retry_invalid_reason,
             outcome="fallback",
-        ).error("Talker response remained invalid after retry; emitting deterministic spoken fallback")
+        ).error(
+            "Talker response remained invalid after retry; emitting deterministic spoken fallback "
+            f"(first={first_invalid_reason}, terminal={retry_invalid_reason})"
+        )
         await self._push_llm_text(_terminal_fallback(first_invalid_reason, retry_invalid_reason))
 
     async def _observe_stage_chunk(self, chunk: ChatCompletionChunk) -> None:
@@ -784,7 +791,9 @@ async def _collect_stream(
             chunks.append(chunk)
     finally:
         await _close_stream(stream)
-    return chunks
+    # Endpoints without a Nemotron tool-call parser stream the call as text; a
+    # harvested call must look native before validation and dispatch see it.
+    return harvest_text_tool_calls(chunks)
 
 
 async def _close_stream(stream: AsyncIterator[ChatCompletionChunk]) -> None:

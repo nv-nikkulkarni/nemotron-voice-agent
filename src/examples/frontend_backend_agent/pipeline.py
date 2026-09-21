@@ -60,6 +60,7 @@ from utils import (
     load_service_entry,
     normalize_lang_code,
     nvidia_api_key,
+    nvidia_speech_api_key,
     parse_env_float,
     parse_env_int,
     parse_json_dict,
@@ -154,6 +155,7 @@ async def bot(runner_args: RunnerArguments) -> None:
             bind_realtime_assistant_context_message,
             bind_realtime_context,
             bind_realtime_deferred_service_responses,
+            bind_realtime_session_prompt_updates,
             bind_realtime_tts_service,
             configure_realtime_client_tools,
             prepare_realtime_tools,
@@ -187,26 +189,23 @@ async def bot(runner_args: RunnerArguments) -> None:
         raise ValueError("client_tools must be a list of canonical Realtime function schemas")
     client_tools = tuple(copy.deepcopy(dict(tool)) for tool in raw_client_tools)
     client_instructions = str(body.get("prompt_content") or "") if is_realtime else ""
+    # Few-shots are addressed by the key that actually produced ``talker_prompt``.
+    # A Realtime client supplying ``instructions`` resolves ``prompt_key`` to
+    # "custom", which is not a catalog entry, so the trusted native-call
+    # demonstrations would silently vanish for every such session.
+    few_shot_prompt_key = prompt_key
     realtime_capability_specs = ()
     realtime_capability_mode = "static"
     realtime_capability_static_prompt = ""
     if is_realtime and domain.key == "generic":
-        from realtime.capabilities import render_capabilities
-
         realtime_capability_specs = tuple(
             domain.tool_registry[name] for name in tool_names if name in domain.tool_registry
         )
         realtime_capability_mode = os.getenv("REALTIME_CAPABILITY_MODE", "static").strip().lower() or "static"
-        realtime_capability_static_prompt = _load_required_catalog_prompt(prompt_key)
-        static_capability_digest = render_capabilities(
-            realtime_capability_specs,
-            client_tools,
-            mode=realtime_capability_mode,
-        )
+        realtime_capability_static_prompt = _load_required_catalog_prompt(domain.talker_prompt_key)
         talker_prompt = realtime_capability_static_prompt
-        if realtime_capability_mode == "static":
-            talker_prompt = f"{talker_prompt}\n\n{static_capability_digest}"
-    talker_few_shots = _load_prompt_few_shots(prompt_key)
+        few_shot_prompt_key = domain.talker_prompt_key
+    talker_few_shots = _load_prompt_few_shots(few_shot_prompt_key)
     thinker_prompt_key = str(body.get("thinker_prompt") or domain.thinker_prompt_key)
     thinker_prompt = _load_required_catalog_prompt(thinker_prompt_key)
     pipeline_mode = str(body.get("pipeline_mode", ""))
@@ -230,7 +229,7 @@ async def bot(runner_args: RunnerArguments) -> None:
     asr_server = body.get("asr_server", "") or default_asr.get("server", "grpc.nvcf.nvidia.com:443")
     asr_ssl = is_nvcf(asr_server)
     asr_kwargs: dict = {
-        "api_key": nvidia_api_key(),
+        "api_key": nvidia_speech_api_key(),
         "server": asr_server,
         "use_ssl": asr_ssl,
     }
@@ -301,19 +300,20 @@ async def bot(runner_args: RunnerArguments) -> None:
             }
         )
     talker_llm = talker_cls(**talker_kwargs)
-    if is_realtime and domain.key == "generic" and realtime_capability_mode == "model":
+    initial_capability_digest = ""
+    if is_realtime and domain.key == "generic":
         from realtime.capabilities import render_capabilities_for_session
 
-        capability_digest = await render_capabilities_for_session(
+        initial_capability_digest = await render_capabilities_for_session(
             realtime_capability_specs,
             client_tools,
-            mode="model",
+            mode=realtime_capability_mode,
             llm=talker_llm,
             instructions=client_instructions,
             tool_choice=body.get("tool_choice", "auto"),
             profile=str(body.get("pipeline_mode") or "generic-frontend-backend-agent"),
         )
-        talker_prompt = f"{realtime_capability_static_prompt}\n\n{capability_digest}"
+        talker_prompt = f"{realtime_capability_static_prompt}\n\n{initial_capability_digest}"
     logger.info(
         f"Talker LLM: model={model_id}, base_url={base_url}, prompt={prompt_key}, "
         f"system_prompt={'<' + system_prompt + '>' if system_prompt else '(none)'}, "
@@ -460,7 +460,9 @@ async def bot(runner_args: RunnerArguments) -> None:
         configure_realtime_client_tools(
             transport,
             thinker_llm,
-            client_tools,
+            # ``client_tools`` is held as an immutable tuple here, but the
+            # Realtime canonicaliser accepts only a list.
+            list(client_tools),
             trusted_tools=trusted_tools_schema,
             trusted_tool_names=talker_handlers,
         )
@@ -486,7 +488,7 @@ async def bot(runner_args: RunnerArguments) -> None:
     if tts_synthesis_mode:
         tts_settings_kwargs["synthesis_mode"] = tts_synthesis_mode
     tts_kwargs: dict = {
-        "api_key": nvidia_api_key(),
+        "api_key": nvidia_speech_api_key(),
         "server": tts_server,
         "settings": NvidiaTTSSettings(**tts_settings_kwargs),
         "use_ssl": tts_ssl,
@@ -522,6 +524,22 @@ async def bot(runner_args: RunnerArguments) -> None:
         rendered.extend(copy.deepcopy(talker_few_shots))
         return rendered
 
+    prompt_coordinator = None
+    if is_realtime and domain.realtime_prompt_coordinator_factory is not None:
+        prompt_coordinator = domain.realtime_prompt_coordinator_factory(
+            backend=thinker,
+            talker_llm=talker_llm,
+            server_specs=realtime_capability_specs,
+            trusted_tool_names=(*tool_names, *talker_handlers),
+            static_talker_prompt=realtime_capability_static_prompt,
+            initial_capability_digest=initial_capability_digest,
+            initial_instructions=client_instructions,
+            initial_client_tools=client_tools,
+            capability_mode=realtime_capability_mode,
+            render_talker_messages=render_realtime_instructions,
+            profile=str(body.get("pipeline_mode") or "generic-frontend-backend-agent"),
+        )
+
     messages = render_realtime_instructions(talker_prompt)
     logger.info(f"Talker native few-shot messages: {len(talker_few_shots)}")
     if tools_schema is not None:
@@ -529,6 +547,8 @@ async def bot(runner_args: RunnerArguments) -> None:
     else:
         context = LLMContext(messages)
     if is_realtime:
+        if prompt_coordinator is not None:
+            bind_realtime_session_prompt_updates(transport, prompt_coordinator)
         bind_realtime_context(
             transport,
             context,
