@@ -654,6 +654,19 @@ class RealtimeSessionController:
             if isinstance(tool, dict) and tool.get("type") == "function" and isinstance(tool.get("name"), str)
         ) - (self.server_tools | self.delegate_tools)
 
+    def pipeline_name_for_client_tool(self, public_name: str) -> str | None:
+        """Return the active provider projection for one public client tool."""
+        if public_name not in self.client_tool_names():
+            return None
+        matches = [
+            pipeline_name
+            for pipeline_name, bound_public_name in self._session_client_tool_bindings.items()
+            if bound_public_name == public_name
+        ]
+        if len(matches) != 1:
+            return None
+        return matches[0]
+
     def register_mcp_tool_binding(self, *, pipeline_name: str, server_label: str, name: str) -> bool:
         """Register an internal LLM name and report whether it was newly added."""
         if not all(isinstance(value, str) and value for value in (pipeline_name, server_label, name)):

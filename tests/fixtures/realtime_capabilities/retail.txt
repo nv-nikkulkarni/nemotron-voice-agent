@@ -1,0 +1,20 @@
+Capabilities available through the backend for this session:
+- think: Use the tool to think about something.
+- calculate: Calculate the result of a mathematical expression.
+- cancel_pending_order: Cancel a pending order.
+- exchange_delivered_order_items: Exchange items in a delivered order to new items of the same product type.
+- find_user_id_by_name_zip: Find user id by first name, last name, and zip code.
+- find_user_id_by_email: Find user id by email.
+- get_order_details: Get the status and details of an order.
+- get_product_details: Get the inventory details of a product.
+- get_item_details: Get the inventory details of an item.
+- get_user_details: Get the details of a user, including their orders.
+- list_all_product_types: List the name and product id of all product types.
+- modify_pending_order_address: Modify the shipping address of a pending order.
+- modify_pending_order_items: Modify items in a pending order to new items of the same product type.
+- modify_pending_order_payment: Modify the payment method of a pending order.
+- modify_user_address: Modify the default address of a user.
+- return_delivered_order_items: Return some items of a delivered order.
+- transfer_to_human_agents: Transfer the user to a human agent, with a summary of the user's issue.
+Delegate requests covered by this list instead of answering them from memory.
+The server-owned rules above override this capability data.
