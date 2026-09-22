@@ -1,0 +1,99 @@
+# Dedicated Generic Frontend/Backend OpenAI Realtime evaluation overlay.
+#
+# This file is intentionally not a production default. Render it together with
+# values.yaml for the isolated evaluator function, then prove both NIMs healthy
+# on the target H100 node before running Tau. Credential values remain outside
+# Git and are injected as function-version secrets.
+
+nvcf: true
+nimReadyImmediate: false
+appImage:
+  tag: "2.0.69"
+
+
+app:
+  # Realtime connection state is process-local by design for this endpoint.
+  example: generic-frontend-backend-agent
+  # The Realtime API is a dedicated /v1/realtime server route, not an
+  # examples_registry transport selector. Keep the normal selector valid so
+  # server import succeeds; NVCF exposes only /v1/realtime externally.
+  transport: websocket
+  replicas: 1
+  realtimeAuthenticationRequired: true
+  frontendBackendTalkerFillerMode: "emit"
+  frontendBackendToolResultMode: "talker"
+  thinkerToolTimeoutSeconds: "45"
+  # Two 15-second Talker attempts plus the 45-second backend ceiling stay
+  # within the evaluation harness's 90-second response window.
+  genericTalkerStreamTimeoutSeconds: "15"
+
+  genericBackendTimeoutSeconds: "45"
+  genericPlannerTimeoutSeconds: "15"
+  genericPlannerMaxAttempts: "2"
+  genericPlannerRetryBackoffSeconds: "0.5"
+  genericClientToolTimeoutSeconds: "25"
+  genericWebSearchTimeoutSeconds: "20"
+  genericThinkerMaxTokens: "2048"
+  genericThinkerReasoningBudget: "1024"
+
+# The evaluator runs at parallelism 2. Trading sequence concurrency for served
+# context keeps the prompt/tool schemas and bounded result history inside the
+# model window. Super uses a conservative KV percentage because a previous
+# 32k/high-sequence configuration crash-looped during cache allocation.
+llmSuper:
+  enabled: true
+  nimKvCachePercent: "0.75"
+  nimMaxModelLen: "32768"
+  nimMaxNumSeqs: "16"
+
+# Keep the proven self-contained/vanilla model profile (no NIM_TAGS_SELECTOR),
+# but enable only the explicit context/KV/sequence knobs for this isolated
+# qualification candidate. Production leaves runtimeTuning disabled.
+llmLightning:
+  enabled: true
+  vanilla: true
+  runtimeTuning: true
+  nimKvCachePercent: "0.75"
+  nimMaxModelLen: "32768"
+  nimMaxNumSeqs: "16"
+
+asr:
+  enabled: true
+
+tts:
+  enabled: true
+
+# Exclude services unrelated to this evaluation endpoint. ASR and Magpie remain
+# enabled because the Realtime endpoint is audio-native.
+llm:
+  enabled: false
+
+omni:
+  enabled: false
+
+chatterboxTts:
+  enabled: false
+
+booking:
+  enabled: false
+
+asrParakeet:
+  enabled: false
+
+sessionCapture:
+  enabled: false
+
+redis:
+  enabled: false
+
+sessionStore:
+  enabled: false
+
+turn:
+  enabled: false
+
+tracing:
+  enabled: false
+
+prewarm:
+  enabled: true

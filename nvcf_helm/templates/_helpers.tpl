@@ -172,10 +172,14 @@ command:
   - -c
   - |
     # NVCF injects function secrets as /var/secrets/secrets.json (not env vars).
-    # Export NVIDIA_API_KEY / NGC_API_KEY from it so the NIM can authenticate its
-    # NGC model-weight download. Portable extraction (no python/jq dependency).
+    # Prefer the dedicated NGC_API_KEY for model downloads. Fall back to
+    # NVIDIA_API_KEY only for older function versions that supplied one key.
+    # Portable extraction (no python/jq dependency).
     if [ -f /var/secrets/secrets.json ]; then
-      key=$(grep -o '"NVIDIA_API_KEY"[[:space:]]*:[[:space:]]*"[^"]*"' /var/secrets/secrets.json | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+      key=$(grep -o '"NGC_API_KEY"[[:space:]]*:[[:space:]]*"[^"]*"' /var/secrets/secrets.json | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+      if [ -z "$key" ]; then
+        key=$(grep -o '"NVIDIA_API_KEY"[[:space:]]*:[[:space:]]*"[^"]*"' /var/secrets/secrets.json | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+      fi
       if [ -n "$key" ]; then
         export NVIDIA_API_KEY="$key"
         export NGC_API_KEY="$key"

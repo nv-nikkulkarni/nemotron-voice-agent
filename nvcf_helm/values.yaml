@@ -215,7 +215,19 @@ app:
   thinkerToolTimeoutSeconds: "45"
   genericBackendTimeoutSeconds: "40"
   genericPlannerTimeoutSeconds: "18"
+  genericTalkerStreamTimeoutSeconds: ""
+  genericPlannerMaxAttempts: ""
+  genericPlannerRetryBackoffSeconds: ""
+  genericClientToolTimeoutSeconds: "25"
   genericWebSearchTimeoutSeconds: "20"
+  # Optional Generic FBA evaluation overrides. Empty keeps the selected
+  # service-catalog values (768 output tokens / 256 reasoning tokens).
+  genericThinkerMaxTokens: ""
+  genericThinkerReasoningBudget: ""
+  # Require an NVCF function-version REALTIME_API_KEY when the Realtime
+  # transport is exposed. Local development keeps its existing open default.
+  realtimeAuthenticationRequired: false
+
   # Built-in reviewed pronunciation registry. The app extracts IPA for Magpie
   # requests and suppresses the dictionary for unsupported models such as
   # Chatterbox. The file is packaged under src/ in the immutable app image.
@@ -450,6 +462,10 @@ llmLightning:
   # /v1/health/ready startup+readiness+liveness probes (so NVCF only reports ACTIVE when
   # Lightning is genuinely serving — no more nimReadyImmediate masking the crash-loop).
   vanilla: true
+  # Keep false for production's proven vanilla startup. A dedicated evaluation
+  # overlay may enable only context/KV/sequence tuning without reinstating the
+  # rejected NIM_TAGS_SELECTOR. Re-qualify startup before use.
+  runtimeTuning: false
   shmSize: 16Gi
   cache:
     nvcf: true    # 0.1.77: emptyDir (was oci-bv PVC). The RWO block PVC is zone/node-

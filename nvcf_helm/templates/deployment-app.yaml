@@ -104,10 +104,12 @@ spec:
               fi
               if [ -f /var/secrets/secrets.json ]; then
                 export NVIDIA_API_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('NVIDIA_API_KEY',''))")
+                {{- if .Values.sessionCapture.enabled }}
                 # Dedicated NGC Registry credential used by session-capture uploads.
                 # Keep it separate from NVIDIA_API_KEY: the latter is the inference
                 # credential and may not have permission to publish resource versions.
                 export NGC_API_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('NGC_API_KEY',''))")
+                {{- end }}
                 # web_search (Perplexity Sonar) key — passed as an NVCF function --secret,
                 # so it arrives in secrets.json (NVCF has no k8s secret for webSearch.apiKeySecret).
                 export PERPLEXITY_API_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('PERPLEXITY_API_KEY',''))")
@@ -115,6 +117,10 @@ spec:
                 export WEATHERAPI_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('WEATHERAPI_KEY',''))")
                 # get_stock_price (Finnhub) key — same pattern: an NVCF function --secret.
                 export FINNHUB_API_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('FINNHUB_API_KEY',''))")
+                # Realtime gateway master key. This is distinct from NVCF's
+                # outer invocation credential and never appears in rendered Helm.
+                export REALTIME_API_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('REALTIME_API_KEY',''))")
+                {{- if .Values.sessionCapture.enabled }}
                 # Capture destination is deployment configuration, supplied alongside the
                 # five function credentials so the org/resource is never hardcoded in Git.
                 capture_ngc=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('SESSION_CAPTURE_NGC',''))")
@@ -125,7 +131,14 @@ spec:
                   export SESSION_CAPTURE_NGC="$capture_ngc"
                 fi
                 unset capture_ngc
+                {{- end }}
               fi
+              {{- if .Values.app.realtimeAuthenticationRequired }}
+              if [ -z "${REALTIME_API_KEY:-}" ]; then
+                echo "Required Realtime authentication is not configured" >&2
+                exit 1
+              fi
+              {{- end }}
               exec uv run python src/server.py --host 0.0.0.0
           {{- else }}
           command:
@@ -214,8 +227,32 @@ spec:
             - name: GENERIC_PLANNER_TIMEOUT_SECONDS
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.app.genericTalkerStreamTimeoutSeconds }}
+            - name: GENERIC_TALKER_STREAM_TIMEOUT_SECONDS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.genericPlannerMaxAttempts }}
+            - name: GENERIC_PLANNER_MAX_ATTEMPTS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.genericPlannerRetryBackoffSeconds }}
+            - name: GENERIC_PLANNER_RETRY_BACKOFF_SECONDS
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .Values.app.genericWebSearchTimeoutSeconds }}
             - name: GENERIC_WEB_SEARCH_TIMEOUT_SECONDS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.genericClientToolTimeoutSeconds }}
+            - name: GENERIC_CLIENT_TOOL_TIMEOUT_SECONDS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.genericThinkerMaxTokens }}
+            - name: GENERIC_THINKER_MAX_TOKENS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.app.genericThinkerReasoningBudget }}
+            - name: GENERIC_THINKER_REASONING_BUDGET
               value: {{ . | quote }}
             {{- end }}
             {{- if .Values.app.ttsPronunciationPath }}
@@ -256,13 +293,13 @@ spec:
             # since it's a general "how many pods am I one of" signal.
             - name: APP_REPLICAS
               value: {{ .Values.app.replicas | quote }}
+            {{- if .Values.sessionCapture.enabled }}
             # session_capture/ (src/session_capture/) is a self-contained, gateable module:
             # SESSION_CAPTURE_ENABLED is the top-level kill switch — when false (or unset),
             # session_capture.register_routes() is a no-op and /api/session-capture* never
             # exists (404), regardless of any other value below.
             - name: SESSION_CAPTURE_ENABLED
               value: {{ .Values.sessionCapture.enabled | toString | quote }}
-            {{- if .Values.sessionCapture.enabled }}
             - name: SESSION_CAPTURE_UPLOAD_REQUIRED
               value: {{ .Values.sessionCapture.uploadRequired | toString | quote }}
             # Session capture: per-turn ASR/TTS audio, written through session_store
