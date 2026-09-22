@@ -20,6 +20,22 @@ data:
     # TRANSPORT_SELECTION env var overrides `transports` at runtime.
     transports: {{ if .Values.app.transport }}{{ .Values.app.transport }}{{ else }}all{{ end }}
 
+    # The chart mounts this curated registry over the copy packaged in the app
+    # image, so it must also retain the public Realtime model route used by the
+    # dedicated Generic Frontend/Backend endpoint.
+    realtime_models:
+      nvidia/nemotron-realtime-generic-frontend-backend:
+        label: Nemotron Realtime Generic Frontend/Backend
+        pipeline_mode: generic-frontend-backend-agent
+        default: true
+        selectors:
+          prompt_key: generic_talker
+          thinker_prompt: generic_thinker
+          llm_id: nemotron-lightning-talker
+          thinker_llm_id: nemotron-super-reasoning
+          asr_id: registry-default
+          tts_id: registry-default
+
     # Demo exposes exactly two examples. The generic experience has fixed,
     # separately configured Lightning Talker and Super Thinker roles.
     examples:

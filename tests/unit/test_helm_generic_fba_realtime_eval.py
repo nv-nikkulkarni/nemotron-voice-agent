@@ -159,3 +159,23 @@ def test_helm_render_has_only_minimal_realtime_workloads() -> None:
     assert env["GENERIC_PLANNER_RETRY_BACKOFF_SECONDS"] == "0.5"
     assert not any(name.startswith(("SESSION_CAPTURE", "SESSION_STORE", "REDIS_")) for name in env)
     assert "REALTIME_API_KEY" in "\n".join(container["command"])
+
+    config = next(document for document in documents if document["kind"] == "ConfigMap")
+    registry = yaml.safe_load(config["data"]["examples_registry.yaml"])
+    assert registry["selection"] == "generic-frontend-backend-agent"
+    assert registry["transports"] == "websocket"
+    assert registry["realtime_models"] == {
+        "nvidia/nemotron-realtime-generic-frontend-backend": {
+            "label": "Nemotron Realtime Generic Frontend/Backend",
+            "pipeline_mode": "generic-frontend-backend-agent",
+            "default": True,
+            "selectors": {
+                "prompt_key": "generic_talker",
+                "thinker_prompt": "generic_thinker",
+                "llm_id": "nemotron-lightning-talker",
+                "thinker_llm_id": "nemotron-super-reasoning",
+                "asr_id": "registry-default",
+                "tts_id": "registry-default",
+            },
+        }
+    }
