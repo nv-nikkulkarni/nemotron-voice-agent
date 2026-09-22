@@ -780,6 +780,19 @@ class RealtimeSessionController:
             call_id for call_id, record in self._tool_calls.items() if not record.completed and not record.retired
         )
 
+    def pending_client_tool_call_ids(self) -> tuple[str, ...]:
+        """Return pending calls the Realtime client itself still owes an output for.
+
+        Server- and delegate-owned calls resolve inside the trusted runtime, and
+        the client is rejected if it tries to answer one. Blocking the client on
+        them would make an in-flight Frontend/Backend delegation unrecoverable.
+        """
+        return tuple(
+            call_id
+            for call_id, record in self._tool_calls.items()
+            if not record.completed and not record.retired and record.owner == "client"
+        )
+
     def start_response(
         self,
         *,

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
-from openai import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
+from openai import APIConnectionError, APIError, APITimeoutError, InternalServerError, RateLimitError
 
 from examples.frontend_backend_agent.generic.client_tools import (
     ClientToolRoundExecutor,
@@ -29,13 +29,37 @@ from examples.frontend_backend_agent.generic.result_formatters import planner_fa
 from examples.frontend_backend_agent.generic.state import GenericThinkerSessionState
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent
 from examples.frontend_backend_agent.src.tools import ToolSpec
+from utils import parse_env_float, parse_env_int
 
 if TYPE_CHECKING:
     from examples.frontend_backend_agent.src.stage_metrics import StageMetricsCoordinator
 
-_PLANNER_MAX_ATTEMPTS = 2
-_PLANNER_RETRY_BACKOFF_SECONDS = 0.2
+_PLANNER_MAX_ATTEMPTS = parse_env_int("GENERIC_PLANNER_MAX_ATTEMPTS", 2, min_value=1)
+_PLANNER_RETRY_BACKOFF_SECONDS = parse_env_float("GENERIC_PLANNER_RETRY_BACKOFF_SECONDS", 0.2, min_value=0.0)
 _RETRIABLE_PLANNER_EXCEPTIONS = (TimeoutError, APIConnectionError, APITimeoutError, InternalServerError, RateLimitError)
+#: Shared inference endpoints report transient saturation as a streamed
+#: ``APIError`` with no HTTP status, so the class alone cannot separate it from
+#: a malformed request. Match the wording instead of retrying every APIError.
+_TRANSIENT_PLANNER_ERROR_TEXT = (
+    "overloaded",
+    "temporarily unavailable",
+    "service unavailable",
+    "capacity",
+    "try again",
+    "too many requests",
+)
+
+
+def _is_retriable_planner_error(exc: BaseException) -> bool:
+    """Return whether one planner failure is worth another attempt."""
+    if isinstance(exc, _RETRIABLE_PLANNER_EXCEPTIONS):
+        return True
+    if isinstance(exc, APIError):
+        message = str(exc).lower()
+        return any(fragment in message for fragment in _TRANSIENT_PLANNER_ERROR_TEXT)
+    return False
+
+
 _MAX_PLANNING_ROUNDS = 3
 
 
@@ -238,14 +262,15 @@ class GenericThinkerBackend:
                 )
             except asyncio.CancelledError:
                 raise
-            except _RETRIABLE_PLANNER_EXCEPTIONS as exc:
-                if attempt >= _PLANNER_MAX_ATTEMPTS:
+            except Exception as exc:
+                if attempt >= _PLANNER_MAX_ATTEMPTS or not _is_retriable_planner_error(exc):
                     raise
+                backoff = _PLANNER_RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1))
                 logger.warning(
                     f"Generic Thinker planner transient failure: attempt={attempt}/{_PLANNER_MAX_ATTEMPTS} "
-                    f"error={type(exc).__name__}; retrying once"
+                    f"error={type(exc).__name__}: {exc}; retrying in {backoff:.1f}s"
                 )
-                await asyncio.sleep(_PLANNER_RETRY_BACKOFF_SECONDS)
+                await asyncio.sleep(backoff)
         raise AssertionError("planner retry loop exited unexpectedly")
 
     async def _run_call(
