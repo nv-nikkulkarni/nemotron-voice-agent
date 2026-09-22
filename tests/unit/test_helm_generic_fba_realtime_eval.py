@@ -35,7 +35,7 @@ def test_evaluation_overlay_raises_context_and_reduces_sequence_concurrency() ->
         "nimMaxModelLen": "32768",
         "nimMaxNumSeqs": "16",
     }
-    assert overlay["llmSuper"]["nimKvCachePercent"] == "0.75"
+    assert overlay["llmSuper"]["nimKvCachePercent"] == "0.85"
     assert overlay["llmSuper"]["nimMaxModelLen"] == "32768"
     assert overlay["llmSuper"]["nimMaxNumSeqs"] == "16"
 

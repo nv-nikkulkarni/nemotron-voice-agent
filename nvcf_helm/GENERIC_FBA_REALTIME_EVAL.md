@@ -10,7 +10,7 @@ The candidate uses the following immutable artifacts:
 | Artifact | Candidate | Source |
 | --- | --- | --- |
 | Application image | `2.0.69` | Agent commit `8cbc0e27555b190ff65f5cbb4d5d8356e809464f` |
-| Helm chart | `0.1.141` | This chart and the evaluation overlay |
+| Helm chart | `0.1.142` | This chart and the evaluation overlay |
 
 Do not overwrite either candidate after publication. Build a new patch version
 when source or chart content changes.
@@ -40,7 +40,7 @@ The overlay trades sequence concurrency for context capacity:
 | Component | Context | Maximum Sequences | KV Cache | Generation |
 | --- | ---: | ---: | ---: | --- |
 | Nemotron 3.5 Lightning Talker | 32,768 tokens | 16 | 0.75 | 512 tokens, reasoning disabled |
-| Nemotron 3 Super Thinker | 32,768 tokens | 16 | 0.75 | 2,048 tokens, 1,024-token reasoning budget |
+| Nemotron 3 Super Thinker | 32,768 tokens | 16 | 0.85 | 2,048 tokens, 1,024-token reasoning budget |
 
 Lightning keeps vanilla NVIDIA NIM profile selection. The overlay enables
 `llmLightning.runtimeTuning` to apply only the context, KV cache, and sequence
@@ -124,8 +124,8 @@ Inspect the rendered output before packaging. Confirm all of the following:
   Super, and the prewarmer.
 - The chart does not render Redis, SeaweedFS, session capture storage, Omni,
   Chatterbox, Nano, Parakeet, booking, TURN, or tracing workloads.
-- Both LLM NIMs use a 32,768-token context, a 0.75 KV cache fraction, and a
-  16-sequence limit.
+- Both LLM NIMs use a 32,768-token context and a 16-sequence limit. Lightning
+  uses a 0.75 KV cache fraction; Super uses 0.85.
 - Lightning has no `NIM_TAGS_SELECTOR` environment variable.
 - The application receives every deadline and generation override from the
   previous sections.
@@ -140,15 +140,24 @@ uv run pytest tests/unit/test_helm_generic_fba_realtime_eval.py -q
 
 ## Treat Startup as a Blocking Gate
 
-Nemotron 3 Super previously crash-looped under aggressive KV cache settings.
+Chart `0.1.141` was rejected after Nemotron 3 Super crash-looped during engine
+startup at a 0.75 KV cache fraction, 32,768-token context, and 16-sequence
+limit. NVIDIA NIM defines the fraction as the total GPU-memory budget from
+which model weights are subtracted before allocating KV cache, so raising the
+fraction increases the space left for KV cache after weights. Chart `0.1.142`
+tests that bounded remediation: it keeps the required 32,768-token context and
+low sequence count, and raises only Super's memory budget to the
+Viking-proven 0.85 value. The root exception remains unverified until model
+logs are available.
+
 A successful Helm render does not prove that either model fits the target H100
 node. Require all of the following before a scored run:
 
 1. Lightning and Super remain ready through model loading and CUDA graph
    capture.
 2. Their `/v1/health/ready` endpoints return success.
-3. NIM startup logs confirm a 32,768-token served context, a 0.75 KV cache
-   fraction, and a 16-sequence limit for both models.
+3. NIM startup logs confirm a 32,768-token served context and 16-sequence limit
+   for both models, with Lightning at 0.75 and Super at 0.85.
 4. The OpenAI Realtime compatibility suite passes against the deployed
    endpoint.
 5. The 20-task airline treatment completes before the 40-task retail treatment

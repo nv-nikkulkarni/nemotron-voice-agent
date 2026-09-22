@@ -38,11 +38,13 @@ app:
 
 # The evaluator runs at parallelism 2. Trading sequence concurrency for served
 # context keeps the prompt/tool schemas and bounded result history inside the
-# model window. Super uses a conservative KV percentage because a previous
-# 32k/high-sequence configuration crash-looped during cache allocation.
+# model window. Candidate 0.1.141 failed during Super engine startup at 0.75,
+# 32k, and 16 sequences. Candidate 0.1.142 changes only the memory budget to
+# the Viking-proven 0.85 value; it retains the reduced sequence count and
+# required 32k served context.
 llmSuper:
   enabled: true
-  nimKvCachePercent: "0.75"
+  nimKvCachePercent: "0.85"
   nimMaxModelLen: "32768"
   nimMaxNumSeqs: "16"
 
