@@ -139,6 +139,9 @@ spec:
                 exit 1
               fi
               {{- end }}
+              {{- with .Values.app.realtimeServicePlatform }}
+              export REALTIME_SERVICE_PLATFORM={{ . | quote }}
+              {{- end }}
               exec uv run python src/server.py --host 0.0.0.0
           {{- else }}
           command:

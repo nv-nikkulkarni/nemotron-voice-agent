@@ -161,7 +161,9 @@ def test_helm_render_has_only_minimal_realtime_workloads() -> None:
     assert env["GENERIC_PLANNER_MAX_ATTEMPTS"] == "2"
     assert env["GENERIC_PLANNER_RETRY_BACKOFF_SECONDS"] == "0.5"
     assert not any(name.startswith(("SESSION_CAPTURE", "SESSION_STORE", "REDIS_")) for name in env)
-    assert "REALTIME_API_KEY" in "\n".join(container["command"])
+    startup_script = "\n".join(container["command"])
+    assert "REALTIME_API_KEY" in startup_script
+    assert 'export REALTIME_SERVICE_PLATFORM="server"' in startup_script
 
     config = next(document for document in documents if document["kind"] == "ConfigMap")
     registry = yaml.safe_load(config["data"]["examples_registry.yaml"])
