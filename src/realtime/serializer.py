@@ -1213,7 +1213,7 @@ class RealtimeFrameSerializer(FrameSerializer):
         effective_response_tool_choice = copy.deepcopy(
             response_tool_choice if response_tool_choice is not None else session_view.get("tool_choice", "auto")
         )
-        pending_calls = self._controller.pending_tool_call_ids()
+        pending_calls = self._controller.pending_client_tool_call_ids()
         pending_context = (
             self._client_tool_broker.pending_context_call_ids() if self._client_tool_broker is not None else ()
         )
@@ -2476,7 +2476,7 @@ class RealtimeFrameSerializer(FrameSerializer):
                         code="tool_call_not_active",
                         param="response",
                     )
-            pending_calls = self._controller.pending_tool_call_ids()
+            pending_calls = self._controller.pending_client_tool_call_ids()
             if pending_calls:
                 raise RealtimeProtocolError(
                     message=f"Function call {pending_calls[0]!r} requires a correlated output before response.create",
