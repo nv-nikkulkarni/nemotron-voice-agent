@@ -50,6 +50,7 @@ def test_evaluation_overlay_bounds_generic_planning_and_client_execution() -> No
     assert app["genericClientToolTimeoutSeconds"] == "25"
     assert app["replicas"] == 1
     assert app["realtimeAuthenticationRequired"] is True
+    assert app["realtimeAllowProxyBearer"] is True
     assert app["genericTalkerStreamTimeoutSeconds"] == "15"
     assert app["genericBackendTimeoutSeconds"] == "45"
     assert app["genericPlannerTimeoutSeconds"] == "15"
@@ -59,6 +60,7 @@ def test_evaluation_overlay_bounds_generic_planning_and_client_execution() -> No
     template = APP_TEMPLATE.read_text()
     for variable in (
         "REALTIME_API_KEY",
+        "REALTIME_ALLOW_PROXY_BEARER",
         "GENERIC_TALKER_STREAM_TIMEOUT_SECONDS",
         "GENERIC_PLANNER_MAX_ATTEMPTS",
         "GENERIC_PLANNER_RETRY_BACKOFF_SECONDS",
@@ -102,7 +104,7 @@ def test_evaluation_overlay_renders_only_the_requested_runtime_components() -> N
         assert overlay[component]["enabled"] is False
 
     assert overlay["appImage"]["name"] == "nemotron-realtime-generic-fba"
-    assert overlay["appImage"]["tag"] == "2.0.69"
+    assert overlay["appImage"]["tag"] == "2.0.70"
 
 
 def test_nvcf_nims_prefer_the_dedicated_model_download_key() -> None:
@@ -146,9 +148,10 @@ def test_helm_render_has_only_minimal_realtime_workloads() -> None:
     )
     container = app["spec"]["template"]["spec"]["containers"][0]
     env = {item["name"]: item.get("value") for item in container["env"]}
-    assert container["image"] == "nvcr.io/0491162300748285/nemotron-realtime-generic-fba:2.0.69"
+    assert container["image"] == "nvcr.io/0491162300748285/nemotron-realtime-generic-fba:2.0.70"
     assert env["EXAMPLE_SELECTION"] == "generic-frontend-backend-agent"
     assert env["TRANSPORT_SELECTION"] == "websocket"
+    assert env["REALTIME_ALLOW_PROXY_BEARER"] == "true"
     assert env["GENERIC_TALKER_STREAM_TIMEOUT_SECONDS"] == "15"
     assert env["GENERIC_BACKEND_TIMEOUT_SECONDS"] == "45"
     assert env["GENERIC_PLANNER_TIMEOUT_SECONDS"] == "15"

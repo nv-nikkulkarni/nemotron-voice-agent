@@ -164,6 +164,10 @@ spec:
             - name: TRANSPORT_SELECTION
               value: {{ .Values.app.transport | quote }}
             {{- end }}
+            {{- if .Values.app.realtimeAllowProxyBearer }}
+            - name: REALTIME_ALLOW_PROXY_BEARER
+              value: "true"
+            {{- end }}
             - name: PIPELINE_TLS
               value: {{ .Values.app.tls | toString | quote }}
             {{- if not .Values.nvcf }}

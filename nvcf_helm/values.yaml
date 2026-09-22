@@ -227,6 +227,10 @@ app:
   # Require an NVCF function-version REALTIME_API_KEY when the Realtime
   # transport is exposed. Local development keeps its existing open default.
   realtimeAuthenticationRequired: false
+  # Allow a trusted reverse proxy such as NVCF to supply its own outer Bearer
+  # while the application independently verifies an ek_ client secret.
+  # Keep false for direct deployments so conflicting credentials fail closed.
+  realtimeAllowProxyBearer: false
 
   # Built-in reviewed pronunciation registry. The app extracts IPA for Magpie
   # requests and suppresses the dictionary for unsupported models such as
