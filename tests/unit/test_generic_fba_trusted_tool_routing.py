@@ -109,6 +109,42 @@ class TrustedToolActivationTests(unittest.TestCase):
         self.assertIn("unknown tool", str(caught.exception))
 
 
+class PendingDelegateCallTests(unittest.TestCase):
+    """An in-flight delegation must not block the next client turn.
+
+    The client cannot answer a delegate call, so gating ``response.create`` on
+    one would strand the session for the rest of the conversation.
+    """
+
+    def _controller_with_pending_delegate(self) -> RealtimeSessionController:
+        controller = _controller()
+        controller.apply_session_update({"output_modalities": ["text"], "tools": [_client_schema()]})
+        controller.bind_session_tool_projection(
+            client_tool_bindings={"get_reservation_details": "get_reservation_details"},
+            mcp_pipeline_names=frozenset(),
+        )
+        controller.start_function_call(
+            call_id="delegate-1",
+            name="call_backend",
+            arguments={"query": "Cancel reservation ABC123.", "filler_text": "One moment."},
+        )
+        return controller
+
+    def test_a_pending_delegate_call_is_not_owed_by_the_client(self):
+        controller = self._controller_with_pending_delegate()
+        self.assertIn("delegate-1", controller.pending_tool_call_ids())
+        self.assertEqual(controller.pending_client_tool_call_ids(), ())
+
+    def test_a_pending_client_call_is_still_owed_by_the_client(self):
+        controller = self._controller_with_pending_delegate()
+        controller.start_function_call(
+            call_id="client-1",
+            name="get_reservation_details",
+            arguments={"reservation_id": "ABC123"},
+        )
+        self.assertEqual(controller.pending_client_tool_call_ids(), ("client-1",))
+
+
 class ClientToolRoundUnderBoundPromptTests(unittest.IsolatedAsyncioTestCase):
     async def test_a_round_runs_when_a_canonical_prompt_prefix_is_bound(self):
         """The round freezes an empty context, which must not fail the prompt-prefix check."""
