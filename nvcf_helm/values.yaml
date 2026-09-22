@@ -231,6 +231,10 @@ app:
   # while the application independently verifies an ek_ client secret.
   # Keep false for direct deployments so conflicting credentials fail closed.
   realtimeAllowProxyBearer: false
+  # Optional exact catalog platform used by OpenAI Realtime model profiles.
+  # Empty preserves the application default. Isolated self-hosted NVCF
+  # deployments set this to `server`; production defaults remain unchanged.
+  realtimeServicePlatform: ""
 
   # Built-in reviewed pronunciation registry. The app extracts IPA for Magpie
   # requests and suppresses the dictionary for unsupported models such as

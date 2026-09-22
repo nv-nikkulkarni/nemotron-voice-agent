@@ -22,6 +22,10 @@ app:
   replicas: 1
   realtimeAuthenticationRequired: true
   realtimeAllowProxyBearer: true
+  # Bind registry-default selectors to the in-cluster self-hosted catalog.
+  # The application default is cloud, whose catalog is deliberately blank in
+  # this minimal NVCF deployment.
+  realtimeServicePlatform: "server"
   frontendBackendTalkerFillerMode: "emit"
   frontendBackendToolResultMode: "talker"
   thinkerToolTimeoutSeconds: "45"

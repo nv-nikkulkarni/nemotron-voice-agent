@@ -51,6 +51,7 @@ def test_evaluation_overlay_bounds_generic_planning_and_client_execution() -> No
     assert app["replicas"] == 1
     assert app["realtimeAuthenticationRequired"] is True
     assert app["realtimeAllowProxyBearer"] is True
+    assert app["realtimeServicePlatform"] == "server"
     assert app["genericTalkerStreamTimeoutSeconds"] == "15"
     assert app["genericBackendTimeoutSeconds"] == "45"
     assert app["genericPlannerTimeoutSeconds"] == "15"
@@ -61,6 +62,7 @@ def test_evaluation_overlay_bounds_generic_planning_and_client_execution() -> No
     for variable in (
         "REALTIME_API_KEY",
         "REALTIME_ALLOW_PROXY_BEARER",
+        "REALTIME_SERVICE_PLATFORM",
         "GENERIC_TALKER_STREAM_TIMEOUT_SECONDS",
         "GENERIC_PLANNER_MAX_ATTEMPTS",
         "GENERIC_PLANNER_RETRY_BACKOFF_SECONDS",
@@ -152,6 +154,7 @@ def test_helm_render_has_only_minimal_realtime_workloads() -> None:
     assert env["EXAMPLE_SELECTION"] == "generic-frontend-backend-agent"
     assert env["TRANSPORT_SELECTION"] == "websocket"
     assert env["REALTIME_ALLOW_PROXY_BEARER"] == "true"
+    assert env["REALTIME_SERVICE_PLATFORM"] == "server"
     assert env["GENERIC_TALKER_STREAM_TIMEOUT_SECONDS"] == "15"
     assert env["GENERIC_BACKEND_TIMEOUT_SECONDS"] == "45"
     assert env["GENERIC_PLANNER_TIMEOUT_SECONDS"] == "15"
