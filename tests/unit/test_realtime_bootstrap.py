@@ -475,6 +475,7 @@ dotenv.load_dotenv = lambda *, override: original(
     override=override,
 )
 import server  # noqa: F401
+import examples.frontend_backend_agent.pipeline  # noqa: F401
 print(os.environ["REALTIME_SERVICE_PLATFORM"])
 """
             env = os.environ.copy()
