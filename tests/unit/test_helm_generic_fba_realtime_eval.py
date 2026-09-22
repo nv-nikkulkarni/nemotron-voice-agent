@@ -101,6 +101,7 @@ def test_evaluation_overlay_renders_only_the_requested_runtime_components() -> N
     ):
         assert overlay[component]["enabled"] is False
 
+    assert overlay["appImage"]["name"] == "nemotron-realtime-generic-fba"
     assert overlay["appImage"]["tag"] == "2.0.69"
 
 
@@ -127,12 +128,12 @@ def test_helm_render_has_only_minimal_realtime_workloads() -> None:
     deployments = {name for kind, name in resources if kind == "Deployment"}
 
     assert deployments == {
-        "generic-fba-realtime-nemotron-voice-agent",
-        "generic-fba-realtime-nemotron-voice-agent-asr",
-        "generic-fba-realtime-nemotron-voice-agent-llm-lightning",
-        "generic-fba-realtime-nemotron-voice-agent-llm-super",
-        "generic-fba-realtime-nemotron-voice-agent-prewarmer",
-        "generic-fba-realtime-nemotron-voice-agent-tts",
+        "generic-fba-realtime-nemotron-realtime-generic-fba",
+        "generic-fba-realtime-nemotron-realtime-generic-fba-asr",
+        "generic-fba-realtime-nemotron-realtime-generic-fba-llm-lightning",
+        "generic-fba-realtime-nemotron-realtime-generic-fba-llm-super",
+        "generic-fba-realtime-nemotron-realtime-generic-fba-prewarmer",
+        "generic-fba-realtime-nemotron-realtime-generic-fba-tts",
     }
     for forbidden in ("redis", "seaweedfs", "omni", "chatterbox", "booking", "parakeet", "session-data"):
         assert all(forbidden not in name for _, name in resources)
@@ -141,11 +142,11 @@ def test_helm_render_has_only_minimal_realtime_workloads() -> None:
         document
         for document in documents
         if document["kind"] == "Deployment"
-        and document["metadata"]["name"] == "generic-fba-realtime-nemotron-voice-agent"
+        and document["metadata"]["name"] == "generic-fba-realtime-nemotron-realtime-generic-fba"
     )
     container = app["spec"]["template"]["spec"]["containers"][0]
     env = {item["name"]: item.get("value") for item in container["env"]}
-    assert container["image"].endswith(":2.0.69")
+    assert container["image"] == "nvcr.io/0491162300748285/nemotron-realtime-generic-fba:2.0.69"
     assert env["EXAMPLE_SELECTION"] == "generic-frontend-backend-agent"
     assert env["TRANSPORT_SELECTION"] == "websocket"
     assert env["GENERIC_TALKER_STREAM_TIMEOUT_SECONDS"] == "15"

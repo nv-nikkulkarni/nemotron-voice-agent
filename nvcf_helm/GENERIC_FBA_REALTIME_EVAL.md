@@ -9,8 +9,16 @@ The candidate uses the following immutable artifacts:
 
 | Artifact | Candidate | Source |
 | --- | --- | --- |
-| Application image | `2.0.69` | Agent commit `8cbc0e27555b190ff65f5cbb4d5d8356e809464f` |
-| Helm chart | `0.1.142` | This chart and the evaluation overlay |
+| Application image | `nvcr.io/0491162300748285/nemotron-realtime-generic-fba:2.0.69` | Agent commit `8cbc0e27555b190ff65f5cbb4d5d8356e809464f` |
+| Helm chart | `0491162300748285/nemotron-realtime-generic-fba:0.1.143` | This chart and the evaluation overlay |
+
+The earlier Realtime artifacts were mistakenly published under the production
+`nemotron-voice-agent` repositories: image `2.0.69` and charts `0.1.141`
+and `0.1.142`. They are preserved pending explicit deletion authorization and
+must not be selected by this function. Chart `0.1.142` was never deployed.
+The dedicated image is an exact immutable copy of `2.0.69`; chart `0.1.143`
+changes the chart identity and rendered app image name so future publication
+and deployment stay inside the dedicated repositories.
 
 Do not overwrite either candidate after publication. Build a new patch version
 when source or chart content changes.
@@ -144,7 +152,7 @@ Chart `0.1.141` was rejected after Nemotron 3 Super crash-looped during engine
 startup at a 0.75 KV cache fraction, 32,768-token context, and 16-sequence
 limit. NVIDIA NIM defines the fraction as the total GPU-memory budget from
 which model weights are subtracted before allocating KV cache, so raising the
-fraction increases the space left for KV cache after weights. Chart `0.1.142`
+fraction increases the space left for KV cache after weights. Chart `0.1.143`
 tests that bounded remediation: it keeps the required 32,768-token context and
 low sequence count, and raises only Super's memory budget to the
 Viking-proven 0.85 value. The root exception remains unverified until model

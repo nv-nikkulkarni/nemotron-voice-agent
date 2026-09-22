@@ -8,6 +8,7 @@
 nvcf: true
 nimReadyImmediate: false
 appImage:
+  name: "nemotron-realtime-generic-fba"
   tag: "2.0.69"
 
 
