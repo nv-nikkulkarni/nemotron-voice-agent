@@ -5,7 +5,7 @@ Cloud Functions (NVCF) evaluation function. The overlay exposes the Generic
 Frontend/Backend Agent through the OpenAI Realtime-compatible transport. It
 does not change the production topology in `values.yaml`.
 
-The candidate uses the following immutable artifacts:
+The last deployed startup candidate used the following immutable artifacts:
 
 | Artifact | Candidate | Source |
 | --- | --- | --- |
@@ -20,8 +20,45 @@ The dedicated image is an exact immutable copy of `2.0.69`; chart `0.1.143`
 changes the chart identity and rendered app image name so future publication
 and deployment stay inside the dedicated repositories.
 
-Do not overwrite either candidate after publication. Build a new patch version
-when source or chart content changes.
+Chart `0.1.143` reached NVCF `ACTIVE`, and all six workloads started. Nemotron
+3 Super NIM `2.0.5` passed its health and prewarm checks. This proves the
+bounded Super startup remediation, but it does not qualify the Realtime
+endpoint.
+
+The first direct secure WebSocket (WSS) smoke stopped at the outer NVCF
+authorization boundary with HTTP 403. NVCF occupies `Authorization` for the
+outer function invocation and can forward that Bearer credential to the
+application. A browser independently sends its application `ek_` client secret
+through the WebSocket subprotocol, which creates a dual-credential handshake.
+
+The remediation application image is
+`nvcr.io/0491162300748285/nemotron-realtime-generic-fba:2.0.70`, built from
+commit `a1f2cae398b4f73d93af329c871bcff891b15ced`. The published OCI index digest
+is `sha256:9e2ed135e438309d7fd515660111330c3b39ccdce23b56da38f096030e4d097d`;
+the AMD64 image digest is
+`sha256:bb503808a5349023e3d6ec732d07fc8e59eff0c19c858141bf8cfa3246943d35`.
+
+The chart source is `0.1.144` with app version `2.0.70`. Only the isolated
+evaluation overlay enables `REALTIME_ALLOW_PROXY_BEARER=true`. The dedicated
+chart reached NGC `UPLOAD_COMPLETE` on September 22 at 7:25:16 a.m. UTC with
+SHA-256 checksum
+`48975339beff3daacb8586b245f0df1325d647a5c010feb6898cc2a86ef65fb7`.
+An NGC pull round trip produced the same checksum.
+
+NVCF version `58f548ad-510b-4e81-a75d-acf3b981763b` was created `INACTIVE` on
+September 22 at 7:26:32 a.m. UTC with chart `0.1.144`, app `2.0.70`, and only
+the `NGC_API_KEY` and `REALTIME_API_KEY` function-version secrets. The deploy
+request was rejected before mutation with `EXCEED_QUOTA_LIMITS`: it requested
+8 GPUs while NVCF reported current maximum usage 28 and a limit of 32.
+
+The `0.1.144` version is not deployed, healthy, or qualified. The existing
+`0.1.143` isolated deployment remains `ACTIVE`, and the main production
+function is untouched. Do not undeploy isolated deployment
+`d2e79864-301a-476c-85c1-7285d1612efa` without explicit authorization.
+
+Do not overwrite any published or planned artifact tag. Build a new patch
+version when source or chart content changes. Do not delete the preserved
+production-repository artifacts without explicit authorization.
 
 ## Review the Evaluation Topology
 
@@ -153,10 +190,9 @@ startup at a 0.75 KV cache fraction, 32,768-token context, and 16-sequence
 limit. NVIDIA NIM defines the fraction as the total GPU-memory budget from
 which model weights are subtracted before allocating KV cache, so raising the
 fraction increases the space left for KV cache after weights. Chart `0.1.143`
-tests that bounded remediation: it keeps the required 32,768-token context and
-low sequence count, and raises only Super's memory budget to the
-Viking-proven 0.85 value. The root exception remains unverified until model
-logs are available.
+kept the required 32,768-token context and low sequence count, and raised only
+Super's memory budget to the Viking-proven 0.85 value. All six workloads later
+started, and Super NIM `2.0.5` passed health and prewarm checks.
 
 A successful Helm render does not prove that either model fits the target H100
 node. Require all of the following before a scored run:
