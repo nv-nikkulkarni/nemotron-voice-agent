@@ -106,7 +106,7 @@ def test_evaluation_overlay_renders_only_the_requested_runtime_components() -> N
         assert overlay[component]["enabled"] is False
 
     assert overlay["appImage"]["name"] == "nemotron-realtime-generic-fba"
-    assert overlay["appImage"]["tag"] == "2.0.70"
+    assert overlay["appImage"]["tag"] == "2.0.71"
 
 
 def test_nvcf_nims_prefer_the_dedicated_model_download_key() -> None:
@@ -150,7 +150,7 @@ def test_helm_render_has_only_minimal_realtime_workloads() -> None:
     )
     container = app["spec"]["template"]["spec"]["containers"][0]
     env = {item["name"]: item.get("value") for item in container["env"]}
-    assert container["image"] == "nvcr.io/0491162300748285/nemotron-realtime-generic-fba:2.0.70"
+    assert container["image"] == "nvcr.io/0491162300748285/nemotron-realtime-generic-fba:2.0.71"
     assert env["EXAMPLE_SELECTION"] == "generic-frontend-backend-agent"
     assert env["TRANSPORT_SELECTION"] == "websocket"
     assert env["REALTIME_ALLOW_PROXY_BEARER"] == "true"
