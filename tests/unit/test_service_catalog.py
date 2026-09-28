@@ -324,6 +324,31 @@ llm:
         for entries in catalog.values():
             self.assertFalse(any(entry.get("source") == "cloud-nim" for entry in entries))
 
+    def test_cloud_recipe_skips_local_service_discovery(self) -> None:
+        token = utils._service_context.set((Path("src/examples/generic"), ("llm", "asr", "tts")))
+        try:
+            with (
+                patch.dict(os.environ, {"LOCAL_SERVICES_ENABLED": "false"}),
+                patch("utils.is_endpoint_reachable") as runtime_probe,
+            ):
+                catalog = build_services_api_response()
+        finally:
+            utils._service_context.reset(token)
+
+        runtime_probe.assert_not_called()
+        for entries in catalog.values():
+            self.assertFalse(any(entry.get("source") == "self-hosted" for entry in entries))
+
+    def test_registry_skips_local_service_discovery_when_disabled(self) -> None:
+        with (
+            patch.dict(os.environ, {"LOCAL_SERVICES_ENABLED": "false"}),
+            patch("examples_registry.is_endpoint_reachable") as registry_probe,
+        ):
+            catalog = examples_registry._load_local_service_catalog(Path("src/examples/generic"))
+
+        self.assertEqual(catalog, {})
+        registry_probe.assert_not_called()
+
     def test_registry_defaults_fall_back_to_cloud_when_local_endpoint_is_unreachable(self) -> None:
         example = examples_registry._lookup_by_key("generic-assistant")
 
@@ -574,6 +599,14 @@ llm:
 
         self.assertEqual(nim["base_url"], "http://localhost:18002/v1")
         self.assertEqual(vllm["base_url"], "http://localhost:8002/v1")
+
+    def test_registry_host_runtime_rewrites_streaming_llm_endpoint(self) -> None:
+        with patch.dict(os.environ, {"APP_RUNTIME": ""}):
+            rewritten = examples_registry._rewrite_entry_for_host_runtime(
+                {"base_url": "ws://nvidia-llm-vllm:8000/v1/streaming-session"}
+            )
+
+        self.assertEqual(rewritten["base_url"], "ws://localhost:18000/v1/streaming-session")
 
     def test_registry_host_runtime_rewrites_magpie_multilingual_tts_endpoint(self) -> None:
         with patch.dict(os.environ, {"APP_RUNTIME": ""}):

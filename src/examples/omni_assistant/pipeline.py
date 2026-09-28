@@ -24,7 +24,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.observers.user_bot_latency_observer import UserBotLatencyObserver
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.worker import PipelineWorker
+from pipecat.pipeline.worker import PipelineWorker, ProcessorUnusablePolicy
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
@@ -39,7 +39,6 @@ from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 
 import examples_registry
-from examples.omni_assistant.audio_only_smart_turn_strategy import AudioOnlySmartTurnStopStrategy
 from examples.omni_assistant.nvidia_omni_multimodal_service import (
     NvidiaOmniLLMService,
     NvidiaOmniSettings,
@@ -48,7 +47,7 @@ from examples.shared.audio_recorder import create_audio_recorder
 from examples.shared.nemotron_speech_text_filter import NemotronSpeechTextFilter
 from examples.shared.pipeline_utils import (
     build_pipeline_params,
-    build_smart_turn_analyzer,
+    build_smart_turn_stop_strategies,
     build_user_mute_strategies,
     create_transport,
     register_session_start_handlers,
@@ -75,7 +74,7 @@ def _build_user_turn_strategies() -> UserTurnStrategies:
     """Build VAD-start + Smart Turn-stop strategies for Omni audio turns."""
     return UserTurnStrategies(
         start=[VADUserTurnStartStrategy()],
-        stop=[AudioOnlySmartTurnStopStrategy(turn_analyzer=build_smart_turn_analyzer())],
+        stop=build_smart_turn_stop_strategies(wait_for_transcript=False),
     )
 
 
@@ -108,10 +107,6 @@ async def bot(runner_args: RunnerArguments) -> None:
         "extra_params",
     )
 
-    # Build the conversation context up-front. With emit_transcriptions enabled,
-    # Omni reports the user's speech as a TranscriptionFrame, which the user
-    # aggregator writes here as it would an STT service's transcript, while the
-    # assistant aggregator commits LLMTextFrame output as usual.
     system_content = base_system_content
     if system_prompt_override:
         system_content = f"{base_system_content}\n\n{system_prompt_override}".strip()
@@ -119,9 +114,6 @@ async def bot(runner_args: RunnerArguments) -> None:
 
     emit_transcriptions = parse_env_bool("OMNI_EMIT_TRANSCRIPTIONS", default=True)
     omni = NvidiaOmniLLMService(
-        # Name carries "llm" so metrics consumers (UI metric-group, perf
-        # benchmark) attribute Omni's TTFB/processing/token-usage metrics to the
-        # LLM stage. Omni fuses ASR+LLM, so these are the pipeline's LLM metrics.
         name="NemotronOmniLLM",
         api_key=nvidia_api_key(),
         base_url=base_url,
@@ -228,8 +220,6 @@ async def bot(runner_args: RunnerArguments) -> None:
         latest_latency_turn_label = f"Turn {latency_turn_count}"
         latest_latency_ms = round(latency * 1000, 3)
         logger.info(f"User->Bot latency: {latency:.3f}s")
-        # Also emit the benchmark-compatible message (server_e2e) alongside the
-        # UI metric-group below.
         await task.queue_frame(
             RTVIServerMessageFrame(
                 data={
@@ -295,9 +285,7 @@ async def bot(runner_args: RunnerArguments) -> None:
                 }
             )
         )
-        events = breakdown.chronological_events()
-        # Benchmark-compatible breakdown message (vad_smart_turn) in addition to
-        # the UI metric-group above.
+        events = breakdown.turn_contribution_lines()
         await task.queue_frame(
             RTVIServerMessageFrame(
                 data={
@@ -325,11 +313,12 @@ async def bot(runner_args: RunnerArguments) -> None:
         idle_timeout_secs=runner_args.pipeline_idle_timeout_secs,
         observers=with_realtime_observers(latency_observer, transport=transport),
         enable_tracing=IS_TRACING_ENABLED,
+        processor_unusable_policy=ProcessorUnusablePolicy.END,
+        setup_timeout_secs=120.0,
     )
 
     @user_aggregator.event_handler("on_user_turn_stopped")
     async def on_user_turn_stopped(aggregator, strategy, message):
-        # Omni turn boundary is decided by smart-turn, not an ASR final frame.
         await task.queue_frame(
             RTVIServerMessageFrame(
                 data={

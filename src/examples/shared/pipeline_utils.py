@@ -54,9 +54,14 @@ def build_smart_turn_analyzer() -> LocalSmartTurnAnalyzerV3:
     return LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=stop_secs))
 
 
-def build_smart_turn_stop_strategies() -> list[TurnAnalyzerUserTurnStopStrategy]:
-    """Return the default Smart Turn stop strategy used by cascaded pipelines."""
-    return [TurnAnalyzerUserTurnStopStrategy(turn_analyzer=build_smart_turn_analyzer())]
+def build_smart_turn_stop_strategies(*, wait_for_transcript: bool = True) -> list[TurnAnalyzerUserTurnStopStrategy]:
+    """Return the shared Smart Turn stop strategy."""
+    return [
+        TurnAnalyzerUserTurnStopStrategy(
+            turn_analyzer=build_smart_turn_analyzer(),
+            wait_for_transcript=wait_for_transcript,
+        )
+    ]
 
 
 def build_user_mute_strategies(welcome_enabled: bool) -> list[MuteUntilFirstBotCompleteUserMuteStrategy]:
@@ -317,7 +322,7 @@ def create_transport(runner_args: RunnerArguments):
         )
 
     if isinstance(runner_args, EvalRunnerArguments):
-        from pipecat.evals.serializer import RTVIEvalSerializer
+        from pipecat.evals.serializer import EvalSerializer
         from pipecat.evals.transport import EvalTransport, EvalTransportParams
 
         return EvalTransport(
@@ -328,7 +333,7 @@ def create_transport(runner_args: RunnerArguments):
                 audio_out_sample_rate=PIPELINE_AUDIO_OUT_SAMPLE_RATE,
                 audio_out_10ms_chunks=parse_env_int("AUDIO_OUT_10MS_CHUNKS", 10),
                 add_wav_header=False,
-                serializer=RTVIEvalSerializer(),
+                serializer=EvalSerializer(),
             ),
             host=runner_args.host,
             port=runner_args.port,

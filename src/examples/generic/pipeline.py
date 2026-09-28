@@ -7,6 +7,10 @@ Uses pipecat's built-in NVIDIA classes directly:
   - NvidiaSTTService  (Nemotron Streaming ASR)
   - NvidiaLLMService  (NIM-compatible LLM)
   - NvidiaTTSService  (Magpie TTS)
+
+A catalog LLM whose ``base_url`` is ``ws://`` / ``wss://`` swaps in
+NvidiaStreamingLLMService and StreamingLLMUserAggregator, which prefill the
+user's words while they are still speaking.
 """
 
 import asyncio
@@ -16,9 +20,10 @@ from loguru import logger
 from pipecat.frames.frames import LLMRunFrame, TTSUpdateSettingsFrame
 from pipecat.observers.user_bot_latency_observer import UserBotLatencyObserver
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.worker import PipelineWorker
+from pipecat.pipeline.worker import PipelineWorker, ProcessorUnusablePolicy
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
+    LLMAssistantAggregator,
     LLMContextAggregatorPair,
 )
 from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
@@ -33,6 +38,7 @@ from examples.generic.tools import TOOL_HANDLERS, build_tools_schema
 from examples.shared.activity_check import create_activity_check_processor
 from examples.shared.audio_recorder import create_audio_recorder
 from examples.shared.nemotron_speech_text_filter import NemotronSpeechTextFilter
+from examples.shared.nvidia_streaming_llm import NvidiaStreamingLLMService, StreamingLLMUserAggregator
 from examples.shared.pipeline_utils import (
     apply_pinned_prompt_summary,
     build_context_messages,
@@ -45,6 +51,7 @@ from examples.shared.pipeline_utils import (
 from tracing import IS_TRACING_ENABLED
 from utils import (
     is_nvcf,
+    is_streaming_llm_url,
     load_ipa_dictionary,
     load_service_entry,
     normalize_lang_code,
@@ -74,7 +81,6 @@ async def bot(runner_args: RunnerArguments) -> None:
     default_tts = load_service_entry("tts", "")
     default_asr = load_service_entry("asr", "")
 
-    # --- ASR ---
     asr_server = body.get("asr_server", "") or default_asr.get("server", "grpc.nvcf.nvidia.com:443")
     asr_ssl = is_nvcf(asr_server)
     asr_kwargs: dict = {
@@ -98,7 +104,6 @@ async def bot(runner_args: RunnerArguments) -> None:
         f"language={asr_language_code or '(default)'}"
     )
 
-    # --- LLM ---
     model_id = body.get("model_id", "") or default_llm.get("model_id", "nvidia/nemotron-3.5-lightning-30b-a3b")
     base_url = body.get("base_url", "") or default_llm.get("base_url", "https://integrate.api.nvidia.com/v1")
     system_prompt = body.get("system_prompt", "") or default_llm.get("system_prompt", "")
@@ -134,7 +139,9 @@ async def bot(runner_args: RunnerArguments) -> None:
         f"temperature={llm_temperature if llm_temperature is not None else '(default)'}, "
         f"extra_params={extra_params or '(none)'}"
     )
-    llm = NvidiaLLMService(
+    streaming = is_streaming_llm_url(base_url)
+    llm_service = NvidiaStreamingLLMService if streaming else NvidiaLLMService
+    llm = llm_service(
         api_key=nvidia_api_key(),
         base_url=base_url,
         settings=llm_settings,
@@ -153,7 +160,6 @@ async def bot(runner_args: RunnerArguments) -> None:
     else:
         logger.info(f"Tool calling disabled for prompt_key={prompt_key!r} (no tools_available in prompts.yaml)")
 
-    # --- TTS ---
     tts_server = body.get("tts_server", "") or default_tts.get("server", "grpc.nvcf.nvidia.com:443")
     tts_ssl = is_nvcf(tts_server)
     tts_voice = body.get("tts_voice_id", "") or default_tts.get("voice_id", "")
@@ -202,7 +208,6 @@ async def bot(runner_args: RunnerArguments) -> None:
         f"text_filters=[NemotronSpeechTextFilter]"
     )
 
-    # --- Context ---
     messages = build_context_messages(base_system_content, system_prompt)
 
     if tools_enabled:
@@ -211,10 +216,12 @@ async def bot(runner_args: RunnerArguments) -> None:
         context = LLMContext(messages)
     preserve_prompt_messages = len(messages)
 
-    user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
-        context,
-        user_params=build_user_aggregator_params(welcome_enabled),
-    )
+    user_params = build_user_aggregator_params(welcome_enabled)
+    if streaming:
+        user_aggregator = StreamingLLMUserAggregator(context, params=user_params)
+        assistant_aggregator = LLMAssistantAggregator(context)
+    else:
+        user_aggregator, assistant_aggregator = LLMContextAggregatorPair(context, user_params=user_params)
     logger.info(
         f"Chat history summarization enabled: recent_turns={CHAT_HISTORY_RECENT_TURNS}, "
         f"preserve_prompt_messages={preserve_prompt_messages}"
@@ -261,8 +268,6 @@ async def bot(runner_args: RunnerArguments) -> None:
                 summary_system_prompt=system_prompt,
             )
 
-    # Forward custom latency samples over RTVI so the benchmark can stay fully
-    # client-driven and avoid server log scraping.
     @latency_observer.event_handler("on_first_bot_speech_latency")
     async def on_first_bot_speech(observer, latency):
         logger.info(f"First bot speech latency: {latency:.3f}s")
@@ -291,7 +296,7 @@ async def bot(runner_args: RunnerArguments) -> None:
 
     @latency_observer.event_handler("on_latency_breakdown")
     async def on_breakdown(observer, breakdown):
-        events = breakdown.chronological_events()
+        events = breakdown.turn_contribution_lines()
         await task.queue_frame(
             RTVIServerMessageFrame(
                 data={
@@ -315,6 +320,8 @@ async def bot(runner_args: RunnerArguments) -> None:
         idle_timeout_secs=runner_args.pipeline_idle_timeout_secs,
         observers=with_realtime_observers(latency_observer, transport=transport),
         enable_tracing=IS_TRACING_ENABLED,
+        processor_unusable_policy=ProcessorUnusablePolicy.END,
+        setup_timeout_secs=120.0,
     )
 
     @user_aggregator.event_handler("on_user_turn_stopped")

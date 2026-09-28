@@ -14,7 +14,7 @@ from typing import Any, NamedTuple, TypedDict
 
 import yaml
 
-from utils import is_endpoint_reachable, nvidia_cloud_available
+from utils import is_endpoint_reachable, local_services_enabled, nvidia_cloud_available
 
 
 class ExampleEntry(TypedDict):
@@ -153,6 +153,7 @@ def _rewrite_entry_for_host_runtime(entry: dict) -> dict:
                 value.replace("http://nvidia-llm:8000/v1", "http://localhost:18000/v1")
                 .replace("http://nvidia-llm-omni:8000/v1", "http://localhost:18002/v1")
                 .replace("http://nvidia-llm-vllm:8000/v1", "http://localhost:18000/v1")
+                .replace("ws://nvidia-llm-vllm:8000/v1", "ws://localhost:18000/v1")
                 .replace("http://nvidia-llm-vllm-omni:8002/v1", "http://localhost:8002/v1")
                 .replace("host.docker.internal", "localhost")
             )
@@ -196,6 +197,8 @@ def _first_reachable_variant(variants: list[tuple[str, dict]]) -> tuple[str, dic
 
 def _load_local_service_catalog(example_dir: Path) -> dict[str, dict]:
     """Load local service entries, merging recipe sections by reachability."""
+    if not local_services_enabled():
+        return {}
     data = _load_yaml_mapping(example_dir / "services.local.yaml")
     variants: dict[str, dict[str, list[tuple[str, dict]]]] = {}
     for platform_name, platform_data in data.items():

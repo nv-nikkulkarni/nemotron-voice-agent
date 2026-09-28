@@ -4,9 +4,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.2.0] - TBD
+## [2.3.0] - TBD
 
-This minor release adds Nemotron 3.5 Lightning and Nemotron 3 Nano Omni support, universal `*/single-gpu` recipes with the NeMo-Speech.cpp stack, an OpenAI Realtime-compatible WebSocket gateway, and the `create-voice-agent` skill. It consolidates on-prem deployment under `*/server` and `*/single-gpu`, upgrades Pipecat to 1.7.0, and removes the platform-specific recipes and Nemotron 3 Nano cascaded LLM.
+This minor release upgrades Pipecat to 1.11.0, adopts its built-in transcript-independent Smart Turn handling for audio-only user turns, and adds streaming-input prefill for the Generic Assistant on single-GPU hosts.
+
+### Added
+
+- **Streaming-input prefill** for the Generic Assistant. The single-GPU Lightning vLLM sidecar also serves a text StreamingInput WebSocket at `/v1/streaming-session`, and the `Nemotron 3.5 Lightning 30B A3B (Streaming Input)` catalog entry streams each ASR update into it, so the prompt is prefilled while the user is still speaking. `NvidiaStreamingLLMService` and `StreamingLLMUserAggregator` are drop-in replacements for `NvidiaLLMService` and `LLMUserAggregator`.
+
+### Changed
+
+- Upgraded Pipecat to version 1.11.0.
+- Single-GPU Lightning recipes pin `vllm/vllm-openai:v0.29.0` and cap `--max-num-seqs` at 256.
+- Replaced the custom Omni audio-only Smart Turn stop strategy with Pipecat's built-in `TurnAnalyzerUserTurnStopStrategy`, configured with `wait_for_transcript=False`.
+
+## [2.2.0] - 2026-09-22
+
+This minor release adds Nemotron 3.5 Lightning and Nemotron 3 Nano Omni support, universal `*/single-gpu` recipes with the NeMo-Speech.cpp stack, an OpenAI Realtime-compatible WebSocket gateway, and the `nemotron-voice-agent-builder` skill. It consolidates on-prem deployment under `*/server` and `*/single-gpu`, upgrades Pipecat to 1.7.0, and removes the platform-specific recipes and Nemotron 3 Nano cascaded LLM.
 
 ### Added
 
@@ -15,7 +29,7 @@ This minor release adds Nemotron 3.5 Lightning and Nemotron 3 Nano Omni support,
 - **`*/single-gpu` recipes** running the NeMo-Speech.cpp speech stack next to vLLM on one GPU across all examples.
 - **`scripts/download-nemo-speech-models.sh`** for one-time NeMo-Speech.cpp GGUF setup on single-GPU hosts.
 - **OpenAI Realtime–compatible WebSocket gateway** (`WS /v1/realtime`) that drives the existing cascaded ASR → LLM → TTS pipelines for OpenAI Realtime–shaped clients, with NVIDIA-only knobs under `session.nvidia`.
-- **`create-voice-agent` agent skill** for scaffolding and refining NVIDIA voice agents (cascaded or Omni) across Pipecat, LiveKit, and custom frameworks.
+- **`nemotron-voice-agent-builder` agent skill** for scaffolding and refining NVIDIA voice agents (cascaded or Omni) across Pipecat and LiveKit.
 - Optional `NvidiaWordTTSService` for Magpie word streaming and timestamp-based context commits.
 
 ### Changed

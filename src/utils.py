@@ -211,6 +211,11 @@ def is_nvcf(server: str) -> bool:
     return "nvcf.nvidia.com" in server
 
 
+def is_streaming_llm_url(url: str) -> bool:
+    """Return True when an LLM ``base_url`` speaks native StreamingInput over WebSocket."""
+    return url.startswith(("ws://", "wss://"))
+
+
 def _normalize_services_catalog(data: object) -> dict:
     """Normalize a services catalog into ``{category: {key: entry}}``."""
     src = data if isinstance(data, dict) else {}
@@ -220,6 +225,11 @@ def _normalize_services_catalog(data: object) -> dict:
 def _is_container_runtime() -> bool:
     """Return ``True`` when running under Compose (``APP_RUNTIME=container``)."""
     return os.getenv("APP_RUNTIME", "").strip().lower() == "container"
+
+
+def local_services_enabled() -> bool:
+    """Return whether self-hosted catalog entries should be discovered."""
+    return os.getenv("LOCAL_SERVICES_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
 
 
 _HOST_RUNTIME_PORT_OVERRIDES: dict[tuple[str, int], int] = {
@@ -393,6 +403,8 @@ def _load_cloud_services_catalog() -> dict:
 
 def _load_local_services_catalog() -> dict:
     """Load local service entries, merging recipe sections by reachability."""
+    if not local_services_enabled():
+        return _normalize_services_catalog({})
     local_path = _services_local_path()
     if not local_path.is_file():
         return _normalize_services_catalog({})
