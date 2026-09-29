@@ -231,15 +231,17 @@ class DelegateToolNameContractTests(unittest.TestCase):
 class DelegateCallWireContractTests(unittest.TestCase):
     """Pin what a Realtime client actually observes for a delegate call.
 
-    The gateway publishes a delegate call using the same event sequence as a
-    client-owned call, and carries no field identifying the owner. A client
-    that follows the OpenAI Realtime contract literally will answer it and be
-    rejected. Every integrator therefore needs the delegate names out of band;
-    the evaluation harness carries them in its endpoint profile.
+    A delegate call is the pipeline's own internal mechanics, so a client
+    following the OpenAI Realtime contract needs zero special handling to
+    avoid it: no function_call ever announces it, no field hints it exists,
+    and Response A -- the delegate's own response lifecycle -- closes with an
+    empty output array. Only the response envelope (created, then done) is
+    observable, and it is indistinguishable from a response that produced no
+    output for any other reason.
 
-    These tests exist so the requirement is discoverable in this repository
-    and cannot change silently. If the gateway ever stops publishing trusted
-    calls, or starts marking them, update these tests and
+    These tests exist so that contract is discoverable in this repository and
+    cannot change silently. If the gateway ever starts publishing trusted
+    calls, or marking them, update these tests and
     docs/how-to/use-realtime-gateway.md together.
     """
 
@@ -251,26 +253,52 @@ class DelegateCallWireContractTests(unittest.TestCase):
             arguments={"query": "Cancel reservation ABC123.", "filler_text": "One moment."},
         )
 
-    def test_a_delegate_call_is_published_like_any_client_function_call(self) -> None:
+    def test_a_delegate_call_never_announces_a_function_call(self) -> None:
         events = self._delegate_call_events()
-        by_type = {event.get("type"): event for event in events}
+        types = [event.get("type") for event in events]
 
-        self.assertIn("response.output_item.added", by_type)
-        self.assertEqual(by_type["response.output_item.added"]["item"]["type"], "function_call")
-        self.assertEqual(by_type["response.output_item.added"]["item"]["name"], "call_backend")
+        self.assertNotIn("response.output_item.added", types)
+        self.assertNotIn("response.function_call_arguments.delta", types)
+        self.assertNotIn("response.function_call_arguments.done", types)
+        self.assertNotIn("response.output_item.done", types)
+        # The response envelope is all that is left, and it carries nothing
+        # that names the call, its arguments, or its owner.
+        self.assertEqual(types, ["response.created"])
 
-        done = by_type["response.function_call_arguments.done"]
-        self.assertEqual(done["name"], "call_backend")
-        self.assertEqual(done["call_id"], "call-1")
-
-    def test_no_published_field_identifies_the_call_as_server_owned(self) -> None:
+    def test_no_published_field_identifies_the_call_or_its_owner(self) -> None:
         payload = json.dumps(self._delegate_call_events())
 
-        for marker in ("delegate", "server_owned", "owner", "trusted"):
+        for marker in ("delegate", "server_owned", "owner", "trusted", "call_backend", "call-1"):
             with self.subTest(marker=marker):
                 self.assertNotIn(marker, payload)
 
-    def test_answering_a_delegate_call_is_rejected(self) -> None:
+    def test_response_a_closes_with_an_empty_output_array(self) -> None:
+        controller = _controller()
+        controller.start_function_call(
+            call_id="call-1",
+            name="call_backend",
+            arguments={"query": "Cancel reservation ABC123.", "filler_text": "One moment."},
+        )
+
+        events = controller.finish_response(status="completed")
+        done = next(event for event in events if event["type"] == "response.done")
+
+        self.assertEqual(done["response"]["output"], [])
+
+    def test_the_delegate_result_is_never_published_either(self) -> None:
+        controller = _controller()
+        controller.start_function_call(
+            call_id="call-1",
+            name="call_backend",
+            arguments={"query": "Cancel reservation ABC123.", "filler_text": "One moment."},
+        )
+        controller.finish_response(status="completed")
+
+        events = controller.add_function_output(call_id="call-1", output='{"status":"confirmed"}', owner="delegate")
+
+        self.assertEqual(events, [])
+
+    def test_answering_a_delegate_call_is_still_rejected(self) -> None:
         controller = _controller()
         controller.start_function_call(
             call_id="call-1",
