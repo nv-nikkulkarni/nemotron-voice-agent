@@ -5,31 +5,28 @@ Cloud Functions (NVCF) evaluation function. The overlay exposes the Generic
 Frontend/Backend Agent through the OpenAI Realtime-compatible transport. It
 does not change the production topology in `values.yaml`.
 
-The last deployed startup candidate used the following immutable artifacts:
+The current isolated deployment uses the following immutable artifacts:
 
 | Artifact | Candidate | Source |
 | --- | --- | --- |
-| Application image | `nvcr.io/0491162300748285/nemotron-realtime-generic-fba:2.0.69` | Agent commit `8cbc0e27555b190ff65f5cbb4d5d8356e809464f` |
-| Helm chart | `0491162300748285/nemotron-realtime-generic-fba:0.1.143` | This chart and the evaluation overlay |
+| Application image | `nvcr.io/0491162300748285/nemotron-realtime-generic-fba:2.0.70` | Agent commit `a1f2cae398b4f73d93af329c871bcff891b15ced` |
+| Helm chart | `0491162300748285/nemotron-realtime-generic-fba:0.1.145` | Chart commit `a4891027` and the evaluation overlay |
 
-The earlier Realtime artifacts were mistakenly published under the production
-`nemotron-voice-agent` repositories: image `2.0.69` and charts `0.1.141`
-and `0.1.142`. They are preserved pending explicit deletion authorization and
-must not be selected by this function. Chart `0.1.142` was never deployed.
-The dedicated image is an exact immutable copy of `2.0.69`; chart `0.1.143`
-changes the chart identity and rendered app image name so future publication
-and deployment stay inside the dedicated repositories.
+Earlier Realtime artifacts were mistakenly published under the production
+`nemotron-voice-agent` repositories: image `2.0.69` and charts `0.1.141` and
+`0.1.142`. The user explicitly authorized their deletion. All three artifacts
+were deleted and verified absent. Chart `0.1.142` was never deployed. No other
+production artifact was removed.
 
-Chart `0.1.143` reached NVCF `ACTIVE`, and all six workloads started. Nemotron
-3 Super NIM `2.0.5` passed its health and prewarm checks. This proves the
-bounded Super startup remediation, but it does not qualify the Realtime
-endpoint.
+Chart `0.1.143` reached NVCF `ACTIVE`, and all six workloads started. Its first
+direct secure WebSocket (WSS) smoke stopped at the outer NVCF authorization
+boundary with HTTP 403. NVCF occupies `Authorization` for the outer function
+invocation, while the browser independently sends its application `ek_` client
+secret through the WebSocket subprotocol.
 
-The first direct secure WebSocket (WSS) smoke stopped at the outer NVCF
-authorization boundary with HTTP 403. NVCF occupies `Authorization` for the
-outer function invocation and can forward that Bearer credential to the
-application. A browser independently sends its application `ek_` client secret
-through the WebSocket subprotocol, which creates a dual-credential handshake.
+After explicit user authorization, deployment
+`d2e79864-301a-476c-85c1-7285d1612efa` was gracefully undeployed. Its version,
+`03d494aa...`, is `INACTIVE`.
 
 The remediation application image is
 `nvcr.io/0491162300748285/nemotron-realtime-generic-fba:2.0.70`, built from
@@ -38,27 +35,66 @@ is `sha256:9e2ed135e438309d7fd515660111330c3b39ccdce23b56da38f096030e4d097d`;
 the AMD64 image digest is
 `sha256:bb503808a5349023e3d6ec732d07fc8e59eff0c19c858141bf8cfa3246943d35`.
 
-The chart source is `0.1.144` with app version `2.0.70`. Only the isolated
-evaluation overlay enables `REALTIME_ALLOW_PROXY_BEARER=true`. The dedicated
-chart reached NGC `UPLOAD_COMPLETE` on September 22 at 7:25:16 a.m. UTC with
-SHA-256 checksum
-`48975339beff3daacb8586b245f0df1325d647a5c010feb6898cc2a86ef65fb7`.
-An NGC pull round trip produced the same checksum.
+The `0.1.144` chart enabled `REALTIME_ALLOW_PROXY_BEARER=true` only in the
+isolated evaluation overlay. Deployment
+`73d53cc5-3015-4f8a-a81b-aaec8059fe61` was later gracefully undeployed, and
+version `58f548ad-510b-4e81-a75d-acf3b981763b` is `INACTIVE`. The obsolete
+version with ID prefix `4736f14c` and status `ERROR` was deleted.
 
-NVCF version `58f548ad-510b-4e81-a75d-acf3b981763b` was created `INACTIVE` on
-September 22 at 7:26:32 a.m. UTC with chart `0.1.144`, app `2.0.70`, and only
-the `NGC_API_KEY` and `REALTIME_API_KEY` function-version secrets. The deploy
-request was rejected before mutation with `EXCEED_QUOTA_LIMITS`: it requested
-8 GPUs while NVCF reported current maximum usage 28 and a limit of 32.
+Dedicated chart `0.1.145` reached NGC `UPLOAD_COMPLETE` on September 22 at
+8:09:41 a.m. UTC with reported checksum prefix `1d6a4535...`. An NGC pull round
+trip matched.
 
-The `0.1.144` version is not deployed, healthy, or qualified. The existing
-`0.1.143` isolated deployment remains `ACTIVE`, and the main production
-function is untouched. Do not undeploy isolated deployment
-`d2e79864-301a-476c-85c1-7285d1612efa` without explicit authorization.
+NVCF accepted the `0.1.145` version only after its health timeout changed from
+the invalid value `10` to the ISO 8601 duration `PT10S`. Version ID prefix
+`246758a1` is `ACTIVE`. Deployment ID prefix `27405306` and instance ID prefix
+`sr-4cede` are `RUNNING`. All six workloads exist, and ASR, TTS, Lightning,
+and Super health and warmup logs are green.
 
-Do not overwrite any published or planned artifact tag. Build a new patch
-version when source or chart content changes. Do not delete the preserved
-production-repository artifacts without explicit authorization.
+The main production function `81862ff8...` remains `ACTIVE` and `RUNNING` on
+chart `0.1.139` and app `2.0.67`.
+
+The dual-authentication correction still works: a WSS request reaches the
+application, and the application accepts it. The connection then closes with
+code 1013. Inspection of the live mounted registry confirms that it contains a
+non-empty `realtime_models` mapping, which supersedes the earlier ConfigMap
+root-cause assessment.
+
+The verified root cause is that the deployment does not set
+`REALTIME_SERVICE_PLATFORM`. The adapter therefore selects its default
+`cloud` catalog, while this self-hosted evaluation chart intentionally leaves
+the cloud catalog empty. The Realtime route cannot resolve the model services
+from that catalog.
+
+Commit `a5c30db` adds the optional `app.realtimeServicePlatform` chart value
+and corresponding `REALTIME_SERVICE_PLATFORM` environment variable. The base
+value remains empty, so existing deployments retain the application default.
+Only the isolated evaluation overlay selects `server`.
+
+Dedicated chart `0.1.146` reached NGC `UPLOAD_COMPLETE` on September 22 at
+9:06:21 a.m. UTC with SHA-256 checksum
+`6942251025ced85eccf4f67595d799ac74444019b02b799aeea747be31528afa`. An NGC
+pull round trip produced the same checksum. The application remains `2.0.70`,
+built from `a1f2cae`, with AMD64 digest
+`sha256:bb503808a5349023e3d6ec732d07fc8e59eff0c19c858141bf8cfa3246943d35`.
+
+Focused chart tests report six passing tests. Helm lint and render checks pass.
+Pre-commit checks pass; the generic YAML hook is skipped only for the raw Go
+template, which is not standalone YAML.
+
+Chart `0.1.146` is published, but no NVCF version or deployment exists for it.
+The isolated function again has three versions. Registration and deployment
+are blocked pending explicit authorization to delete one inactive version. Do
+not delete a version or claim `0.1.146` is deployed, healthy, or qualified
+without that authorization and new deployment evidence.
+
+The random `REALTIME_API_KEY` was rotated after CLI debug output unexpectedly
+echoed secret values. Treat raw debug output as sensitive, and record only
+secret names. Never copy credential values into Git, commands, logs, reports,
+or this guide.
+
+Do not overwrite any published artifact tag. Build a new patch version when
+source or chart content changes.
 
 ## Review the Evaluation Topology
 
@@ -164,6 +200,8 @@ Inspect the rendered output before packaging. Confirm all of the following:
   a valid `TRANSPORT_SELECTION=websocket` registry selector. The OpenAI
   Realtime adapter is the independent `/v1/realtime` server route; `realtime`
   is not an `examples_registry` transport value.
+- The application uses `REALTIME_SERVICE_PLATFORM=server` to resolve its
+  Realtime model profiles from the self-hosted service catalog.
 - The application replica count is one.
 - The rendered workloads are the application, ASR, Magpie TTS, Lightning,
   Super, and the prewarmer.
