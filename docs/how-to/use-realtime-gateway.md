@@ -505,6 +505,31 @@ server-owned output. The gateway then starts Response B for the final answer
 with a different response ID. The client observes both lifecycles and does not
 send `function_call_output` for the trusted call.
 
+This is the one place where the gateway departs from a literal reading of the
+OpenAI Realtime contract, so integrate against it deliberately.
+
+A trusted call is published with exactly the same events as a client-owned
+call -- `response.output_item.added` carrying an `item.type` of
+`function_call`, then `response.function_call_arguments.delta` and
+`.done` -- and no published field identifies the owner. A client that treats
+every `function_call` item as its own work will answer a trusted call and the
+gateway rejects it with the `tool_owner_mismatch` error code.
+
+Client applications and evaluation harnesses therefore need the trusted names
+out of band. Carry them in whatever configuration already describes the
+endpoint, and apply two rules:
+
+1. Do not send `function_call_output` for a call whose name is trusted.
+2. Do not treat the `response.done` that closes a trusted call as the end of
+   the assistant's turn. The answer arrives in a later response.
+
+For the Generic Frontend/Backend profile the trusted names are exactly
+`call_backend` and `cancel_backend`. That set is pinned by
+`DelegateToolNameContractTests` in
+`tests/unit/test_generic_fba_trusted_tool_routing.py`, and the published
+behavior above is pinned by `DelegateCallWireContractTests` in the same file,
+so treat a change to either as a breaking wire-contract change.
+
 ### Run a Client-Owned Function
 
 Declare a client-owned function in an initial or live session update. The
