@@ -84,9 +84,12 @@ def _build_context_messages(
     return [{"role": "system", "content": base_prompt}]
 
 
-def _load_prompt_few_shots(prompt_key: str, *, custom_prompt: bool) -> list[dict]:
+def _load_prompt_few_shots(prompt_key: str, *, custom_prompt: bool, protocol_prompt_key: str = "") -> list[dict]:
     """Load trusted native-call demonstrations without changing session history."""
-    if custom_prompt or not prompt_key:
+    if protocol_prompt_key:
+        # These are native protocol examples, independent of an editable persona.
+        prompt_key = protocol_prompt_key
+    elif custom_prompt or not prompt_key:
         return []
     entry = load_prompt_catalog(__file__).get(prompt_key)
     raw_messages = entry.get("few_shots") if isinstance(entry, dict) else None
@@ -163,6 +166,7 @@ async def bot(runner_args: RunnerArguments) -> None:
     talker_few_shots = _load_prompt_few_shots(
         prompt_key,
         custom_prompt=bool(body.get("prompt_content")),
+        protocol_prompt_key=domain.talker_protocol_prompt_key,
     )
     if domain.key == "generic":
         talker_prompt += (
@@ -380,7 +384,15 @@ async def bot(runner_args: RunnerArguments) -> None:
     )
 
     # --- Context + aggregators ---
-    messages = _build_context_messages(talker_prompt, system_prompt, runtime_context=domain.runtime_context())
+    messages = _build_context_messages(
+        talker_prompt,
+        system_prompt,
+        runtime_context=(
+            domain.session_runtime_context(body)
+            if domain.session_runtime_context is not None
+            else domain.runtime_context()
+        ),
+    )
     messages.extend(talker_few_shots)
     logger.info(f"Talker native few-shot messages: {len(talker_few_shots)}")
     if domain.key == "generic":

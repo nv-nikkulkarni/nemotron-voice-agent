@@ -27,7 +27,7 @@ page.on("request", (request) => {
 const turns = [
   { text: "What is the current NVIDIA stock price?", heard: /nvidia/i, expect: /price|dollar|USD|\d/i },
   { text: "Check that same company again please.", heard: /company|again/i, expect: /nvidia|NVDA/i },
-  { text: "What time is it right now?", heard: /time/i, expect: /\d|o.clock|AM|PM/i },
+  { text: "What time is it right now?", heard: /time/i, expect: /\d{1,2}:\d{2}\s*(AM|PM)/i, clock: true },
   { text: "Show me your architecture.", heard: /architecture/i, expect: /architecture|diagram|design/i, architecture: "generic" },
   { text: "Please say Nemotron 3 Diarization.", heard: /nemotron|diarization/i, expect: /nemotron|diarization/i },
   { text: "Please repeat these two words: Codex and spinner.", heard: /codex.*spinner/i, expect: /codex.*spinner/i },
@@ -64,6 +64,7 @@ async function voicePreview() {
   }
 }
 async function runTurn(rep, turn, index, inputWav) {
+  const started = Date.now();
   const response = await H.turn(page, turn.text, `${rep.key}-${index}`, {
     micDevice: slot.micSink, spkDevice: slot.spkSink, monitor: slot.spkMonitor,
     settle: true, inputWav,
@@ -73,6 +74,17 @@ async function runTurn(rep, turn, index, inputWav) {
   assert(turn.heard.test(response.domUser), `turn ${index} ASR: ${response.domUser}`);
   assert(turn.expect.test(response.domBot || response.botAsr), `turn ${index} answer: ${response.domBot}`);
   assert(!/\*\*|__|`|asterisk|backtick|full stop|exclamation mark/i.test(response.domBot + response.botAsr), "formatting leaked into speech");
+  if (turn.clock) {
+    const time = (response.domBot || response.botAsr).match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    assert(time, "clock response must include an actual time");
+    const spoken = (+time[1] % 12) * 60 + +time[2] + (time[3].toUpperCase() === "PM" ? 720 : 0);
+    const minutes = (date) => {
+      const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Calcutta", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
+      return +parts.find((p) => p.type === "hour").value * 60 + +parts.find((p) => p.type === "minute").value;
+    };
+    assert([minutes(started), minutes(Date.now())].some((actual) => Math.abs(actual - spoken) <= 1),
+      "spoken clock must match fresh browser-local time");
+  }
   if (turn.short) assert(response.domBot.split(/\s+/).length <= 40, "default answer exceeds the spoken word budget");
   if (turn.architecture) {
     const image = page.locator(".architecture-presentation img");

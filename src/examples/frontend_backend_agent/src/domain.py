@@ -63,6 +63,8 @@ class DomainSpec:
     filler_policy: FillerPolicy = "code_authored"
     tool_registry: Mapping[str, ToolSpec] = field(default_factory=dict)
     max_query_chars: int = 4000
+    talker_protocol_prompt_key: str = ""
+    session_runtime_context: Callable[[Mapping[str, Any]], str] | None = None
 
 
 # This allowlist is the code-level trust boundary. ``domain_profile`` may arrive

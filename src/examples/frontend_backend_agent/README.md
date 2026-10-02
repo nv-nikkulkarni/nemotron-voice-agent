@@ -308,6 +308,17 @@ same instructions to both. Each field is limited to 32,000 characters and does
 not change the trusted backend domain or tool allowlist. Refer to
 [Frontend/Backend Session Prompts](../../../docs/how-to/configure-prompts.md#frontendbackend-session-prompts).
 
+For the Generic domain, editing the frontend persona or prompt key retains
+the `generic_talker` native protocol examples. These include fresh-clock and
+architecture delegation; the clock example contains a service error rather
+than an example time to repeat. Custom prompts in other domains do not inherit
+these examples. The runtime still validates calls against the enabled tools.
+
+The Generic Talker receives the session's local date and timezone, without a
+current clock reading. The planner refreshes its local timestamp for each plan
+using `client_timezone`; spoken clock answers require a new `get_current_time`
+result.
+
 Before starting an Astra session, use **Prompts** to edit both roles and save
 persistent appended instructions. Refer to [Astra voice preview and sample
 upload](../../../docs/how-to/configure-tts.md#preview-and-upload-voices-in-the-astra-client)
@@ -333,14 +344,23 @@ Python plan validation.
 | `thinker_prompt_key` | Default hidden prompt that constrains the Thinker plan; the trusted registry entry can select another catalog key |
 | `talker_tools_schema` | Talker-visible `call_backend` and `cancel_backend` definitions |
 | `build_backend` | Session-scoped factory for the domain backend and state |
-| `runtime_context` | Trusted date, time, or domain context appended to the Talker prompt |
+| `runtime_context` | Trusted date, time, or domain context appended to the Talker prompt when no session callback is declared. |
+| `session_runtime_context` | Optional callback receiving session configuration and supplying Talker context instead of `runtime_context`. |
+| `talker_protocol_prompt_key` | Optional trusted catalog key that preserves native examples independently of editable persona content; empty keeps normal prompt-based selection. |
 | `intro_prompt` | Initial Talker instruction when welcome messages are enabled |
 | `tts_text_transform` | Optional domain pronunciation transformation |
 | `filler_policy` and `filler_selector` | Choose Talker-authored, planner-authored, or legacy code-authored progress speech and provide a selector only for the legacy policy |
 | `tool_registry` | Publish the domain's code-owned `ToolSpec` allowlist for registry-selected capabilities |
 | `max_query_chars` | Maximum delegated query length |
 
-`build_backend` receives a `DomainBuildContext` with `thinker_llm`, the resolved `thinker_prompt`, `thinker_max_tokens`, server-approved `tool_names`, `tool_delay_seconds`, `tool_delay_min_seconds`, and `load_service_entry`. The context does not expose the raw session body or prompt metadata to domain code.
+Generic sets `talker_protocol_prompt_key` to `generic_talker` and provides a
+`session_runtime_context` callback for browser-local context. The shared
+pipeline invokes these hooks without importing domain-specific modules.
+The optional defaults preserve existing domains' behavior.
+
+`build_backend` receives a `DomainBuildContext` with `thinker_llm`, the resolved `thinker_prompt`, `thinker_max_tokens`, server-approved `tool_names`, `tool_delay_seconds`, `tool_delay_min_seconds`, and `load_service_entry`. This backend-factory context does not expose the raw session body or prompt
+metadata. The optional session-runtime callback receives session configuration
+separately.
 
 The backend returned by `build_backend` implements 3 operations: `call`, `cancel_active`, and `cancel_pending_work`. The pipeline does not need to know the domain's state machine, external services, or result format.
 

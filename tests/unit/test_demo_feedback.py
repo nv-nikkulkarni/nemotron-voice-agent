@@ -223,3 +223,11 @@ def test_timezone_database_is_available_without_host_zoneinfo():
         check=True,
         capture_output=True,
     )
+
+
+def test_generic_runtime_context_uses_browser_zone_and_requires_fresh_clock():
+    from examples.frontend_backend_agent.generic.domain import _runtime_context
+
+    context = _runtime_context("Asia/Calcutta")
+    assert "local timezone is Asia/Calcutta" in context
+    assert "Always obtain it through call_backend" in context

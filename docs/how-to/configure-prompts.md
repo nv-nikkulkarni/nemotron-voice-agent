@@ -46,6 +46,13 @@ session without updating `prompts.yaml`. The Astra editor provides the browser
 persistence described above. `GET /api/prompts` identifies frontend and backend
 roles, including the Omni `ThinkerAgent`, so the editor can separate them.
 
+Generic Frontend/Backend Agent keeps its trusted native tool-call examples
+when you edit the frontend persona or choose another prompt key. These examples
+teach asynchronous delegation, fresh-clock lookup, and architecture
+presentation independently of editable text. The clock example contains an
+unavailable result rather than a fictional time. Other Frontend/Backend domains
+do not inherit catalog examples for custom prompt content.
+
 Preserve the Thinker's structured plan format and the Talker's delegation and
 spoken-output rules when replacing prompts. Prompt changes do not add tools:
 Python still restricts execution to the registry-owned allowlist and the

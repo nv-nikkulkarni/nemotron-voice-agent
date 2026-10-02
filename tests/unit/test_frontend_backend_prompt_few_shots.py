@@ -34,7 +34,7 @@ def test_generic_prompt_loads_subject_neutral_native_repeat_example() -> None:
 def test_generic_prompt_models_the_real_async_weather_result_envelope() -> None:
     messages = pipeline._load_prompt_few_shots("generic_talker", custom_prompt=False)
 
-    assert len(messages) == 15
+    assert len(messages) == 25
     assert [message["role"] for message in messages[5:10]] == ["user", "assistant", "tool", "developer", "assistant"]
     running = json.loads(messages[7]["content"])
     finished = json.loads(messages[8]["content"])
@@ -45,7 +45,7 @@ def test_generic_prompt_models_the_real_async_weather_result_envelope() -> None:
     assert result["tool"] == "get_weather"
     assert result["data"]["city"] == "Pune"
     assert result["data"]["temperature"] == 29
-    assert [message["role"] for message in messages[10:]] == ["user", "assistant", "tool", "developer", "assistant"]
+    assert [message["role"] for message in messages[10:15]] == ["user", "assistant", "tool", "developer", "assistant"]
     negative_finished = json.loads(messages[13]["content"])
     negative_result = json.loads(negative_finished["result"])
     assert negative_result["data"]["city"] == "Reykjavik"
@@ -83,3 +83,16 @@ def test_invalid_catalog_few_shots_fail_closed(messages: object, error: str) -> 
         pytest.raises(ValueError, match=error),
     ):
         pipeline._load_prompt_few_shots("example", custom_prompt=False)
+
+
+def test_generic_persona_edits_retain_native_clock_and_architecture_examples() -> None:
+    messages = pipeline._load_prompt_few_shots(
+        "generic_edited", custom_prompt=True, protocol_prompt_key="generic_talker"
+    )
+    clock = json.loads(messages[16]["tool_calls"][0]["function"]["arguments"])
+    architecture = json.loads(messages[21]["tool_calls"][0]["function"]["arguments"])
+    assert "clock" in clock["query"] and "browser timezone" in clock["query"]
+    assert "show_architecture" in architecture["query"]
+    assert messages == pipeline._load_prompt_few_shots(
+        "generic_talker", custom_prompt=False, protocol_prompt_key="generic_talker"
+    )

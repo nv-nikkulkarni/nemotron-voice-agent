@@ -100,7 +100,9 @@ The suite checks frontend persona and backend prompt edits across a reload,
 2 catalog voice previews, a stock quote followed by a same-company refresh,
 and a current-time request with the browser timezone set to `Asia/Kolkata`.
 It asserts Chromium's `Asia/Calcutta` alias in session configuration and both
-edited Generic role prompts.
+edited Generic role prompts. The spoken clock response must include
+`HH:MM AM/PM` and match fresh browser-local time within 1 minute of either
+turn start or completion.
 It also checks Generic and Omni architecture images, “Nemotron 3 Diarization,”
 “Codex and spinner,” concise speech without Markdown markers, and a 0.65 s
 pause inside an unfinished Tokyo weather request. Every completed session

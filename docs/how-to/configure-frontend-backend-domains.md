@@ -201,6 +201,17 @@ catalog. Their checkboxes share one state and send selected names through
 default; sending `none` disables every optional tool. The server preserves
 registry order and ignores names outside the registry allowlist.
 
+Generic frontend persona edits keep the trusted `generic_talker` native-call
+examples, regardless of the edited prompt key. These examples demonstrate
+asynchronous clock lookup and architecture display using native tool-call messages.
+They do not grant access to a disabled tool. The clock example uses a service
+error instead of a fictional successful clock reading. Custom prompts for
+other domains do not inherit these Generic examples.
+
+The Talker's runtime context supplies the browser's local date and timezone,
+without a current clock reading. The planner refreshes its local timestamp
+for each plan; answers about current time still require a fresh clock tool call.
+
 At session startup, the generic planner renders an available-tool contract block from only the effective session `ToolSpec` objects. Its runtime `enabled_tools` list uses the same subset, and Python rejects plans outside that subset. Static output examples can still mention built-in names, but they do not enable those tools. Unsupported-request capability text also uses only the enabled set.
 
 Keep the user-facing Talker prompt and its hidden Thinker prompt separate. The registry's `agent_prompt_keys` hides internal prompts from the prompt selector. Prompt metadata can describe tools to the catalog, but it does not select generic backend tools. Only explicit session `tools_available` input narrows the registry-owned set; client data can never widen it.
@@ -227,7 +238,9 @@ A domain factory returns a frozen `DomainSpec`. The shared pipeline consumes the
 | `thinker_prompt_key` | Provide the default hidden planner prompt; a trusted registry entry can select another catalog key |
 | `talker_tools_schema` | Define the domain-specific descriptions for `call_backend` and `cancel_backend` |
 | `build_backend` | Create a backend and isolated state for one session |
-| `runtime_context` | Append trusted date, time, timezone, or domain context |
+| `runtime_context` | Append trusted date, time, timezone, or domain context when no session callback is provided. |
+| `session_runtime_context` | Optional callback receiving session configuration and returning Talker context; takes precedence over `runtime_context`. |
+| `talker_protocol_prompt_key` | Optional trusted catalog key whose native examples remain independent of edited persona content; empty preserves normal prompt-based selection. |
 | `intro_prompt` | Define the welcome-turn instruction |
 | `tts_text_transform` | Apply optional pronunciation handling |
 | `filler_policy` | Choose Talker-authored, planner-authored, or legacy code-authored progress speech |
@@ -235,7 +248,14 @@ A domain factory returns a frozen `DomainSpec`. The shared pipeline consumes the
 | `tool_registry` | Publish the domain's code-owned `ToolSpec` allowlist for registry-selected capabilities |
 | `max_query_chars` | Bound delegated input length |
 
-`build_backend` receives a `DomainBuildContext` with `thinker_llm`, the resolved `thinker_prompt`, `thinker_max_tokens`, registry-owned `tool_names`, `tool_delay_seconds`, `tool_delay_min_seconds`, and `load_service_entry`. It does not receive the raw session body or prompt metadata.
+Generic declares `talker_protocol_prompt_key: generic_talker` and a
+`session_runtime_context` callback that reads `client_timezone`. The shared
+pipeline consumes these optional hooks without importing Generic domain code.
+Other domains keep their existing behavior unless their factory declares a hook.
+
+`build_backend` receives a `DomainBuildContext` with `thinker_llm`, the resolved `thinker_prompt`, `thinker_max_tokens`, registry-owned `tool_names`, `tool_delay_seconds`, `tool_delay_min_seconds`, and `load_service_entry`. The backend factory does not receive the raw session body or prompt metadata
+through this context. The optional session-runtime callback receives the session
+configuration separately.
 
 The returned backend must implement:
 

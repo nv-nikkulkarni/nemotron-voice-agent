@@ -84,7 +84,9 @@ append to both roles. Restoring either default preserves these instructions.
 Changes apply to the next session. **Settings > Open Prompts** opens the same
 editor; its fields and restore buttons are disabled during an active session
 and while catalog defaults load. Unedited sessions use the displayed catalog
-prompt, preserving its native examples.
+prompt, preserving its native examples. Generic Frontend/Backend Agent also
+retains trusted native tool-call examples when you edit its persona, including
+clock lookup and architecture presentation.
 Refer to
 [Configure Prompts](../docs/how-to/configure-prompts.md) for API limits.
 

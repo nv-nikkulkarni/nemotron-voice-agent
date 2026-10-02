@@ -9,6 +9,7 @@ import json
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, Protocol
+from zoneinfo import ZoneInfo
 
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.nvidia.llm import NvidiaLLMService
@@ -51,7 +52,7 @@ class NvidiaGenericPlanner:
 
     async def plan(self, *, query: str, state: dict[str, Any]) -> dict[str, Any]:
         """Return a parsed plan; the dispatcher remains the authority for validation."""
-        now = datetime.now().astimezone()
+        now = datetime.now(ZoneInfo(str(state.get("client_timezone") or "UTC")))
         payload = {
             "untrusted_user_request": query,
             "enabled_tools": list(self._enabled_tools),

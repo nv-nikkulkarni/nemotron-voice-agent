@@ -5,7 +5,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
+from typing import Any
+from zoneinfo import ZoneInfo
 
 from examples.frontend_backend_agent.generic.backend import GenericThinkerBackend
 from examples.frontend_backend_agent.generic.planner import NvidiaGenericPlanner
@@ -14,14 +17,19 @@ from examples.frontend_backend_agent.src.domain import DomainBuildContext, Domai
 from utils import parse_env_float
 
 
-def _runtime_context() -> str:
-    now = datetime.now().astimezone()
+def _runtime_context(timezone: str = "UTC") -> str:
+    now = datetime.now(ZoneInfo(timezone))
     return (
         "\n\nRuntime context:\n"
         f"- The local date is {now.date().isoformat()}.\n"
-        f"- The local timezone is {now.tzinfo}.\n"
+        f"- The local timezone is {timezone}.\n"
+        "- No current clock reading is supplied here. Always obtain it through call_backend.\n"
         "- Delegate current, recent, forecast, or otherwise changing facts instead of answering from memory."
     )
+
+
+def _session_runtime_context(body: Mapping[str, Any]) -> str:
+    return _runtime_context(str(body.get("client_timezone") or "UTC"))
 
 
 def _build_backend(context: DomainBuildContext) -> GenericThinkerBackend:
@@ -58,4 +66,6 @@ def create_domain_spec() -> DomainSpec:
         filler_policy="talker_authored",
         tool_registry=TOOLS,
         max_query_chars=2000,
+        talker_protocol_prompt_key="generic_talker",
+        session_runtime_context=_session_runtime_context,
     )

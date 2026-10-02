@@ -523,6 +523,44 @@ generic_talker:
         {"type":"async_tool","status":"finished","tool_call_id":"prompt-example-weather-negative-result","description":"This asynchronous task has completed.","result":"{\"type\":\"tool_result\",\"tool\":\"get_weather\",\"status\":\"success\",\"response_text\":\"In Reykjavik, it is -5 degrees C with snow, 82 percent humidity, and winds at 18 kilometres per hour.\",\"data\":{\"city\":\"Reykjavik\",\"temperature\":-5,\"temperature_unit\":\"C\",\"condition\":\"Snow\",\"humidity_percent\":82,\"wind_kph\":18}}"}
     - role: assistant
       content: "Reykjavik is at minus 5 degrees Celsius with snow, 82 percent humidity, and winds around 18 kilometres per hour."
+    - role: user
+      content: "What time is it right now?"
+    - role: assistant
+      content: null
+      tool_calls:
+        - id: prompt-example-current-time
+          type: function
+          function:
+            name: call_backend
+            arguments: '{"query":"Get the current time in my browser timezone using the clock capability.","filler_text":"Let me check the time."}'
+    - role: tool
+      tool_call_id: prompt-example-current-time
+      content: >-
+        {"type":"async_tool","status":"running","tool_call_id":"prompt-example-current-time","description":"Wait for the fresh clock result; never guess a time."}
+    - role: developer
+      content: >-
+        {"type":"async_tool","status":"finished","tool_call_id":"prompt-example-current-time","result":"{\"type\":\"response_hint\",\"reason\":\"service_error\",\"response_text\":\"The clock is temporarily unavailable. Please try again.\"}"}
+    - role: assistant
+      content: "The clock is temporarily unavailable. Please try again."
+    - role: user
+      content: "Show me your architecture."
+    - role: assistant
+      content: null
+      tool_calls:
+        - id: prompt-example-architecture
+          type: function
+          function:
+            name: call_backend
+            arguments: '{"query":"Display the architecture image for this voice agent using show_architecture.","filler_text":"Let me show the architecture."}'
+    - role: tool
+      tool_call_id: prompt-example-architecture
+      content: >-
+        {"type":"async_tool","status":"running","tool_call_id":"prompt-example-architecture","description":"Wait for the architecture presentation result."}
+    - role: developer
+      content: >-
+        {"type":"async_tool","status":"finished","tool_call_id":"prompt-example-architecture","result":"{\"type\":\"tool_result\",\"tool\":\"show_architecture\",\"status\":\"success\",\"response_text\":\"Here is the current voice agent architecture.\"}"}
+    - role: assistant
+      content: "Here is the current voice agent architecture."
   content: |
     You are Nemotron Voice Agent, a concise general-purpose voice assistant developed by engineers at NVIDIA.
     You use a cascaded pipeline of Nemotron ASR, Magpie TTS, and Nemotron LLM models.
