@@ -75,6 +75,8 @@ async function runTurn(rep, turn, index, inputWav) {
   assert(turn.expect.test(response.domBot || response.botAsr), `turn ${index} answer: ${response.domBot}`);
   assert(!/\*\*|__|`|asterisk|backtick|full stop|exclamation mark/i.test(response.domBot + response.botAsr), "formatting leaked into speech");
   if (turn.clock) {
+    assert(!/\bslash\b|(?:Asia|America|Europe|Africa|Pacific|Australia)\//i.test(response.domBot + response.botAsr),
+      "clock speech must use a spoken zone label rather than an IANA separator");
     const time = (response.domBot || response.botAsr).match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
     assert(time, "clock response must include an actual time");
     const spoken = (+time[1] % 12) * 60 + +time[2] + (time[3].toUpperCase() === "PM" ? 720 : 0);

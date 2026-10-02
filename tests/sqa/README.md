@@ -102,7 +102,8 @@ and a current-time request with the browser timezone set to `Asia/Kolkata`.
 It asserts Chromium's `Asia/Calcutta` alias in session configuration and both
 edited Generic role prompts. The spoken clock response must include
 `HH:MM AM/PM` and match fresh browser-local time within 1 minute of either
-turn start or completion.
+turn start or completion. It requires a spoken zone label and rejects “slash”
+or an IANA separator in the clock response.
 It also checks spoken architecture descriptions and rendered Generic and Omni
 images, “Nemotron 3 Diarization,”
 “Codex and spinner,” concise speech without Markdown markers, and an inserted

@@ -59,7 +59,8 @@ def random_number(arguments: dict[str, Any], data: dict[str, Any]) -> str:
 def current_time(arguments: dict[str, Any], data: dict[str, Any]) -> str:
     """Speak a fresh clock reading including its zone."""
     del arguments
-    return f"It's {data['time']} in {data['timezone'].replace('_', ' ')}."
+    label = data.get("timezone_label") or str(data.get("timezone") or "UTC").replace("/", " ").replace("_", " ")
+    return f"It's {data['time']} {label}."
 
 
 def architecture(arguments: dict[str, Any], data: dict[str, Any]) -> str:

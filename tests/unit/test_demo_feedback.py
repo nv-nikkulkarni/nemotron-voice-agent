@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 from pipecat.processors.aggregators.llm_context import LLMContext
 
-from examples.frontend_backend_agent.generic import services
+from examples.frontend_backend_agent.generic import services, speech
 from examples.frontend_backend_agent.generic.backend import GenericThinkerBackend
 from examples.frontend_backend_agent.generic.tools import TOOLS
 from examples.frontend_backend_agent.pipeline import _apply_chat_history_sliding_window
@@ -86,6 +86,12 @@ def test_clock_iana_zone_and_dst_are_fresh():
         clock.now.return_value = instant
         result = asyncio.run(services.get_current_time({"timezone": "America/New_York"}))
     assert result["time"] == "8:34 AM" and result["datetime"].endswith("-04:00")
+    assert speech.current_time({}, result) == "It's 8:34 AM EDT."
+    with patch.object(services, "datetime") as clock:
+        clock.now.return_value = instant
+        result = asyncio.run(services.get_current_time({"timezone": "Asia/Kathmandu"}))
+    assert result["timezone"] == "Asia/Kathmandu"
+    assert speech.current_time({}, result) == "It's 6:19 PM UTC plus 5 hours and 45 minutes."
     assert asyncio.run(services.get_current_time({"timezone": "Invalid/zone"}))["status"] == "not_found"
 
 

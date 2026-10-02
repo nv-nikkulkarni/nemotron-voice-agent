@@ -308,6 +308,9 @@ The Astra client supplies its browser IANA timezone in `client_timezone` for
 local-clock requests. Explicitly requested zones take precedence. The Python
 `tzdata` dependency supplies complete portable IANA data, including browser
 aliases such as `Asia/Calcutta` that an image's system database can omit.
+Tool data retains the IANA `timezone` identifier. Spoken output uses the
+instant's `timezone_label`, such as IST or EDT, with readable UTC offsets
+for numeric zone names.
 `show_architecture` returns a repository-owned image reference and a brief
 spoken description. The Astra client displays the architecture SVG after the
 validated tool result. Neither capability needs a provider key.

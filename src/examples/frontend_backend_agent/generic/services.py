@@ -352,9 +352,18 @@ async def get_current_time(arguments: Mapping[str, Any]) -> dict[str, Any]:
     except (ZoneInfoNotFoundError, ValueError):
         return {"status": "not_found", "message": "Which IANA timezone should I use?"}
     now = datetime.now(UTC).astimezone(zone)
+    label = now.tzname() or "UTC"
+    if not label.isalpha():
+        offset = now.utcoffset()
+        total_minutes = int(offset.total_seconds() / 60) if offset else 0
+        hours, minutes = divmod(abs(total_minutes), 60)
+        label = "UTC" if total_minutes == 0 else f"UTC {'plus' if total_minutes > 0 else 'minus'} {hours} hours"
+        if minutes:
+            label += f" and {minutes} minutes"
     return {
         "status": "success",
         "timezone": name,
+        "timezone_label": label,
         "datetime": now.isoformat(timespec="seconds"),
         "date": now.date().isoformat(),
         "time": now.strftime("%I:%M %p").lstrip("0"),

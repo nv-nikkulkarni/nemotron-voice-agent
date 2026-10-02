@@ -142,7 +142,10 @@ The services also recognize these optional endpoint settings:
 The current-time tool reads its clock on each call. The packaged Python
 `tzdata` dependency provides complete portable IANA timezone data when system
 data is incomplete or absent. Browser aliases such as `Asia/Calcutta` remain valid;
-unknown zone names still require clarification.
+unknown zone names still require clarification. Structured results retain the
+IANA identifier in `timezone`; speech uses `timezone_label` from the fresh
+instant, such as IST or EDT. Numeric-offset zones use spoken labels such as
+“UTC plus 5 hours and 45 minutes.”
 
 Do not pass credentials through `call_backend`, Thinker plans, prompt text, or client session configuration. Each service reads its credential directly from the process environment.
 
