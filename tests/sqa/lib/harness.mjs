@@ -619,7 +619,7 @@ export async function endConversation(page) {
   // Graceful teardown holds an "Ending…" buffering window (~1.5s) before the modal.
   let thanks = false;
   for (let i = 0; i < 40; i++) {
-    if ((await page.getByText(/thank you|connection lost/i).count()) > 0) { thanks = true; break; }
+    if (await page.getByRole("dialog", { name: /session ended|session interrupted/i }).isVisible()) { thanks = true; break; }
     await sleep(150);
   }
   return { ended: true, thanks };
