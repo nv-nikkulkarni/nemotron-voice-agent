@@ -51,7 +51,7 @@ data:
         slots: [llm, tts]
         capabilities: [attachments, webcam]
         defaults:
-          prompt: [generic_omni_assistant]
+          prompt: [omni_subagents_assistant]
           llm: [nemotron-omni-nvfp4]
           tts: [magpie-multilingual-tts{{ if .Values.chatterboxTts.enabled }}, chatterbox-multilingual-tts{{ end }}]
         bot: examples.omni_assistant_subagents.pipeline:bot

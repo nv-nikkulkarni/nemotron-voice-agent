@@ -93,6 +93,34 @@ plus the **staging (“preview”) lane** that mirrors prod for safe pre-release
                                                           └──────────────────────────────┘
 ```
 
+### Chart Catalog And Health Checks
+
+The chart-provided example registry must select prompt keys from the matching
+example's `prompts.yaml`. Omni Subagents uses `omni_subagents_assistant`.
+A missing default prompt prevents `/api/deployment` from loading the example
+catalog, even when the application pods are Ready.
+
+The Server catalogs use the following Kubernetes Service aliases:
+
+| Catalog Endpoint | Existing Service | Target |
+| --- | --- | --- |
+| `magpie-multilingual-tts-service:50051` | `tts-service:50051` | The same Magpie pod's named `grpc` port; both Services also expose HTTP health on `9000`. |
+| `nvidia-llm-omni:8000` | `nvidia-llm-vllm-omni:8002` | The same Omni pod's named `http` port, which listens on `8002`. |
+
+These aliases select the existing model pods. They add no model replicas or
+GPU requests. The original Service names remain available to the prewarmer
+and existing clients. Verify the rendered Services and their endpoints when
+model options are missing from the UI. Refer to the
+[Magpie Service template](../nvcf_helm/templates/service-tts.yaml) and
+[Omni Service template](../nvcf_helm/templates/service-omni.yaml).
+
+Check `/health` for the JSON body `{"status":"ok"}` and an
+`application/json` content type. The application registers this route before
+its single-page application fallback. An HTTP `200` response containing HTML
+means the request reached a UI fallback and does not prove backend health.
+This shallow check does not prove model readiness; also verify
+`/api/session-config` and a real voice turn.
+
 ---
 
 ## 2. One voice turn — the pipeline dataflow

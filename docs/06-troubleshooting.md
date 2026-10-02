@@ -16,6 +16,17 @@ Known issues and fixes for **startup and deployment** of the Nemotron Voice Agen
 | Download script: `Neither 'hf' nor 'uvx' is available` | Neither supported downloader is on `PATH`. Install the Hugging Face `hf` CLI or `uv` for `uvx`, and then rerun the script as your user without `sudo`. | [Getting Started](01-getting-started.md#docker-based-deployment) |
 | Hugging Face `Permission denied` under `~/.cache/huggingface` | The vLLM sidecar bind-mounts that cache and writes as root. Re-run the download script as your user (it reclaims the cache) or `chown` it back to your user. | [Getting Started](01-getting-started.md#docker-based-deployment) |
 
+## Helm Deployment Discovery And Health
+
+Use the matching application image and `nvcf_helm` chart when you deploy the
+Kubernetes stack. Check these responses before starting a voice session:
+
+| Error / symptom | Cause & fix | Reference |
+|-----------------|-------------|-----------|
+| `/api/deployment` fails with a missing default prompt | The chart-provided registry selects a prompt absent from the example catalog. Omni Subagents requires `omni_subagents_assistant` in its `prompts.yaml`. Update the chart registry to match the application image. | [Chart Catalog And Health Checks](deployment-architecture.md#chart-catalog-and-health-checks) |
+| Model pods are Ready, but Magpie or Omni is missing from the Helm deployment catalog | Verify that `magpie-multilingual-tts-service:50051` and `nvidia-llm-omni:8000` have ready endpoints. These compatibility Services select the existing Magpie and Omni pods; the original Service names remain available. Deploy the matching chart before changing model replicas or GPU allocation. | [Chart Catalog And Health Checks](deployment-architecture.md#chart-catalog-and-health-checks) |
+| `/health` returns HTTP `200` with HTML | A UI fallback handled the request. Expect `application/json` with `{"status":"ok"}`. Use an application version that registers `/health` before the UI fallback, and confirm that your proxy routes `/health` to the backend. Model readiness still requires `/api/session-config` and a real voice turn. | [Chart Catalog And Health Checks](deployment-architecture.md#chart-catalog-and-health-checks) |
+
 <a id="local-llm-wont-start-self-hosted"></a>
 
 ## Local LLM Does Not Start (Self-Hosted)
