@@ -5,7 +5,9 @@
 // per-example tools, audio devices, and prompt.
 
 import { usePipecatClientMediaDevices } from "@pipecat-ai/client-react";
+import { useConnectionState } from "../../hooks/useConnectionState";
 import { useApp } from "../../context/useApp";
+import { VoiceStudio } from "./VoiceStudio";
 import { ToolSelector } from "./ToolSelector";
 
 function DeviceSelect({
@@ -33,10 +35,11 @@ function Section({ icon, title, children }: Readonly<{ icon: string; title: stri
   );
 }
 
-export function SettingsPage({ onClose }: Readonly<{ onClose: () => void }>) {
+export function SettingsPage({ onClose, onPrompts }: Readonly<{ onClose: () => void; onPrompts: () => void }>) {
+  const { isConnected, isConnecting } = useConnectionState();
+  const sessionActive = isConnected || isConnecting;
   const {
     selectedExample, selectedLLM,
-    selectedPrompt, promptOverride, setPromptOverride,
     ttsServices, selectedTTSId, selectTTS,
     tools, toolsLoading, selectedTools, toggleTool,
   } = useApp();
@@ -44,7 +47,6 @@ export function SettingsPage({ onClose }: Readonly<{ onClose: () => void }>) {
 
   const micId = "deviceId" in selectedMic ? selectedMic.deviceId : undefined;
   const spkId = "deviceId" in selectedSpeaker ? selectedSpeaker.deviceId : undefined;
-  const basePrompt = selectedPrompt?.content ?? "";
   const isGeneric = selectedExample?.domainProfile === "generic"
     || selectedExample?.key === "generic-frontend-backend-agent";
 
@@ -100,22 +102,15 @@ export function SettingsPage({ onClose }: Readonly<{ onClose: () => void }>) {
             </Section>
           )}
 
+          <Section icon="🔊" title="Voice preview and samples"><VoiceStudio /></Section>
           <Section icon="🎧" title="Audio">
             <DeviceSelect label="Input device (microphone)" devices={availableMics} selectedId={micId} onChange={updateMic} />
             <DeviceSelect label="Output device (speaker)" devices={availableSpeakers} selectedId={spkId} onChange={updateSpeaker} />
           </Section>
 
           <Section icon="🎭" title="Prompt">
-            <p className="set-hint">The example's system prompt. Edit to override; clear to restore the original.</p>
-            <textarea
-              className="set-textarea"
-              rows={10}
-              value={promptOverride || basePrompt}
-              onChange={(e) => setPromptOverride(e.target.value === basePrompt ? "" : e.target.value)}
-            />
-            {promptOverride && (
-              <button className="btn-ghost" onClick={() => setPromptOverride("")}>Restore original prompt</button>
-            )}
+            <p className="set-hint">Edit frontend and backend prompts and your persistent instructions before a session.</p>
+            <button className="btn-secondary" disabled={sessionActive} onClick={onPrompts}>Open Prompts</button>
           </Section>
         </div>
 

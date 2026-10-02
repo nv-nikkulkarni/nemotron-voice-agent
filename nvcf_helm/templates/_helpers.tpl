@@ -187,3 +187,11 @@ command:
     exec /opt/nim/start_server.sh
 {{- end }}
 {{- end }}
+
+{{- define "nemotron-voice-agent.zeroShotImage" -}}
+{{- if .Values.zeroShotImage.digest -}}
+{{ .Values.zeroShotImage.repository }}@{{ .Values.zeroShotImage.digest }}
+{{- else -}}
+{{ .Values.zeroShotImage.repository }}:{{ .Values.zeroShotImage.tag }}
+{{- end -}}
+{{- end -}}

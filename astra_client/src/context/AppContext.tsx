@@ -13,6 +13,7 @@ import { useDeployment, useDefaultLLMs, useDefaultPrompts, useDefaultASR, useDef
 import { isSelectablePrompt, readLSArray, readLSString, writeLSString, writeLSJson, removeLSKey } from "../utils";
 import { demoConfig } from "../config";
 import { PRESETS, presetById, type PipelinePreset } from "../demo/presets";
+import { savedVoiceSample, type VoiceSample } from "../demo/voiceSamples";
 import { AppContext } from "./app-context";
 
 /** An editable prompt shown in the builder's prompt widget. */
@@ -189,6 +190,10 @@ export interface AppState {
   setReasoning: (v: boolean) => void;
   /** Edited system prompt (empty = the example's original prompt). */
   promptOverride: string;
+  backendPromptOverride: string;
+  setBackendPromptOverride: (value: string) => void;
+  persistentPrompt: string;
+  setPersistentPrompt: (value: string) => void;
   setPromptOverride: (v: string) => void;
 
   /** The prebuilt pipeline preset currently loaded, if any. */
@@ -247,6 +252,10 @@ export interface AppState {
   removeTTS: (id: string) => void;
   selectedTTS: SimpleService | undefined;
 
+  voiceSample: VoiceSample | null;
+  setVoiceSample: (value: VoiceSample | null) => void;
+  useVoiceSample: boolean;
+  setUseVoiceSample: (value: boolean) => void;
   selectedVoiceId: string;
   setSelectedVoiceId: (id: string) => void;
 
@@ -331,7 +340,31 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
   // false, since a `true` here is exactly what leaked into Omni sessions and cost
   // ~8s of silent chain-of-thought per turn.
   const [reasoning, setReasoning] = useState(false);
-  const [promptOverride, setPromptOverride] = useState("");
+  const promptStorageKey = selectedExample?.key ?? "pending";
+  const [promptEdits, setPromptEdits] = useState<Record<string, { frontend?: string; backend?: string }>>(() => {
+    try {
+      const value: unknown = JSON.parse(readLSString("nva-prompt-edits") || "{}");
+      if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+      return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry && typeof entry === "object")
+        .map(([key, entry]) => [key, {
+          frontend: typeof entry.frontend === "string" ? entry.frontend.slice(0, 32000) : "",
+          backend: typeof entry.backend === "string" ? entry.backend.slice(0, 32000) : "",
+        }]));
+    } catch { return {}; }
+  });
+  const promptOverride = promptEdits[promptStorageKey]?.frontend ?? "";
+  const backendPromptOverride = promptEdits[promptStorageKey]?.backend ?? "";
+  const setPromptRole = useCallback((role: "frontend" | "backend", value: string) => {
+    setPromptEdits((previous) => {
+      const next = { ...previous, [promptStorageKey]: { ...previous[promptStorageKey], [role]: value } };
+      writeLSJson("nva-prompt-edits", next); return next;
+    });
+  }, [promptStorageKey]);
+  const setPromptOverride = useCallback((value: string) => setPromptRole("frontend", value), [setPromptRole]);
+  const setBackendPromptOverride = useCallback((value: string) => setPromptRole("backend", value), [setPromptRole]);
+  const [persistentPrompt, setPersistentPromptState] = useState(() => readLSString("nva-prompt-persistent"));
+  const setPersistentPrompt = useCallback((value: string) => { setPersistentPromptState(value); writeLSString("nva-prompt-persistent", value); }, []);
+
 
   // --- LLM state ---
   const serviceCatalogKey = selectedExample?.key ?? "";
@@ -392,6 +425,9 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
   }, [customASR, persistASR]);
 
   const [selectedVoiceId, setSelectedVoiceId] = useState("");
+  const [voiceSample, setVoiceSample] = useState<VoiceSample | null>(null);
+  const [useVoiceSample, setUseVoiceSample] = useState(false);
+  useEffect(() => { void savedVoiceSample().then(setVoiceSample).catch(() => undefined); }, []);
 
   const [selectedSessionLanguage, setSelectedSessionLanguage] = useState(DEFAULT_SESSION_LANGUAGE);
   const defaultSessionLanguageExampleKey = useRef("");
@@ -586,7 +622,7 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   const value = useMemo<AppState>(() => ({
     selectedExample, selectExample, deploymentOptions,
-    recordSession, setRecordSession, storeConsent, setStoreConsent, reasoning, setReasoning, promptOverride, setPromptOverride,
+    recordSession, setRecordSession, storeConsent, setStoreConsent, reasoning, setReasoning, promptOverride, setPromptOverride, backendPromptOverride, setBackendPromptOverride, persistentPrompt, setPersistentPrompt,
     activePresetId, activePreset, applyPreset,
     selectedTools, toggleTool, setSelectedTools,
     demoPrompts, activePromptId, activePrompt, selectDemoPrompt, updateDemoPrompt, addDemoPrompt, removeDemoPrompt,
@@ -597,19 +633,19 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
     llms, llmsLoading, selectedLLMId: effectiveSelectedLLMId, selectLLM, addLLM, updateLLM, removeLLM, selectedLLM,
     asrServices, asrLoading, selectedASRId: effectiveSelectedASRId, selectASR, addASR, updateASR, removeASR, selectedASR,
     ttsServices, ttsLoading, selectedTTSId: effectiveSelectedTTSId, selectTTS, addTTS, updateTTS, removeTTS, selectedTTS,
-    selectedVoiceId, setSelectedVoiceId,
+    selectedVoiceId, setSelectedVoiceId, voiceSample, setVoiceSample, useVoiceSample, setUseVoiceSample,
     selectedSessionLanguage, setSelectedSessionLanguage,
     prompts, promptsLoading, selectedPromptKey: effectiveSelectedPromptKey, selectPrompt, addPrompt, updatePrompt, removePrompt, selectedPrompt,
     tools, toolsLoading,
   }), [selectedExample, selectExample, deploymentOptions,
-       recordSession, storeConsent, reasoning, promptOverride,
+       recordSession, storeConsent, reasoning, promptOverride, setPromptOverride, backendPromptOverride, setBackendPromptOverride, persistentPrompt, setPersistentPrompt,
        activePresetId, activePreset, applyPreset, selectedTools, toggleTool, setSelectedTools,
        demoPrompts, activePromptId, activePrompt, selectDemoPrompt, updateDemoPrompt, addDemoPrompt, removeDemoPrompt,
        deploymentSelectable, availableTransports, effectiveTransport, setTransport, currentSessionId,
        llms, llmsLoading, effectiveSelectedLLMId, selectLLM, addLLM, updateLLM, removeLLM, selectedLLM,
        asrServices, asrLoading, effectiveSelectedASRId, selectASR, addASR, updateASR, removeASR, selectedASR,
        ttsServices, ttsLoading, effectiveSelectedTTSId, selectTTS, addTTS, updateTTS, removeTTS, selectedTTS,
-       selectedVoiceId, selectedSessionLanguage, setSelectedSessionLanguage,
+       selectedVoiceId, voiceSample, useVoiceSample, selectedSessionLanguage, setSelectedSessionLanguage,
        prompts, promptsLoading, effectiveSelectedPromptKey, selectPrompt, addPrompt, updatePrompt, removePrompt, selectedPrompt,
        tools, toolsLoading]);
 

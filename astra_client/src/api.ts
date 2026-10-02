@@ -28,6 +28,7 @@ export interface Prompt {
   builtIn: boolean;
   selectable?: boolean;
   scope?: "session" | "agent";
+  role?: "frontend" | "backend";
   agent?: string;
   promptName?: string;
   tools?: string[];

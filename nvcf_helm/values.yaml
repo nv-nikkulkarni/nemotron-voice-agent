@@ -827,3 +827,25 @@ ingress:
   # - secretName: voice-agent-tls
   #   hosts:
   #     - voice-agent.example.com
+
+# Optional reference-audio voice cloning; requires approved Magpie Zero-shot access and one spare GPU.
+zeroShotImage:
+  repository: nvcr.io/nim/nvidia/magpie-tts-zeroshot
+  tag: "1.2.0"
+  digest: ""
+  pullPolicy: IfNotPresent
+zeroShotTts:
+  enabled: false
+  nimTagsSelector: "batch_size=8"
+  gpuDevices: "0"
+  shmSize: 16Gi
+  cache:
+    nvcf: true
+    size: 50Gi
+    storageClass: oci-bv
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}

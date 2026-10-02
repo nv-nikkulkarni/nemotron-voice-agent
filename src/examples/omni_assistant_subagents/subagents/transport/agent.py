@@ -34,7 +34,7 @@ from pipecat.processors.aggregators.llm_response_universal import LLMAssistantAg
 from pipecat.processors.audio.vad_processor import VADProcessor
 from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
 from pipecat.runner.types import RunnerArguments
-from pipecat.services.nvidia.tts import NvidiaTTSService, NvidiaTTSSettings
+from pipecat.services.nvidia.tts import NvidiaTTSSettings
 from pipecat.turns.user_mute.mute_until_first_bot_complete_user_mute_strategy import (
     MuteUntilFirstBotCompleteUserMuteStrategy,
 )
@@ -65,6 +65,7 @@ from examples.omni_assistant_subagents.subagents.transport.webcam_controller imp
 )
 from examples.omni_assistant_subagents.subagents.webcam import WebcamAgent
 from examples.shared.audio_recorder import create_audio_recorder
+from examples.shared.demo_speech import DemoNvidiaTTSService, validate_voice_sample
 from examples.shared.nemotron_speech_text_filter import NemotronSpeechTextFilter
 from examples.shared.pipeline_utils import build_pipeline_params
 from examples.shared.subagents import SubagentRegistry
@@ -108,6 +109,7 @@ class OmniTransportAgent(PipelineWorker):
         tts_function_id: str,
         tts_model: str,
         tts_zero_shot_audio_prompt_file: str,
+        tts_voice_sample: str = "",
         runner_args: RunnerArguments,
         session_id: str,
         subagent_registry: SubagentRegistry,
@@ -158,7 +160,9 @@ class OmniTransportAgent(PipelineWorker):
             }
         if tts_zero_shot_audio_prompt_file:
             tts_kwargs["zero_shot_audio_prompt_file"] = tts_zero_shot_audio_prompt_file
-        self._tts = NvidiaTTSService(**tts_kwargs)
+        if tts_voice_sample:
+            tts_kwargs["voice_sample"] = validate_voice_sample(tts_voice_sample)
+        self._tts = DemoNvidiaTTSService(**tts_kwargs)
         # Split chunks for engines with a per-synthesis cap (Chatterbox ~500 chars / ~20s).
         _chunk_chars = resolve_tts_chunk_chars(tts_model, tts_voice)
         if _chunk_chars:

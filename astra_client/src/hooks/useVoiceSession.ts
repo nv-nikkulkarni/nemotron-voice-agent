@@ -141,6 +141,9 @@ export function useVoiceSession() {
     (example: DeploymentOption, preset?: PipelinePreset): SessionConfigBody => {
       const slots = new Set(example.slots);
       const config: SessionConfigBody = { pipeline_mode: example.key };
+      config.client_timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      if (app.backendPromptOverride.trim()) config.thinker_prompt_content = app.backendPromptOverride;
+      if (app.persistentPrompt.trim()) config.persistent_prompt = app.persistentPrompt;
 
       // Resolve services: a preset's preferred NIM (by key) wins for a direct
       // launch; otherwise the user's current selection from context.
@@ -164,6 +167,9 @@ export function useVoiceSession() {
       applyService(config, slots.has("asr"), "asr", asr, { model: asr?.model, function_id: asr?.functionId });
       applyService(config, slots.has("tts"), "tts", tts, { function_id: tts?.functionId });
       if (slots.has("tts") && voiceId) config.tts_voice_id = voiceId;
+      if (slots.has("tts") && app.useVoiceSample && app.voiceSample && /zero.?shot/i.test(tts?.model ?? "")) {
+        config.tts_voice_sample = app.voiceSample.audio;
+      }
 
       if (demoConfig.demoMode) {
         // Prompt: the example's ORIGINAL prompt by default (prompt_key only, so the

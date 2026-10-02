@@ -89,6 +89,26 @@ The example declares `capabilities: [attachments, webcam]` in `examples_registry
 | `POST /api/sessions/{session_id}/webcam/frames` | Upload one webcam JPEG frame |
 | `GET /api/webcam-config` | Browser webcam capture defaults |
 
+## Astra Session Controls
+
+Before starting a session, open **Prompts** in the Astra client to edit the
+frontend session instructions and the `ThinkerAgent` prompt. Each pipeline's
+edits persist in browser localStorage. Global persistent instructions append
+to both roles and remain when you restore a default. Other worker prompts stay
+in `prompts.yaml`. Refer to [Configure Prompts](../../../docs/how-to/configure-prompts.md).
+
+Use **Settings** or **Configure** to preview a catalog voice before connecting.
+Live voice changes stay within the current engine. Magpie Zeroshot
+accepts an explicitly enabled browser reference sample for the next
+session. The transport agent uses the shared demo speech wrapper for reference
+samples and aligned Magpie “Nemotron” timing. Refer to
+[Configure TTS](../../../docs/how-to/configure-tts.md#preview-and-upload-voices-in-the-astra-client)
+for sample limits and the pronunciation qualification boundary.
+
+Ask to show the voice-agent architecture to display the repository-owned Omni
+SVG in the Astra client. This presentation action does not require a media
+upload or a provider key. Other media requests keep their analyzer routing.
+
 ## Tips & best practices
 
 - **Keep the voice loop responsive.** Media, webcam, and reasoning analysis run as separate worker agents so the transport and speaker agents never block on vision or reasoning work. Preserve that split when adding new capabilities.

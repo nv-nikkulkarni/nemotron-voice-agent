@@ -160,6 +160,18 @@ def build_handlers(
             if filler_mode != "emit":
                 filler_text = ""
             slots = {key: value for key, value in arguments.items() if key not in {"query", "intent", "filler_text"}}
+            if getattr(thinker, "accepts_conversation_context", False):
+                messages = params.context.get_messages()[getattr(thinker, "conversation_start_index", 0) :]
+                dialogue = [
+                    {"role": message["role"], "content": message["content"][:1000]}
+                    for message in messages
+                    if message.get("role") in {"user", "assistant"}
+                    and isinstance(message.get("content"), str)
+                    and message.get("content")
+                    and not message.get("tool_calls")
+                ]
+                slots["conversation_context"] = dialogue[-8:]
+                slots["client_timezone"] = getattr(thinker, "client_timezone", "UTC")
             filler_task: asyncio.Task | None = None
             filler_started = False
             filler_emitted = False
@@ -400,6 +412,22 @@ async def _deliver_tool_payload(
         if stage_metrics is not None:
             await stage_metrics.cleanup_tool_call(params.tool_call_id)
         return
+    results = [payload]
+    if payload.get("tool") == "multi_tool":
+        results = (payload.get("data") or {}).get("results") or []
+    if any(item.get("tool") == "show_architecture" and item.get("status") == "success" for item in results):
+        from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
+
+        await params.llm.push_frame(
+            RTVIServerMessageFrame(
+                data={
+                    "type": "presentation",
+                    "kind": "architecture",
+                    "image_url": "/api/architecture/generic.svg",
+                    "alt": "Current Nemotron voice agent architecture",
+                }
+            )
+        )
     response_text = str(payload.get("response_text") or "")
     _remember_backend_response(params.llm, response_text, payload)
     if _should_deliver_directly(payload, default_mode=default_mode, talker_result_tools=talker_result_tools):

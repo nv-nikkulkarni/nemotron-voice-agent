@@ -75,17 +75,20 @@ def build_pipeline_params(**kwargs) -> PipelineParams:
     return PipelineParams(**kwargs)
 
 
-def build_smart_turn_analyzer() -> LocalSmartTurnAnalyzerV3:
+def build_smart_turn_analyzer(*, stop_secs: float | None = None) -> LocalSmartTurnAnalyzerV3:
     """Return LocalSmartTurnAnalyzerV3 with the configurable silence fallback."""
-    stop_secs = parse_env_float("SMART_TURN_STOP_SECS", SMART_TURN_FALLBACK_SECS, min_value=0.0)
+    if stop_secs is None:
+        stop_secs = parse_env_float("SMART_TURN_STOP_SECS", SMART_TURN_FALLBACK_SECS, min_value=0.0)
     return LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=stop_secs))
 
 
-def build_smart_turn_stop_strategies(*, wait_for_transcript: bool = True) -> list[TurnAnalyzerUserTurnStopStrategy]:
+def build_smart_turn_stop_strategies(
+    *, wait_for_transcript: bool = True, stop_secs: float | None = None
+) -> list[TurnAnalyzerUserTurnStopStrategy]:
     """Return the shared Smart Turn stop strategy."""
     return [
         TurnAnalyzerUserTurnStopStrategy(
-            turn_analyzer=build_smart_turn_analyzer(),
+            turn_analyzer=build_smart_turn_analyzer(stop_secs=stop_secs),
             wait_for_transcript=wait_for_transcript,
         )
     ]
@@ -197,6 +200,7 @@ def build_user_aggregator_params(
     welcome_enabled: bool,
     *,
     vad_stop_secs: float | None = None,
+    smart_turn_stop_secs: float | None = None,
     interruption_min_words: int | None = None,
     on_interruption_trigger: InterruptionTriggerCallback | None = None,
 ) -> LLMUserAggregatorParams:
@@ -219,7 +223,7 @@ def build_user_aggregator_params(
             user_mute_strategies=build_user_mute_strategies(welcome_enabled),
             user_turn_strategies=UserTurnStrategies(
                 start=start_strategies,
-                stop=build_smart_turn_stop_strategies(),
+                stop=build_smart_turn_stop_strategies(stop_secs=smart_turn_stop_secs),
             ),
         )
 

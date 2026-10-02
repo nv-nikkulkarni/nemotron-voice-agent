@@ -93,6 +93,8 @@ examples:
     tools:
       - get_weather
       - get_stock_price
+      - get_current_time
+      - show_architecture
       - web_search
       - calculate_bmi
       - generate_random_number

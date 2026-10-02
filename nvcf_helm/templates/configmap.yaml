@@ -30,6 +30,8 @@ data:
         tools:
           - get_weather
           - get_stock_price
+          - get_current_time
+          - show_architecture
           - web_search
           - calculate_bmi
           - generate_random_number
@@ -43,7 +45,7 @@ data:
           llm: [nemotron-lightning-talker]
           thinker-llm: [nemotron-super-reasoning]
           asr: [nemotron-asr-streaming-english]
-          tts: [magpie-multilingual-tts{{ if .Values.chatterboxTts.enabled }}, chatterbox-multilingual-tts{{ end }}]
+          tts: [magpie-multilingual-tts{{ if .Values.chatterboxTts.enabled }}, chatterbox-multilingual-tts{{ end }}{{ if .Values.zeroShotTts.enabled }}, magpie-zeroshot-tts{{ end }}]
         bot: examples.frontend_backend_agent.pipeline:bot
 
       omni-assistant-subagents:
@@ -53,5 +55,5 @@ data:
         defaults:
           prompt: [omni_subagents_assistant]
           llm: [nemotron-omni-nvfp4]
-          tts: [magpie-multilingual-tts{{ if .Values.chatterboxTts.enabled }}, chatterbox-multilingual-tts{{ end }}]
+          tts: [magpie-multilingual-tts{{ if .Values.chatterboxTts.enabled }}, chatterbox-multilingual-tts{{ end }}{{ if .Values.zeroShotTts.enabled }}, magpie-zeroshot-tts{{ end }}]
         bot: examples.omni_assistant_subagents.pipeline:bot

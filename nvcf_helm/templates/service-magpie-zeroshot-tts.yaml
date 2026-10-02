@@ -1,0 +1,25 @@
+{{- if .Values.zeroShotTts.enabled -}}
+# Service name is fixed to "magpie-zeroshot-tts-service" — matches the hostname the
+# app reads from the magpie-zeroshot-tts entry in src/examples/*/services.local.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: magpie-zeroshot-tts-service
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: magpie-zeroshot-tts
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: magpie-zeroshot-tts
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+      protocol: TCP
+    - name: http
+      port: 9000
+      targetPort: http
+      protocol: TCP
+{{- end }}

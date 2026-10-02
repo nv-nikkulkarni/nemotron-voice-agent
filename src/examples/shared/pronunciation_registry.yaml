@@ -13,7 +13,8 @@ language: en-US
 entries:
   # NVIDIA, voice-agent, and deployment vocabulary
   "NVIDIA": {arpabet: "EH0 N V IH1 D IY0 AH0", ipa: "ɛnˈvɪdiə", category: nvidia_product, aliases: ["Nvidia", "nvidia"]}
-  "Nemotron": {arpabet: "N EH1 M AH0 T R AA2 N", ipa: "ˈnɛməˌtɹɑn", category: nvidia_product, aliases: ["nemotron"]}
+  # Audio-derived candidate for reference 8A-6; live timing in demo_speech.py.
+  "Nemotron": {arpabet: "N IY1 M OW0 T R AA2 N", ipa: "ˈnimoʊˌtɹɑn", category: nvidia_product, aliases: ["nemotron"]}
   "NIM": {arpabet: "EH1 N AY1 EH1 M", ipa: "ɛn aɪ ɛm", category: nvidia_product}
   "NVCF": {arpabet: "EH1 N V IY1 S IY1 EH1 F", ipa: "ɛn vi si ɛf", category: nvidia_product}
   "NGC": {arpabet: "EH1 N JH IY1 S IY1", ipa: "ɛn dʒi si", category: nvidia_product}

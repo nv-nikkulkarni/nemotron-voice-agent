@@ -26,6 +26,11 @@ class NemotronSpeechTextFilter(BaseTextFilter):
 
     async def filter(self, text: str) -> str:
         """Strip markdown asterisks, SSML tag openers, and ARPAbet delimiters from TTS input."""
+        text = re.sub(r"!?\[([^\]]+)\]\([^)]*\)", r"\1", text)
+        text = re.sub(r"</?[A-Za-z][^>]*>", "", text)
+        text = re.sub(r"(?m)^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s*)", "", text)
+        text = re.sub(r"(?<=\w)_(?=\w)", " ", text)
+        text = text.replace("`", "").replace("**", "").replace("__", "")
         return _TTS_RESERVED_CHARACTERS.sub("", text)
 
 

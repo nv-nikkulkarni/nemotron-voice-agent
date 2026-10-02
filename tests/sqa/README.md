@@ -22,6 +22,7 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 | file | what it does |
 |---|---|
 | `functional.mjs` | Exhaustive DOM: landing, cards, model toggle, Beta badge, consent/record toggles, settings, session lifecycle (start→end→thanks→restart), **upload validation**, visual diff. |
+| `demo-feedback.mjs` | Focused prompt persistence, voice preview, Generic follow-ups and speech, Generic/Omni architecture, optional zero-shot sample, and capture acknowledgement checks. |
 | `converse.mjs` | Real multi-turn **spoken** conversations (generic + omni); verifies each turn via ASR + DOM, tools, latency, dialogue context. |
 | `concurrent.mjs` | N isolated sessions at once; distinct session IDs, all connect + hear greeting, 0 errors. |
 | `comprehensive.mjs` | Full Generic tool, Omni media/webcam, UI lifecycle, and mixed eight-session qualification. |
@@ -36,13 +37,13 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 | `selftest_audio.mjs`, `probe.mjs`, `diag_mic.mjs` | Layered bring-up checks (audio loopback → single turn → mic routing). |
 | `lib/harness.mjs`, `lib/audio.mjs` | Shared browser + ASR/TTS helpers. |
 
-The Generic Frontend/Backend example owns its five-tool maximum allowlist on
+The Generic Frontend/Backend example owns its seven-tool maximum allowlist on
 the server. `GET /api/tools` exposes the allowed ToolSpecs to the configuration
 popup and **Settings**, which share the same checkboxes. The client sends the
 selected subset for the next session; the server never accepts a tool outside
 the registry allowlist. Release suites assert the exact Generic catalog
-(`get_weather`, `get_stock_price`, `web_search`, `calculate_bmi`, and
-`generate_random_number`) before exercising native tool calls. The harness also
+(`get_weather`, `get_stock_price`, `get_current_time`, `show_architecture`,
+`web_search`, `calculate_bmi`, and `generate_random_number`) before exercising native tool calls. The harness also
 fails when a UI-claimed tool control is missing or does not reflect selection.
 
 ## Run
@@ -52,6 +53,7 @@ export SQA_KEY=sk-...                 # inference-hub key
 export SQA_BASE=http://localhost:7862 # default
 ./sqa.sh functional
 ./sqa.sh converse both     # or: generic | omni
+./sqa.sh demo-feedback
 ./sqa.sh captured-sessions
 ./sqa.sh repeated-expect-tool
 ./sqa.sh corner
@@ -70,6 +72,44 @@ a stable external identifier. A later phase or rerun does not overwrite earlier
 evidence.
 Versioned qualification summaries live in `reports/`; older completed runs live in
 `reports/archive/`.
+
+## Demo Feedback Checks
+
+Run `demo-feedback.mjs` through the launcher in the existing harness image.
+From the repository root, set `SQA_BASE` to your target UI and use the existing
+NVIDIA inference-gateway credential in `SQA_KEY`:
+
+```bash
+export SQA_BASE=http://localhost:7880
+bash tests/sqa/sqa.sh demo-feedback
+```
+
+To exercise the optional sample session, set `SQA_VOICE_SAMPLE` to a host file
+containing 3–10 seconds of clear reference speech before running the command.
+The launcher mounts it read-only at `/sqa-voice-sample.wav` and passes that path
+to the container. The deployment must offer Magpie Zeroshot. Without this
+variable, sample-session checks are skipped. The launcher also supports
+non-TTY automation.
+
+`SQA_OUTPUT_ROOT` controls the host artifact root, and `SQA_RUN_ID` controls
+the run subdirectory. By default, each invocation writes under
+`tests/sqa/out/<run-id>/`. The launcher mounts this directory as `SQA_OUT`
+inside the container.
+
+The suite checks frontend persona and backend prompt edits across a reload,
+2 catalog voice previews, a stock quote followed by a same-company refresh,
+and a current-time request with the browser timezone set to `Asia/Kolkata`.
+It also checks Generic and Omni architecture images, “Nemotron 3 Diarization,”
+“Codex and spinner,” concise speech without Markdown markers, and a 0.65 s
+pause inside an unfinished Tokyo weather request. Every completed session
+requires capture teardown acknowledgement. The optional sample branch checks
+upload, explicit sample activation, disabled voice presets, and a spoken
+Halloween greeting.
+
+Results, WAVs, and screenshots are written under `SQA_OUT`, including
+`demo-feedback-report.json`. Inspect the recorded audio for pronunciation and
+intended timbre. Passing these automated checks does not establish human
+listening acceptance or replace the comprehensive and other release suites.
 
 ## Captured Session Regressions
 

@@ -82,7 +82,12 @@ For ASR latency and throughput across GPUs and WER for different models, see the
   )
   ```
 
-- **Endpointing (end-of-utterance)**: Riva/NIM ASR decides when the user has stopped speaking from trailing silence, via the endpoint parameters `start_history` / `start_threshold`, `stop_history` / `stop_threshold`. Silence windows are in ms, a multiple of 80, and `-1` keeps the model defaults. For models that do not honor `force_eou`, shorter `stop_history` finalizes faster (lower latency, but can clip trailing words). The cascaded examples construct `NvidiaForceEouSTTService` with `stop_history=400`. To customize this fallback value, pass your chosen value in the example pipeline:
+The Frontend/Backend Agent adds `Codex`, `codex`, `spinner`, and `Nemotron`
+to the boosted vocabulary when the selected ASR model name contains
+`nemotron` or `rnnt`. Its boost score is `1.0`. This request setting helps domain-word
+recognition; verify the resulting transcript with real audio.
+
+- **Endpointing (end-of-utterance)**: Riva/NIM ASR decides when the user has stopped speaking from trailing silence, via the endpoint parameters `start_history` / `start_threshold`, `stop_history` / `stop_threshold`. Silence windows are in ms, a multiple of 80, and `-1` keeps the model defaults. For models that do not honor `force_eou`, shorter `stop_history` finalizes faster (lower latency, but can clip trailing words). Generic and Multilingual construct `NvidiaForceEouSTTService` with `stop_history=400`. The Frontend/Backend Agent uses `stop_history=-1`, retaining the ASR model's endpointing defaults. To customize this fallback value, pass your chosen value in the example pipeline:
 
   ```python
   stt = NvidiaForceEouSTTService(
@@ -93,7 +98,7 @@ For ASR latency and throughput across GPUs and WER for different models, see the
 
   This blueprint's turn-taking is driven mainly by pipeline-level [Smart Turn / Silero VAD](tune-pipeline-performance.md#smart-turn-detection). ASR endpointing is the lower-level, ASR-side signal. On each `VADUserStoppedSpeakingFrame`, the local subclass sends an 80 ms PCM silence chunk when the ASR stream is active. The chunk matches the configured sample rate and audio channel count and sets the NVIDIA runtime configuration `force_eou=true` to finalize all submitted audio. If Pipecat reconnects the ASR stream before sending the chunk, the subclass preserves the queued `force_eou` marker for the new stream.
 
-  NVIDIA `force_eou` is honored only by supported cache-aware recurrent neural network transducer (RNNT) models, including the Nemotron ASR Streaming models. Unsupported models ignore this runtime setting and use the configured ASR endpointing instead. The cascaded examples set `stop_history=400`, so these models finalize after 400 ms of trailing silence.
+  NVIDIA `force_eou` is honored only by supported cache-aware recurrent neural network transducer (RNNT) models, including the Nemotron ASR Streaming models. Unsupported models ignore this runtime setting and use the configured ASR endpointing instead. Generic and Multilingual use `stop_history=400`, so unsupported models finalize after 400 ms of trailing silence in those examples. The Frontend/Backend Agent retains the selected model's endpointing defaults with `stop_history=-1`.
 
   Stock `NvidiaSTTService` response handling emits `TranscriptionFrame(finalized=True)` when NVIDIA returns `is_final`. Pipecat's stock turn analyzer strategy uses that final transcript together with Smart Turn's decision; ASR does not act on the turn analyzer. Refer to [ASR customization](https://docs.nvidia.com/nim/speech/latest/asr/customization/customization.html) for the endpoint parameter semantics and defaults.
 

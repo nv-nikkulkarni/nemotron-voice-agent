@@ -504,7 +504,7 @@ class FrontendBackendAgentTests(unittest.IsolatedAsyncioTestCase):
     async def test_tts_filter_strips_asterisks_and_keeps_base_cleanup(self) -> None:
         filtered = await NemotronSpeechTextFilter().filter("PNR **ABC123** <break> {AA123}")
 
-        self.assertEqual(filtered, "PNR ABC123 break> AA123")
+        self.assertEqual(filtered, "PNR ABC123  AA123")
 
     async def test_tts_filter_expands_airline_codes_after_base_cleanup(self) -> None:
         base_filtered = await NemotronSpeechTextFilter().filter(

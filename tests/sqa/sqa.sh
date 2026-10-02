@@ -8,6 +8,7 @@
 #   ./sqa.sh functional            # exhaustive DOM/functional checks
 #   ./sqa.sh converse [generic|omni|both]
 #   ./sqa.sh comprehensive [all|A|B|C|D]  # full E2E: tools, omni, UI, concurrency
+#   ./sqa.sh demo-feedback         # focused demo feedback and optional reference voice
 #   ./sqa.sh captured-sessions      # reconstructed production-session regressions
 #   ./sqa.sh repeated-expect-tool   # strict 8x10 live-data delegation matrix
 #   ./sqa.sh corner                 # failure, safety, grounding, and cancellation
@@ -29,6 +30,7 @@ mkdir -p "$HOST_OUT"
 
 declare -A CMD=(
   [functional]="node functional.mjs"
+  [demo-feedback]="node demo-feedback.mjs"
   [converse]="node converse.mjs ${1:-both}"
   [comprehensive]="node comprehensive.mjs ${1:-all}"
   [captured-sessions]="node captured_session_regressions.mjs"
@@ -49,8 +51,16 @@ RUN="${CMD[$SUITE]:?unknown suite $SUITE}"
 
 echo "[sqa.sh] run_id=$RUN_ID output=$HOST_OUT"
 
-exec docker run --rm --network host -it \
-  -e SQA_KEY="$SQA_KEY" -e SQA_BASE="$BASE" -e SQA_RUN_ID="$RUN_ID" -e SQA_OUT=/sqa-run \
+DOCKER_ARGS=()
+if [[ -t 0 && -t 1 ]]; then DOCKER_ARGS+=(-it); fi
+if [[ -n "${SQA_VOICE_SAMPLE:-}" ]]; then
+  [[ -f "$SQA_VOICE_SAMPLE" ]] || { echo "SQA_VOICE_SAMPLE must name a speech file" >&2; exit 1; }
+  sample_path="$(realpath "$SQA_VOICE_SAMPLE")"
+  DOCKER_ARGS+=(-v "$sample_path:/sqa-voice-sample.wav:ro" -e SQA_VOICE_SAMPLE=/sqa-voice-sample.wav)
+fi
+export SQA_KEY
+exec docker run --rm --network host "${DOCKER_ARGS[@]}" \
+  -e SQA_KEY -e SQA_BASE="$BASE" -e SQA_RUN_ID="$RUN_ID" -e SQA_OUT=/sqa-run \
   -v "$HERE":/sqa -w /sqa \
   -v "$HOST_OUT":/sqa-run \
   sqa-harness:latest \

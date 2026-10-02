@@ -18,6 +18,23 @@ Microservice (NIM). The broad registry is unqualified until exact-word Viking
 probes and human listening confirm every promoted mapping. Legacy flat
 grapheme-to-IPA JSON and YAML files remain supported.
 
+## Current Nemotron Demo Reference
+
+The approved audio variant `8A-6` supplies the current demo reference.
+[Provenance metadata](../../src/examples/shared/assets/nemotron-approved-reference.json)
+records source hashes and timing parameters; no reference WAV is committed.
+The packaged `ˈnimoʊˌtɹɑn` IPA mapping is an audio-derived candidate, not a
+separately approved transcription. Earlier candidate rows below remain
+historical probe evidence.
+
+The shared demo TTS wrapper applies `atempo=1.28` to the aligned target word
+and trims only quiet audio before a following “three” toward a 25 ms gap.
+It uses fresh Magpie NIM word timestamps for each request, preserving the
+surrounding speech and following word onset. Reference clip timestamps are
+not reused. Each selected voice still requires human listening for
+pronunciation and, for reference samples, the intended timbre. Refer to
+[demo pronunciation behavior](../../docs/how-to/configure-tts.md#pronunciation-ipa).
+
 ## 0.1.114 direct exact-word probe
 
 The Viking probe generated 33 isolated clips across 10 categories. Its manifest

@@ -84,8 +84,8 @@ exposes internal mechanics. This validation does not infer intent or select a
 tool in Python.
 
 The checked-in NVCF chart explicitly sets
-`app.frontendBackendToolResultMode: "talker"`. That chart value becomes
-`FRONTEND_BACKEND_TOOL_RESULT_MODE=talker` in the application pod and
+`app.frontendBackendToolResultMode: "direct"`. That chart value becomes
+`FRONTEND_BACKEND_TOOL_RESULT_MODE=direct` in the application pod and
 overrides the Generic source default. Changing only the backend source does not
 change this rendered Helm behavior.
 
@@ -105,7 +105,7 @@ Both built-ins point to `examples.frontend_backend_agent.pipeline:bot`. The sele
 | Registry Example | Domain Profile | Talker Prompt | Thinker Prompt | Internal Tools | Extra Dependency |
 | --- | --- | --- | --- | --- | --- |
 | `frontend-backend-agent` | `airline` | `talker` | `thinker` | Airline domain defaults | `booking-server` |
-| `generic-frontend-backend-agent` | `generic` | `generic_talker` | `generic_thinker` | `get_weather`, `get_stock_price`, `web_search`, `calculate_bmi`, and `generate_random_number` | WeatherAPI, Finnhub, and Perplexity credentials for their respective live tools |
+| `generic-frontend-backend-agent` | `generic` | `generic_talker` | `generic_thinker` | `get_weather`, `get_stock_price`, `get_current_time`, `show_architecture`, `web_search`, `calculate_bmi`, and `generate_random_number` | WeatherAPI, Finnhub, and Perplexity credentials for their respective live tools |
 
 When users ask its identity, developer, or pipeline, the generic Talker uses this exact response:
 
@@ -115,7 +115,7 @@ The NVCF chart loads the shared pronunciation registry for Magpie requests. It
 sends only International Phonetic Alphabet (IPA) mappings; Chatterbox receives
 no custom dictionary. Refer to [Configure TTS](../../../docs/how-to/configure-tts.md#pronunciation-ipa).
 
-`domain_profile`, `thinker_prompt`, and `tools` are registry-owned. The server binds these values from `examples_registry.yaml`; a client session cannot replace the hidden prompt or widen the allowed tool set. For a domain-profile session, optional `tools_available` input can only select a subset of that registry list. Unknown names grant no capability, and `none` disables every optional tool. The pipeline resolves `domain_profile` through the code allowlist in `src/domain.py`. It never imports a client-provided module or path.
+`domain_profile`, `thinker_prompt`, and `tools` are registry-owned. The server binds these values from `examples_registry.yaml`; a client session cannot replace the hidden prompt key or widen the allowed tool set. For a domain-profile session, optional `tools_available` input can only select a subset of that registry list. Unknown names grant no capability, and `none` disables every optional tool. The pipeline resolves `domain_profile` through the code allowlist in `src/domain.py`. It never imports a client-provided module or path.
 
 ## Default Models
 
@@ -228,10 +228,11 @@ The following environment variables bound shared and domain-specific orchestrati
 
 | Environment Variable | Default | Purpose |
 | --- | --- | --- |
-| `CHAT_HISTORY_RECENT_TURNS` | `20` | Retains this many recent non-prompt messages in the Talker context |
-| `FRONTEND_BACKEND_VAD_STOP_SECS` | `0.5` | Waits for trailing ASR text before finalizing a Frontend/Backend Agent turn; changing it affects latency and fragmented follow-ups |
+| `CHAT_HISTORY_RECENT_TURNS` | `20` | Retains this many user turns with their associated messages and tool results; initial prompts stay pinned. |
+| `FRONTEND_BACKEND_VAD_STOP_SECS` | `0.8` | VAD pause in seconds before yielding trailing ASR text; Smart Turn still decides turn completion. |
+| `FRONTEND_BACKEND_SMART_TURN_STOP_SECS` | `2.0` | Semantic turn silence fallback in seconds; minimum `0.8`. |
 | `FRONTEND_BACKEND_TALKER_FILLER_MODE` | `emit` | Uses `off`, `observe`, or `emit` to suppress, validate-only, or speak an accepted Talker filler |
-| `FRONTEND_BACKEND_TOOL_RESULT_MODE` | Domain default: Generic `direct`; Airline `talker`; NVCF chart `talker` | An explicit `direct`, `hybrid`, or `talker` value overrides the backend default. Generic `hybrid` uses the Talker only for successful weather results. |
+| `FRONTEND_BACKEND_TOOL_RESULT_MODE` | Domain default: Generic `direct`; Airline `talker`; NVCF chart `direct` | An explicit `direct`, `hybrid`, or `talker` value overrides the backend default. Generic `hybrid` uses the Talker only for successful weather results. |
 | `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` | Disabled | Legacy switch that forces direct mode only when the explicit result-mode variable is absent |
 | `THINKER_FILLER_THRESHOLD_SECONDS` | `0.3` | Delays progress speech until delegated work remains active past the threshold |
 | `THINKER_TOOL_TIMEOUT_SECONDS` | `45.0` (`90` for single-GPU Compose) | Bounds the shared Talker-to-backend function handler |
@@ -250,7 +251,7 @@ emits an accepted filler at most once after the threshold and never adds it to
 conversation history. A missing or rejected candidate stays silent and never
 blocks the backend; there is no static fallback.
 
-The `generic-frontend-backend-agent` registry entry enables all 5 built-in generic tools. To expose a subset, create or edit a trusted registry entry. Client session data and Talker prompt metadata do not widen that set.
+The `generic-frontend-backend-agent` registry entry enables all 7 built-in generic tools. To expose a subset, create or edit a trusted registry entry. Client session data and Talker prompt metadata do not widen that set.
 
 The generic backend permits at most 3 planning rounds within the existing
 40-second overall deadline. Each later planning request includes the trusted
@@ -266,11 +267,14 @@ Real-Time Voice Interaction (RTVI) metrics expose the later planning rounds as
 `backend_thinker_step2_llm` and `backend_thinker_step3_llm`. Each processor
 stays correlated with the same backend call and user turn.
 
-Successful weather speech includes returned humidity and wind speed when those
-fields are available. Deterministic weather speech and the guarded Talker
-rephrasing use only validated provider results.
+The default Generic Talker prompt requests one short sentence of at most
+35 words unless the user asks for detail. Weather speech defaults to returned
+temperature and conditions. With `details: true`, it also includes available
+feels-like temperature, humidity, and wind speed. Deterministic weather speech
+and the guarded Talker rephrasing use only validated provider results.
 
-Finnhub quote requests retry once after a short bounded backoff only for
+Finnhub quote requests use a 2.5-second network timeout and retry once after
+a 0.25-second backoff only for
 transport errors, HTTP 429, or HTTP 5xx responses. Authentication failures and
 malformed data fail closed without retry, and a second transient failure returns
 the existing grounded unavailable response.
@@ -282,6 +286,32 @@ deadline. Transport failures, attempt timeouts, malformed JSON, HTTP 429, and
 HTTP 5xx responses can trigger the retry. Other HTTP errors fail immediately.
 After the second failure, the tool returns the existing grounded unavailable
 response.
+
+The Generic Thinker receives up to 8 recent user or assistant messages, each
+bounded to 1,000 characters. This dialogue resolves follow-up references and
+corrections; it does not replace new tool calls for changing facts.
+
+`get_current_time` reads the clock afresh in the requested IANA timezone,
+including daylight saving rules. If the tool omits `timezone`, it uses the
+session's `client_timezone`, falling back to `UTC` when no session zone exists.
+The Astra client supplies its browser IANA timezone in `client_timezone` for
+local-clock requests. Explicitly requested zones take precedence.
+`show_architecture` returns a repository-owned image reference and a brief
+spoken description. The Astra client displays the architecture SVG after the
+validated tool result. Neither capability needs a provider key.
+
+Session configuration can replace Talker content with `prompt_content` and
+Thinker content with `thinker_prompt_content`. `persistent_prompt` appends the
+same instructions to both. Each field is limited to 32,000 characters and does
+not change the trusted backend domain or tool allowlist. Refer to
+[Frontend/Backend Session Prompts](../../../docs/how-to/configure-prompts.md#frontendbackend-session-prompts).
+
+Before starting an Astra session, use **Prompts** to edit both roles and save
+persistent appended instructions. Refer to [Astra voice preview and sample
+upload](../../../docs/how-to/configure-tts.md#preview-and-upload-voices-in-the-astra-client)
+for preview, same-engine voice switching, and compatible reference samples.
+The demo speech wrapper adjusts only aligned “Nemotron” timing; refer to the
+[pronunciation boundary](../../../docs/how-to/configure-tts.md#pronunciation-ipa).
 
 For model and catalog settings, refer to [Configure LLM](../../../docs/how-to/configure-llm.md) and [Configure Services](../../../docs/how-to/configure-services.md). For prompt behavior, tool subsets, and domain extension, refer to [Configure Frontend/Backend Agent Domains](../../../docs/how-to/configure-frontend-backend-domains.md).
 

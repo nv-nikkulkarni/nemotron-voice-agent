@@ -22,7 +22,7 @@ from examples.frontend_backend_agent.generic.planner import GenericPlanner
 from examples.frontend_backend_agent.generic.result_formatters import planner_failure, timeout_failure
 from examples.frontend_backend_agent.generic.state import GenericThinkerSessionState
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent
-from examples.frontend_backend_agent.src.tools import ToolSpec
+from examples.frontend_backend_agent.src.tools import ToolContext, ToolSpec
 
 if TYPE_CHECKING:
     from examples.frontend_backend_agent.src.stage_metrics import StageMetricsCoordinator
@@ -38,6 +38,8 @@ class GenericThinkerBackend:
 
     # Generic formatters already produce grounded, TTS-safe speech; avoid a second
     # Talker pass over Pipecat's asynchronous started/final result envelope.
+    accepts_conversation_context = True
+    client_timezone = "UTC"
     tool_result_mode_default = "direct"
     talker_result_tools = ("get_weather",)
 
@@ -71,7 +73,18 @@ class GenericThinkerBackend:
         on_started: Callable[[ThinkerLifecycleEvent], Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
         """Cancel superseded work and suppress stale results."""
-        del slots
+        dialogue = (slots or {}).get("conversation_context", [])
+        conversation_context = (
+            [
+                {"role": item["role"], "content": item["content"][:1000]}
+                for item in dialogue[-8:]
+                if isinstance(item, dict)
+                and item.get("role") in {"user", "assistant"}
+                and isinstance(item.get("content"), str)
+            ]
+            if isinstance(dialogue, list)
+            else []
+        )
         clean_query = query.strip()
         if not clean_query:
             return planner_failure()
@@ -91,7 +104,9 @@ class GenericThinkerBackend:
         self.state.add_event(started)
         if on_started:
             await on_started(started)
-        task = asyncio.create_task(self._run_call(call_id, clean_query, on_progress=on_started))
+        task = asyncio.create_task(
+            self._run_call(call_id, clean_query, conversation_context=conversation_context, on_progress=on_started)
+        )
         self.state.active_task = task
         try:
             payload = await task
@@ -133,6 +148,7 @@ class GenericThinkerBackend:
         *,
         planning_round: int,
         prior_tool_results: list[dict[str, Any]],
+        conversation_context: list[dict[str, str]],
     ) -> dict[str, Any]:
         """Retry one transient planner failure inside the existing overall deadline."""
         for attempt in range(1, _PLANNER_MAX_ATTEMPTS + 1):
@@ -145,7 +161,9 @@ class GenericThinkerBackend:
                             "planner_attempt": attempt,
                             "planning_round": planning_round,
                             "max_planning_rounds": _MAX_PLANNING_ROUNDS,
-                            "prior_tool_results": prior_tool_results,
+                            "prior_tool_results": list(prior_tool_results),
+                            "conversation_context": conversation_context,
+                            "client_timezone": self.client_timezone,
                         },
                     ),
                     timeout=self._planner_timeout_seconds,
@@ -167,6 +185,7 @@ class GenericThinkerBackend:
         call_id: str,
         query: str,
         *,
+        conversation_context: list[dict[str, str]],
         on_progress: Callable[[ThinkerLifecycleEvent], Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
         accumulated_results: list[dict[str, Any]] = []
@@ -178,6 +197,7 @@ class GenericThinkerBackend:
                         query,
                         planning_round=planning_round,
                         prior_tool_results=accumulated_results,
+                        conversation_context=conversation_context,
                     )
                     if _is_completion_plan(plan):
                         break
@@ -186,7 +206,10 @@ class GenericThinkerBackend:
                         plan,
                         self._tools,
                         self._enabled_tools,
-                        source_query=query,
+                        source_query=query
+                        + "\n"
+                        + "\n".join(item["content"] for item in conversation_context if item["role"] == "user"),
+                        tool_context=ToolContext(backend=self),
                         on_tool_started=self._on_tool_started,
                         stage_metrics=self._stage_metrics,
                         backend_call_id=call_id,

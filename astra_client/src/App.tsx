@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2024–2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: BSD-2-Clause
 
-import { useCallback, useMemo, useState, type ComponentProps } from "react";
+import { useCallback, useMemo, useState, useEffect, type ComponentProps } from "react";
 import { PipecatClient } from "@pipecat-ai/client-js";
 import { PipecatClientProvider, PipecatClientAudio } from "@pipecat-ai/client-react";
 import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
@@ -13,6 +13,8 @@ import { queryClient, useDeployment, useIceServers } from "./api";
 import { AppProvider } from "./context/AppContext";
 import { useApp } from "./context/useApp";
 import { demoConfig } from "./config";
+import { PromptPage } from "./components/demo/PromptPage";
+import { ArchitecturePresentation } from "./components/demo/ArchitecturePresentation";
 import { TopBar } from "./components/demo/TopBar";
 import { ConversationStage } from "./components/demo/ConversationStage";
 import { SettingsPage } from "./components/demo/SettingsPage";
@@ -32,7 +34,7 @@ const EMPTY_ICE_SERVERS: RTCIceServer[] = [];
 const DEFAULT_AUDIO_INPUT_SAMPLE_RATE = 16000;
 const DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE = 22050;
 type ProviderClient = ComponentProps<typeof PipecatClientProvider>["client"];
-type View = "main" | "settings" | "pipeline";
+type View = "main" | "settings" | "pipeline" | "prompts";
 type Tour = "introduction" | null;
 
 function AppInner() {
@@ -42,7 +44,16 @@ function AppInner() {
   const iceServers = iceConfig?.iceServers ?? EMPTY_ICE_SERVERS;
   const recorderSampleRate = deployment?.audio?.input_sample_rate ?? DEFAULT_AUDIO_INPUT_SAMPLE_RATE;
   const playerSampleRate = deployment?.audio?.output_sample_rate ?? DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE;
-  const [view, setView] = useState<View>("main");
+  const [view, setView] = useState<View>(() => location.pathname === "/prompts" ? "prompts" : "main");
+  const navigate = useCallback((next: View) => {
+    history.pushState({}, "", next === "prompts" ? "/prompts" : "/");
+    setView(next);
+  }, []);
+  useEffect(() => {
+    const sync = () => setView(location.pathname === "/prompts" ? "prompts" : "main");
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
   const [tour, setTour] = useState<Tour>(null);
   const handleLiveChange = useCallback((live: boolean) => {
     if (live) setTour(null);
@@ -115,7 +126,8 @@ function AppInner() {
       <SessionLifecycleProvider>
         <div className="clean-app">
           <TopBar
-            onHome={() => setView("main")}
+            onHome={() => navigate("main")}
+            onPrompts={() => navigate("prompts")}
             onSettings={() => setView("settings")}
             onPipeline={() => setView("pipeline")}
             onTour={() => {
@@ -124,14 +136,16 @@ function AppInner() {
             }}
           />
           <main className="clean-main">
-            <ConversationStage onLiveChange={handleLiveChange} />
+            {view === "prompts" ? <PromptPage onClose={() => navigate("main")} /> : (
+              <><ConversationStage onLiveChange={handleLiveChange} /><ArchitecturePresentation /></>
+            )}
           </main>
-          <SessionControls />
+          {view !== "prompts" && <SessionControls />}
           <PipecatClientAudio />
           <SessionCaptureReporter />
         </div>
         <StoppingOverlayHost />
-        {view === "settings" && <SettingsPage onClose={() => setView("main")} />}
+        {view === "settings" && <SettingsPage onClose={() => setView("main")} onPrompts={() => navigate("prompts")} />}
         {view === "pipeline" && <PipelineInfo onClose={() => setView("main")} />}
         {tour === "introduction" && <IntroductionTour onClose={() => setTour(null)} />}
       </SessionLifecycleProvider>

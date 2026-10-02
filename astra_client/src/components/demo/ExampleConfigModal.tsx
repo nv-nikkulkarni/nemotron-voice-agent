@@ -1,3 +1,4 @@
+import { VoiceStudio } from "./VoiceStudio";
 // SPDX-FileCopyrightText: Copyright (c) 2024–2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: BSD-2-Clause
 
@@ -34,10 +35,7 @@ function llmCatalogReasoningDefault(svc: LLMService | undefined): boolean {
   }
 }
 
-const TTS_OPTIONS = [
-  { key: "magpie", test: /magpie/i, label: "Magpie", sub: "Multilingual · natural (default)" },
-  { key: "chatterbox", test: /chatterbox/i, label: "Chatterbox", sub: "Expressive multilingual" },
-];
+
 
 export function ExampleConfigModal({
   option, connecting, connectionError, onStart, onClose,
@@ -66,14 +64,16 @@ export function ExampleConfigModal({
   const meta = EXAMPLE_TITLES[option.key] ?? option.label;
   const configurationLoading = llmsLoading || asrLoading || ttsLoading || promptsLoading || toolsLoading;
 
-  const ttsChoices = TTS_OPTIONS
-    .map((o) => ({ ...o, svc: ttsServices.find((t) => o.test.test(t.id) || o.test.test(t.name)) }))
-    .filter((o) => o.svc);
+  const ttsChoices = ttsServices.map((svc) => ({
+    key: svc.id, svc, label: svc.name,
+    sub: /zero.?shot/i.test(svc.model ?? "") ? "Custom voice from a reference sample"
+      : /chatterbox/i.test(svc.id) ? "Expressive multilingual" : "Multilingual natural speech",
+  }));
   // Apply the requested voice default when the popup opens. The generic agent's
   // Lightning/Super roles are registry- and pipeline-owned, not user-selectable.
   useEffect(() => {
     const curTts = ttsServices.find((t) => t.id === selectedTTSId);
-    const curTtsOffered = !!curTts && TTS_OPTIONS.some((o) => o.test.test(curTts.id) || o.test.test(curTts.name));
+    const curTtsOffered = !!curTts;
     const magpie = ttsServices.find((t) => /magpie/i.test(t.id) || /magpie/i.test(t.name)) ?? ttsChoices[0]?.svc;
     if (!curTtsOffered && magpie) selectTTS(magpie.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -115,8 +115,8 @@ export function ExampleConfigModal({
             <h3 className="ex-config__label">Voice (text-to-speech)</h3>
             <div className="ex-config__opts">
               {ttsChoices.map((o) => (
-                <label key={o.key} className={`ex-opt ${selectedTTSId === o.svc!.id ? "on" : ""}`}>
-                  <input type="radio" name="tts" checked={selectedTTSId === o.svc!.id} onChange={() => selectTTS(o.svc!.id)} />
+                <label key={o.key} className={`ex-opt ${selectedTTSId === o.svc.id ? "on" : ""}`}>
+                  <input type="radio" name="tts" checked={selectedTTSId === o.svc.id} onChange={() => selectTTS(o.svc.id)} />
                   <span className="ex-opt__body"><span className="ex-opt__name">{o.label}</span><span className="ex-opt__sub">{o.sub}</span></span>
                 </label>
               ))}
@@ -168,12 +168,13 @@ export function ExampleConfigModal({
         <p className="ex-config__note">
           <span className="ex-config__gear" aria-hidden>⚙</span>
           {isGeneric
-            ? "The grounded agent prompts and model roles are fixed; use settings for audio, voice, and other session controls."
+            ? "Edit frontend and backend prompts on the Prompts page before starting. Choose a voice in Settings; model roles stay configured for this pipeline."
             : "To modify the prompt, audio and other settings, click the settings icon — then restart the example pipeline after your changes take effect."}
         </p>
 
         {connectionError && <p className="ex-config__error">{connectionError}</p>}
 
+        <details><summary>Voice selection, preview, and custom sample</summary><VoiceStudio /></details>
         <div className="ex-config__actions">
           <button type="button" className="btn-secondary" onClick={onClose} disabled={connecting}>Cancel</button>
           <button

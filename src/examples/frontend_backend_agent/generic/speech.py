@@ -12,16 +12,15 @@ from examples.frontend_backend_agent.generic.result_formatters import _speech_te
 
 def weather(arguments: dict[str, Any], data: dict[str, Any]) -> str:
     """Speak current conditions from the trusted service payload."""
-    del arguments
     city = _speech_text(data.get("city"), max_length=120) or "that location"
     condition = _speech_text(data.get("condition"), max_length=100) or "reported conditions"
     unit = _speech_text(data.get("temperature_unit"), max_length=2) or "C"
     text = f"In {city}, it's {data.get('temperature')} degrees {unit} with {condition.lower()}"
-    if data.get("feels_like") is not None:
+    if arguments.get("details") and data.get("feels_like") is not None:
         text += f", and it feels like {data.get('feels_like')} degrees {unit}"
-    if data.get("humidity_percent") is not None:
+    if arguments.get("details") and data.get("humidity_percent") is not None:
         text += f", with {data.get('humidity_percent')} percent humidity"
-    if data.get("wind_kph") is not None:
+    if arguments.get("details") and data.get("wind_kph") is not None:
         text += f" and winds at {data.get('wind_kph')} kilometres per hour"
     return f"{text}."
 
@@ -55,3 +54,18 @@ def random_number(arguments: dict[str, Any], data: dict[str, Any]) -> str:
     """Speak the generated value and its inclusive range."""
     del arguments
     return f"Your random number between {data.get('min')} and {data.get('max')} is {data.get('result')}."
+
+
+def current_time(arguments: dict[str, Any], data: dict[str, Any]) -> str:
+    """Speak a fresh clock reading including its zone."""
+    del arguments
+    return f"It's {data['time']} in {data['timezone'].replace('_', ' ')}."
+
+
+def architecture(arguments: dict[str, Any], data: dict[str, Any]) -> str:
+    """Accompany the architecture image with a short spoken description."""
+    del arguments, data
+    return (
+        "Here's my architecture. Speech recognition feeds a conversational model, "
+        "with tools for live information and speech synthesis for replies."
+    )

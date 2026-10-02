@@ -17,19 +17,25 @@ The shared Pipecat pipeline separates low-latency conversation from slower task 
 
 The Talker sees only 2 functions. Internal functions, credentials, backend state, and tool results remain behind the domain boundary. The Thinker produces a bounded plan; the implementation does not use a ReAct observe-and-replan loop.
 
-The shared Frontend/Backend Agent pipeline waits `0.5` seconds of voice-activity-detector silence before finalizing a turn. Override this pipeline-scoped value with `FRONTEND_BACKEND_VAD_STOP_SECS` only after real-audio testing. A shorter value can split follow-ups such as “How about Paris?” before the final location transcript arrives; a longer value adds end-of-turn latency. Other examples retain their existing defaults.
+The shared Frontend/Backend Agent pipeline waits `0.8` seconds of
+voice-activity-detector silence before yielding the ASR transcript. Smart Turn
+still decides semantic completion, with a `2.0`-second silence fallback.
+Override these pipeline-scoped values with `FRONTEND_BACKEND_VAD_STOP_SECS`
+and `FRONTEND_BACKEND_SMART_TURN_STOP_SECS` after real-audio testing. Shorter
+values can split follow-ups before their final location transcript arrives;
+longer values add end-of-turn latency. Other examples retain their defaults.
 
 Use `FRONTEND_BACKEND_TOOL_RESULT_MODE=direct`, `hybrid`, or `talker` to
 control the grounded post-tool response. An explicit valid value overrides the
 selected backend default. Without this variable, the Generic backend uses
 `direct` and speaks trusted backend text without another Talker inference.
 The Airline backend retains `talker`, which sends speakable results through
-the guarded Talker pass. `hybrid` speaks successful results directly and uses
-the Talker for failures or clarifications.
+the guarded Talker pass. `hybrid` uses the Talker only for successful Generic weather results.
+Other successes, failures, and clarifications use deterministic speech.
 
 The checked-in NVCF chart sets
-`app.frontendBackendToolResultMode: "talker"`, which renders
-`FRONTEND_BACKEND_TOOL_RESULT_MODE=talker` in the application pod. That
+`app.frontendBackendToolResultMode: "direct"`, which renders
+`FRONTEND_BACKEND_TOOL_RESULT_MODE=direct` in the application pod. That
 explicit chart setting overrides the Generic source default. A source-only
 change does not alter this Helm behavior. The legacy
 `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` switch can force `direct` only when
@@ -48,11 +54,11 @@ The following registry entries use the same `examples.frontend_backend_agent.pip
 | Registry Example | `domain_profile` | User-Facing Prompt | `thinker_prompt` | Internal Tools |
 | --- | --- | --- | --- | --- |
 | `frontend-backend-agent` | `airline` | `talker` | `thinker` | Domain-owned flight search, booking, and passenger name record (PNR) status |
-| `generic-frontend-backend-agent` | `generic` | `generic_talker` | `generic_thinker` | Registry-selected weather, stock price, web search, body mass index (BMI), and random-number tools |
+| `generic-frontend-backend-agent` | `generic` | `generic_talker` | `generic_thinker` | Registry-selected weather, stock price, current time, architecture, web search, body mass index (BMI), and random-number tools |
 
 The registry loader normalizes `domain_profile`, `thinker_prompt`, and `tools` as fields on each `ExampleEntry`. During `_sanitize_session_config`, the server binds those fields from the selected entry and overwrites client-supplied values. Domain resolution uses the fixed `_DOMAIN_FACTORIES` allowlist in `src/examples/frontend_backend_agent/src/domain.py`. Tool resolution uses the selected domain's code-owned registry.
 
-This design prevents a client from changing the backend domain, selecting a hidden prompt, enabling an undeclared tool, or requesting an arbitrary Python module independently of the selected example. For a domain-profile session, `tools_available` can request only a subset of the registry-owned list.
+This design prevents a client from changing the backend domain, selecting another domain's hidden prompt key, enabling an undeclared tool, or requesting an arbitrary Python module independently of the selected example. For a domain-profile session, `tools_available` can request only a subset of the registry-owned list.
 The server ignores unknown names; `none` selects no optional tools.
 
 ## Select a Domain Locally
@@ -107,8 +113,10 @@ The built-in generic registry entry enables these internal tools:
 
 | Tool | Purpose | Credential | Important Boundary |
 | --- | --- | --- | --- |
-| `get_weather` | Current conditions for a city or location | `WEATHERAPI_KEY` | Does not provide forecasts or historical weather |
+| `get_weather` | Current conditions for a city or location | `WEATHERAPI_KEY` | Defaults to temperature and conditions; `details: true` adds available feels-like temperature, humidity, and wind. Does not provide forecasts or historical weather. |
 | `get_stock_price` | Current public-company quote | `FINNHUB_API_KEY` | Does not provide predictions, crypto, commodities, or historical prices |
+| `get_current_time` | Fresh current time and date in an IANA timezone | None | Reads the clock for each call and applies daylight saving rules. An omitted `timezone` uses the session's browser IANA timezone, or `UTC` without a session zone; an unknown zone returns a clarification. |
+| `show_architecture` | Repository-owned Generic pipeline image reference | None | Returns `/api/architecture/generic.svg` and a brief spoken description; the Astra client displays the validated image reference. |
 | `web_search` | Current or externally verifiable information | `PERPLEXITY_API_KEY` | Requests concise spoken text without URLs and strips numeric citation markers |
 | `calculate_bmi` | Metric adult BMI screening calculation | None | Requires explicit weight in kilograms and height in meters |
 | `generate_random_number` | Inclusive random integer | None | Accepts a bounded minimum and maximum |
@@ -134,9 +142,30 @@ Do not pass credentials through `call_backend`, Thinker plans, prompt text, or c
 
 When a credential is absent, the service returns an unavailable result. It does not use sample data or a stale fallback. This lets the Talker report the failure without presenting fabricated live information.
 
+### Follow-Up Context And Fresh Results
+
+The Generic Thinker receives up to 8 recent user or assistant messages, with
+at most 1,000 characters per message. It uses this dialogue to resolve
+references such as "there," "that company," and "again." Dialogue is not
+factual evidence; changing weather, stock, web, and clock results require a
+new tool call.
+
+Finnhub requests use a 2.5-second network timeout and retry once after a
+0.25-second backoff for transport errors, HTTP `429`, or HTTP `5xx`.
+Authentication failures and invalid quote data fail closed. Non-finite or
+non-positive prices are not spoken as valid quotes.
+
+The default Generic Talker prompt requests one short sentence of at most
+35 words unless you ask for detail. Weather defaults to temperature and
+conditions; request humidity, wind, or feels-like temperature for an expanded
+provider-grounded response.
+
+Refer to [Frontend/Backend Session Prompts](configure-prompts.md#frontendbackend-session-prompts)
+for Talker and Thinker content overrides and instructions appended to both roles.
+
 ### Restrict the Generic Tool Set
 
-Use the trusted `tools` list in `examples_registry.yaml` to choose the maximum subset of the 5 registered generic tools. The server resolves every name against the generic domain's code-owned registry. Unknown names do not create executable capabilities.
+Use the trusted `tools` list in `examples_registry.yaml` to choose the maximum subset of the 7 registered generic tools. The server resolves every name against the generic domain's code-owned registry. Unknown names do not create executable capabilities.
 
 ```yaml
 examples:

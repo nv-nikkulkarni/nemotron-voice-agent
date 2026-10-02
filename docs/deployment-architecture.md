@@ -116,6 +116,17 @@ returns `404` against vLLM and causes `/api/session-config` to return `503`.
 Keep the vLLM Service and matching catalog entry for this chart. Refer to the
 [Omni Service template](../nvcf_helm/templates/service-omni.yaml).
 
+The chart optionally adds a dedicated Magpie Zeroshot service when
+`zeroShotTts.enabled` is `true`. It is disabled by default and requests 1
+additional GPU with the `batch_size=8` profile. The image defaults to
+`nvcr.io/nim/nvidia/magpie-tts-zeroshot:1.2.0`; `zeroShotImage.digest` can pin it.
+The fixed Service `magpie-zeroshot-tts-service` exposes gRPC on `50051` and
+HTTP health on `9000`. The generated registry adds its engine to both curated
+examples when enabled. Browser reference samples apply only to Magpie Zeroshot;
+Chatterbox Multilingual NIM 1.1.0 supports its catalog voices without cloning.
+Refer to [optional Helm zero-shot setup](how-to/configure-tts.md#optional-helm-zero-shot-service)
+for cache options and model-access validation.
+
 Check `/health` for the JSON body `{"status":"ok"}` and an
 `application/json` content type. The application registers this route before
 its single-page application fallback. An HTTP `200` response containing HTML

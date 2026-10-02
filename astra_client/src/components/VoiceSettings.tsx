@@ -31,9 +31,10 @@ export function VoiceSettings() {
     selectedTTS,
     selectedSessionLanguage,
     setSelectedSessionLanguage,
-    setSelectedVoiceId,
+    selectedVoiceId, setSelectedVoiceId, useVoiceSample, voiceSample,
   } = useApp();
 
+  const sampleActive = useVoiceSample && !!voiceSample && /zero.?shot/i.test(selectedTTS?.model ?? "");
   const sessionLanguagesEnabled = selectedExample?.capabilities?.includes("session_languages") ?? false;
   const selectedTTSServer = selectedTTS?.server;
 
@@ -98,7 +99,7 @@ export function VoiceSettings() {
 
   const hasActiveOverride = voiceOverride.serviceId === (selectedTTS?.id ?? "");
   const activeLang = (hasActiveOverride ? voiceOverride.language : "") || (defaultVoice?.language.replace("_", "-") ?? "");
-  const activeVoice = (hasActiveOverride ? voiceOverride.voiceId : "") || defaultVoice?.id || "";
+  const activeVoice = (hasActiveOverride ? voiceOverride.voiceId : "") || selectedVoiceId || defaultVoice?.id || "";
 
   const languages = ttsConfig?.languages ?? [];
 
@@ -206,6 +207,8 @@ export function VoiceSettings() {
         <select
           className="select-dark"
           value={activeVoice}
+          disabled={sampleActive || isConnecting || isLocked}
+          title={sampleActive ? "Your custom sample supplies the voice. Disable the sample before choosing a preset." : "Choose the speaking voice"}
           onChange={(e) => handleVoiceChange(e.target.value)}
         >
           <option value="">Select voice</option>

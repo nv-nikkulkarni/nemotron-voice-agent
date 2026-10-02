@@ -118,6 +118,8 @@ agent_prompts:
           - media_analysis_action: "new" or "rerun" for analyze_attachment; otherwise "none".
           - media_analysis_prompt: the self-contained media task for analyze_attachment, phrased ONLY about the uploaded file itself; never mention, carry over, or contrast against the live camera view or "what you currently see" (the analyzer only sees the uploaded file); otherwise "".
           - highres_query: the specific detail to read for capture_highres; otherwise "".
+          - presentation: "architecture" only when the user asks to show this voice agent design, with turn_action respond; otherwise "none".
+        Default response: one short spoken sentence, at most 35 words, unless the user requests detail. Never output markdown or spoken punctuation names.
 
   MediaAnalyzerAgent:
     analysis_system_prompt:

@@ -18,6 +18,8 @@ export const RUN_ID = process.env.SQA_RUN_ID || "unversioned-run";
 export const GENERIC_SERVER_TOOL_NAMES = Object.freeze([
   "get_weather",
   "get_stock_price",
+  "get_current_time",
+  "show_architecture",
   "web_search",
   "calculate_bmi",
   "generate_random_number",
@@ -108,8 +110,8 @@ export async function createAudioSlot(i) {
   return { micSink, spkSink, source, spkMonitor: `${spkSink}.monitor`, env: { PULSE_SOURCE: source, PULSE_SINK: spkSink } };
 }
 
-export async function newPage(browser, sig, { viewport = { width: 1280, height: 800 }, recordVideoDir } = {}) {
-  const ctx = await browser.newContext({ permissions: ["microphone"], viewport, ...(recordVideoDir ? { recordVideo: { dir: recordVideoDir, size: viewport } } : {}) });
+export async function newPage(browser, sig, { viewport = { width: 1280, height: 800 }, recordVideoDir, timezoneId } = {}) {
+  const ctx = await browser.newContext({ permissions: ["microphone"], viewport, ...(timezoneId ? { timezoneId } : {}), ...(recordVideoDir ? { recordVideo: { dir: recordVideoDir, size: viewport } } : {}) });
   await ctx.addInitScript(TAP);
   const page = await ctx.newPage();
   if (sig) attachSignals(page, sig);
@@ -218,7 +220,7 @@ export async function selectExample(page, { example = "generic", model = "lightn
 
   // 4. TTS radio (both examples expose it).
   if (tts) {
-    const wanted = tts === "chatterbox" ? /chatterbox/i : /magpie/i;
+    const wanted = tts === "chatterbox" ? /chatterbox/i : tts === "zeroshot" ? /zero.?shot/i : /magpie/i;
     const opt = popup.locator('label.ex-opt', { has: page.locator('input[name="tts"]') }).filter({ hasText: wanted }).first();
     // The deployment catalog is loaded asynchronously after the modal opens.
     // Keep the requested-option check strict, but allow the matching radio to
@@ -507,15 +509,15 @@ export async function captureBot(page, name, {
 // One full spoken turn: wait to be listening, speak, capture the bot, ASR it, read DOM.
 export async function turn(page, text, name, {
   voice, transcribeBot = true, echoToSpk = false, micDevice, spkDevice, monitor, settle = false, settleStableMs = 4500,
-  speechEngine, speechInstructions, nonTerminalBotTexts,
+  speechEngine, speechInstructions, nonTerminalBotTexts, inputWav,
 } = {}) {
   await waitListening(page);
   await page.evaluate(() => window.__botReset());
   const before = (await readMessages(page)).length;
   const t0 = Date.now();
-  const { outWav } = await synthSpeech(text, `${OUT}/${name}_user.wav`, {
+  const outWav = inputWav || (await synthSpeech(text, `${OUT}/${name}_user.wav`, {
     voice, engine: speechEngine, instructions: speechInstructions,
-  });
+  })).outWav;
   const captureOptions = monitor ? { monitor } : {};
   if (settle) Object.assign(captureOptions, {
     maxMs: 75000, quietMs: 2000, requireListening: true,

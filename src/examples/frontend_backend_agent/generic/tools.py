@@ -84,6 +84,11 @@ def _stateless(service: GenericService):
     return run
 
 
+async def _current_time(arguments: Mapping[str, Any], context: ToolContext) -> dict[str, Any]:
+    zone = arguments.get("timezone") or getattr(context.backend, "client_timezone", "UTC")
+    return await services.get_current_time({"timezone": zone})
+
+
 def _validate_random_range(arguments: Mapping[str, Any]) -> None:
     low = int(arguments.get("min", 1))
     high = int(arguments.get("max", 100))
@@ -100,6 +105,7 @@ TOOLS: dict[str, ToolSpec] = {
             capability="check current weather",
             params={
                 "city": ParamSpec(str, label="the city or location", max_len=200),
+                "details": ParamSpec(bool, required=False, default=False),
                 "units": ParamSpec(
                     str,
                     required=False,
@@ -121,6 +127,24 @@ TOOLS: dict[str, ToolSpec] = {
             run=_stateless(services.get_stock_price),
             speak=speech.stock,
             timeout_s=12.0,
+        ),
+        ToolSpec(
+            name="get_current_time",
+            contract="fresh current time and date; use client_timezone when the user does not name a zone",
+            capability="tell the current time",
+            params={"timezone": ParamSpec(str, required=False, default="UTC", max_len=100)},
+            run=_current_time,
+            speak=speech.current_time,
+            timeout_s=1.0,
+        ),
+        ToolSpec(
+            name="show_architecture",
+            contract="show the image of this voice agent design",
+            capability="show my architecture",
+            params={},
+            run=_stateless(services.show_architecture),
+            speak=speech.architecture,
+            timeout_s=1.0,
         ),
         ToolSpec(
             name="web_search",

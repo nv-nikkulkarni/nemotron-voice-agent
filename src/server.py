@@ -52,7 +52,7 @@ from typing import Annotated
 from urllib.parse import urlparse
 
 import uvicorn
-from fastapi import BackgroundTasks, FastAPI, File, Form, Query, Request, UploadFile, WebSocket
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from loguru import logger
@@ -296,8 +296,26 @@ def _sanitize_session_config(data: dict, fallback_example_key: str = "") -> dict
             # can never add a tool that the selected example did not declare.
             config["tools"] = [name for name in allowed_tools if name in requested_names]
 
+    for key in ("prompt_content", "thinker_prompt_content", "persistent_prompt"):
+        if key in config and (not isinstance(config[key], str) or len(config[key]) > 32000):
+            raise ValueError(f"{key} must be text of at most 32000 characters")
+    timezone = config.get("client_timezone", "UTC")
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    try:
+        ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError, TypeError) as exc:
+        raise ValueError("client_timezone must be an IANA timezone") from exc
+    config["client_timezone"] = timezone
     _bind_registry_prompt(example, config)
     sanitized = filter_session_config(config)
+    sample = sanitized.get("tts_voice_sample")
+    if sample:
+        from examples.shared.demo_speech import supports_audio_prompt, validate_voice_sample
+
+        if not supports_audio_prompt(str(sanitized.get("tts_model") or "")):
+            raise ValueError("Select Magpie Zero-shot to use a voice sample")
+        validate_voice_sample(sample)
     sanitized["_session_capabilities"] = list(example.get("capabilities") or ())
     return sanitized
 
@@ -1168,6 +1186,79 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
             default_pipeline_mode=DEFAULT_PIPELINE_MODE,
         )
 
+    preview_slots = asyncio.Semaphore(4)
+
+    @app.post("/api/tts/preview")
+    async def preview_voice(request: Request):
+        import io
+        import wave
+
+        from fastapi.responses import Response
+        from pipecat.services.nvidia.tts import NvidiaTTSSettings
+
+        from examples.shared.demo_speech import DemoNvidiaTTSService, synthesize_request, validate_voice_sample
+        from examples.shared.nemotron_speech_text_filter import NemotronSpeechTextFilter
+        from utils import load_ipa_dictionary, nvidia_api_key
+
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > 1_400_000:
+                raise HTTPException(status_code=413, detail="Voice preview request is too large")
+        try:
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                raise ValueError("Voice preview configuration must be a JSON object")
+            text = data.pop("text", "Hello. This is Nemotron 3 Diarization.")
+            if not isinstance(text, str) or not 1 <= len(text) <= 200:
+                raise ValueError("Preview text must contain 1–200 characters")
+            config = _sanitize_session_config(data, fallback_example_key)
+            if not load_service_entry_by_id("tts", str(config.get("tts_id") or "")):
+                raise ValueError("Select a catalog TTS service for voice preview")
+            model = str(config.get("tts_model") or "")
+            options = dict(
+                api_key=nvidia_api_key(),
+                server=config["tts_server"],
+                use_ssl=is_nvcf(config["tts_server"]),
+                settings=NvidiaTTSSettings(voice=config.get("tts_voice_id")),
+                model_function_map={"model_name": model, "function_id": config.get("tts_function_id", "")},
+                custom_dictionary=load_ipa_dictionary(model),
+                sample_rate=PIPELINE_AUDIO_OUT_SAMPLE_RATE,
+            )
+            if config.get("tts_voice_sample"):
+                options["voice_sample"] = validate_voice_sample(config["tts_voice_sample"])
+            service = DemoNvidiaTTSService(**options)
+            clean = await NemotronSpeechTextFilter().filter(text)
+            try:
+                async with preview_slots:
+                    pcm = await asyncio.to_thread(synthesize_request, service, clean, PIPELINE_AUDIO_OUT_SAMPLE_RATE)
+            finally:
+                if service._service is not None:
+                    service._service.auth.channel.close()
+            buffer = io.BytesIO()
+            with wave.open(buffer, "wb") as audio:
+                audio.setnchannels(1)
+                audio.setsampwidth(2)
+                audio.setframerate(PIPELINE_AUDIO_OUT_SAMPLE_RATE)
+                audio.writeframes(pcm)
+            return Response(buffer.getvalue(), media_type="audio/wav", headers={"Cache-Control": "no-store"})
+        except (ValueError, KeyError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.warning("Voice preview failed: {}", type(exc).__name__)
+            raise HTTPException(status_code=502, detail="Voice synthesis failed; check the selected service") from exc
+
+    @app.get("/api/architecture/{name}.svg")
+    async def architecture_image(name: str):
+        from fastapi.responses import FileResponse
+
+        if name not in {"generic", "omni"}:
+            raise HTTPException(status_code=404, detail="Unknown architecture")
+        path = PROJECT_ROOT / "src" / "examples" / "shared" / "assets" / f"architecture-{name}.svg"
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Architecture unavailable")
+        return FileResponse(path, media_type="image/svg+xml", headers={"Cache-Control": "no-cache"})
+
     # ---- Prompt catalog (read-only, scoped to the active example) ----
 
     @app.get("/api/prompts")
@@ -1187,6 +1278,7 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
                 "builtIn": True,
                 "selectable": key not in hidden_prompt_keys,
                 "scope": "agent" if key in hidden_prompt_keys else "session",
+                "role": "backend" if key == examples_registry.find(example_key).get("thinker_prompt") else "frontend",
                 "tools": [t for t in (val.get("tools_available") or []) if isinstance(t, str)],
             }
             for key, val in catalog.items()
@@ -1209,6 +1301,7 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
                             "builtIn": True,
                             "selectable": False,
                             "scope": "agent",
+                            "role": "backend" if agent_key == "ThinkerAgent" else "frontend",
                             "agent": agent_key,
                             "promptName": prompt_key,
                             "tools": [],

@@ -12,6 +12,12 @@ This section covers pipeline configurations for optimizing the performance and u
 
 By default the cascaded pipeline uses Pipecat's ML-based [**Smart Turn**](https://docs.pipecat.ai/api-reference/server/utilities/turn-detection/smart-turn-overview) detection to decide when the user has finished speaking, so the agent replies promptly without cutting the user off. [Silero VAD](https://docs.pipecat.ai/server/utilities/audio/silero-vad-analyzer) (`stop_secs=0.2`) detects the pause, and the Smart Turn model then judges whether the turn is actually complete. If the model still has not finalized after the Smart Turn silence fallback (default **1.0 s**, `SMART_TURN_STOP_SECS`), the turn completes anyway (fallback).
 
+The Frontend/Backend Agent overrides the initial VAD pause to `0.8 s` and the
+Smart Turn fallback to `2.0 s` to allow trailing words and follow-ups to arrive.
+Its overrides are `FRONTEND_BACKEND_VAD_STOP_SECS` and
+`FRONTEND_BACKEND_SMART_TURN_STOP_SECS`; the latter has a minimum of `0.8 s`.
+Other examples retain the shared defaults above.
+
 Smart Turn controls when a user turn ends. It does not decide whether a sound
 starts a barge-in. The Generic Frontend/Backend Agent uses Pipecat's bot-aware
 minimum-word start strategy: while the bot is speaking, at least 2 transcribed
@@ -37,8 +43,9 @@ segment and repeats the sequence.
 NVIDIA `force_eou` finalization requires a supported cache-aware recurrent
 neural network transducer (RNNT) model, such as a Nemotron ASR Streaming
 model. Unsupported models ignore `force_eou` and instead use ASR endpointing.
-The cascaded examples configure `stop_history=400`, which finalizes after
-400 ms of trailing silence.
+Generic and Multilingual configure `stop_history=400`, which finalizes after
+400 ms of trailing silence. The Frontend/Backend Agent uses `stop_history=-1`
+to retain the selected ASR model's defaults.
 
 ### Configuration
 
@@ -48,7 +55,7 @@ The cascaded examples configure `stop_history=400`, which finalizes after
 | `SILERO_VAD_STOP_SECS` | `0.5` | Silence (seconds) before end-of-utterance. Applies **only** in pure-VAD mode (`USE_SILERO_VAD_TURN_DETECTION=true`). |
 | `SMART_TURN_STOP_SECS` | `1.0` | Smart Turn silence fallback (seconds) before the turn completes without a `COMPLETE` classification. Applies **only** in Smart Turn mode (`USE_SILERO_VAD_TURN_DETECTION=false`). |
 
-> On the Smart Turn path, a fixed `0.2 s` Silero VAD pause (`stop_secs=0.2`) first detects the silence. The Smart Turn model then gets up to the configured fallback period (default `1.0 s`, `SMART_TURN_STOP_SECS`) to finalize the turn. Only `SILERO_VAD_STOP_SECS` is ignored in Smart Turn mode. The `generic-assistant/server-perf` profile forces pure Silero VAD (`USE_SILERO_VAD_TURN_DETECTION=true`, `SILERO_VAD_STOP_SECS=0.5`) for lower-overhead load testing.
+> On the shared Smart Turn path, a `0.2 s` Silero VAD pause (`stop_secs=0.2`) first detects the silence. The Smart Turn model then gets up to the configured fallback period (default `1.0 s`, `SMART_TURN_STOP_SECS`) to finalize the turn. Only `SILERO_VAD_STOP_SECS` is ignored in Smart Turn mode. The `generic-assistant/server-perf` profile forces pure Silero VAD (`USE_SILERO_VAD_TURN_DETECTION=true`, `SILERO_VAD_STOP_SECS=0.5`) for lower-overhead load testing.
 
 ### Key Components
 
@@ -67,7 +74,7 @@ Every turn appends to the LLM's context. Left unbounded, that context keeps grow
 We use context summarization logic for our examples to always **pin the initial prompt / system messages** loaded at session start. Nemotron's chat template carries the assistant instructions and tool definitions in the *user* section, so those must stay verbatim. Evicting them (as a token-based window might) would degrade tool-calling and persona. Only the older **conversational** turns are trimmed, and the handling differs by example:
 
 - **Generic** and **Multilingual** assistants **summarize** older history: once the conversation grows past the recent window, the older turns are condensed into a single pinned summary message (an additional LLM call after the turn), and the most recent `CHAT_HISTORY_RECENT_TURNS` turns are kept verbatim.
-- **Frontend/Backend Agent** uses a plain **sliding window**: older non-prompt messages are dropped, keeping only the most recent `CHAT_HISTORY_RECENT_TURNS` messages.
+- **Frontend/Backend Agent** uses a plain **sliding window**: it keeps the most recent `CHAT_HISTORY_RECENT_TURNS` user turns, including their assistant messages and tool results. It drops older complete turns and preserves the initial prompts.
 
 ### Configuration
 
@@ -82,7 +89,7 @@ CHAT_HISTORY_RECENT_TURNS=10
 
 ### How It Works
 
-When the message count exceeds `CHAT_HISTORY_RECENT_TURNS`:
+When the recent-turn window exceeds `CHAT_HISTORY_RECENT_TURNS`:
 
 1. Initial prompt messages loaded at session start are always preserved.
 2. The most recent `CHAT_HISTORY_RECENT_TURNS` turns are kept verbatim.

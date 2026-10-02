@@ -6,16 +6,19 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import re
 import secrets
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from loguru import logger
 
-_FINNHUB_TIMEOUT = httpx.Timeout(12.0)
+_FINNHUB_TIMEOUT = httpx.Timeout(2.5)
 _FINNHUB_MAX_ATTEMPTS = 2
 _FINNHUB_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 _FINNHUB_RETRY_BACKOFF_SECONDS = 0.25
@@ -188,11 +191,13 @@ async def _search_finnhub_symbol(
     client: httpx.AsyncClient, query: str, key: str, base_url: str
 ) -> tuple[str, str] | None:
     try:
-        response = await client.get(f"{base_url}/search", params={"q": query, "token": key})
+        response = await asyncio.wait_for(
+            client.get(f"{base_url}/search", params={"q": query, "token": key}), timeout=2.5
+        )
         if response.status_code != 200:
             return None
         decoded = response.json()
-    except (httpx.HTTPError, ValueError, AttributeError):
+    except (httpx.HTTPError, TimeoutError, ValueError, AttributeError):
         return None
     if not isinstance(decoded, dict):
         return None
@@ -230,12 +235,15 @@ async def get_stock_price(arguments: Mapping[str, Any]) -> dict[str, Any]:
                 symbol, display_name = resolved
             for attempt in range(1, _FINNHUB_MAX_ATTEMPTS + 1):
                 try:
-                    response = await client.get(
-                        f"{base_url}/quote",
-                        params={"symbol": symbol, "token": api_key},
-                        headers={"Accept": "application/json"},
+                    response = await asyncio.wait_for(
+                        client.get(
+                            f"{base_url}/quote",
+                            params={"symbol": symbol, "token": api_key},
+                            headers={"Accept": "application/json"},
+                        ),
+                        timeout=2.5,
                     )
-                except httpx.HTTPError:
+                except (httpx.HTTPError, TimeoutError):
                     if attempt >= _FINNHUB_MAX_ATTEMPTS:
                         raise
                     logger.warning("generic domain stock transient request failure; retrying once")
@@ -245,7 +253,7 @@ async def get_stock_price(arguments: Mapping[str, Any]) -> dict[str, Any]:
                     break
                 logger.warning(f"generic domain stock returned transient HTTP {response.status_code}; retrying once")
                 await asyncio.sleep(_FINNHUB_RETRY_BACKOFF_SECONDS)
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, TimeoutError) as exc:
         logger.warning(f"generic domain stock request failed: {type(exc).__name__}")
         return unavailable("get the stock price")
     if response is None:
@@ -260,7 +268,7 @@ async def get_stock_price(arguments: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(data, dict):
         return unavailable("get the stock price", code="invalid_response")
     price = data.get("c")
-    if isinstance(price, bool) or not isinstance(price, int | float):
+    if isinstance(price, bool) or not isinstance(price, int | float) or not math.isfinite(price):
         return unavailable("get the stock price", code="invalid_response")
     if price <= 0:
         return {"status": "not_found", "message": f"I couldn't find a current quote for {company}."}
@@ -333,3 +341,30 @@ async def web_search(arguments: Mapping[str, Any]) -> dict[str, Any]:
     if not answer:
         return unavailable("find a verified answer for that", code="empty_response")
     return {"status": "success", "answer": answer[:1200], "source": "Perplexity Sonar"}
+
+
+async def get_current_time(arguments: Mapping[str, Any]) -> dict[str, Any]:
+    """Read the clock afresh using an explicit IANA timezone with DST support."""
+    name = str(arguments.get("timezone") or "UTC")
+    try:
+        zone = ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return {"status": "not_found", "message": "Which IANA timezone should I use?"}
+    now = datetime.now(UTC).astimezone(zone)
+    return {
+        "status": "success",
+        "timezone": name,
+        "datetime": now.isoformat(timespec="seconds"),
+        "date": now.date().isoformat(),
+        "time": now.strftime("%I:%M %p").lstrip("0"),
+    }
+
+
+async def show_architecture(arguments: Mapping[str, Any]) -> dict[str, Any]:
+    """Return only the repository-owned image of the current generic pipeline."""
+    del arguments
+    return {
+        "status": "success",
+        "image_url": "/api/architecture/generic.svg",
+        "alt": "Nemotron voice agent: ASR, Talker, Thinker, tools, TTS, and shared session capture",
+    }

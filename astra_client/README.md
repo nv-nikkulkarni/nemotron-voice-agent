@@ -1,8 +1,10 @@
-# Nemotron Voice Agent Client
+# Nemotron Voice Agent Astra Client
 
-The Nemotron Voice Agent Client is the browser front end for the [Nemotron Voice Agent](../README.md) blueprint. It gives you a real-time, interruptible voice conversation with the agent, along with controls to select an example, choose its supported tools and voice, adjust its prompt, watch live latency metrics, and follow the conversation transcript.
+The Astra client is the browser front end for the [Nemotron Voice Agent](../README.md) blueprint. It gives you a real-time, interruptible voice conversation with the agent, along with controls to select an example, choose its supported tools and voice, adjust its prompt, watch live latency metrics, and follow the conversation transcript.
 
-It is a React and TypeScript single-page app built with [Vite](https://vite.dev/) and the [Pipecat Client SDK](https://docs.pipecat.ai/client/introduction). The client connects to the Python backend (`src/server.py`) over WebRTC or WebSocket and reads its `/api/*` endpoints for session, service, and voice configuration. In a deployed stack the backend serves this client's production build from `client/dist/`, so you normally reach the UI at `https://localhost:7860` rather than running it on its own.
+It is a React and TypeScript single-page app built with [Vite](https://vite.dev/) and the [Pipecat Client SDK](https://docs.pipecat.ai/client/introduction). The client connects to the Python backend (`src/server.py`) over WebRTC or WebSocket and reads its `/api/*` endpoints for session, service, and voice configuration. The dedicated [Astra UI image](../docker/Dockerfile.nvcf-ui) serves
+`astra_client/dist/` through nginx and proxies API and session traffic to the
+backend. The upstream client in `client/` has a separate build.
 
 ## Features
 
@@ -71,6 +73,37 @@ tools do not show tool controls.
 Model endpoints come from the deployment's service catalog. **Settings** does
 not expose a local model URL override, which prevents a browser-only endpoint
 change from bypassing the deployment configuration.
+
+## Prepare Prompts and Voices
+
+Select **Prompts** before starting a session to open `/prompts`. Edit the
+frontend instructions and, for Frontend/Backend Agent or Omni Subagents, the
+backend Thinker instructions. The editor saves each pipeline's overrides in
+browser localStorage. **Persistent instructions** apply across pipelines and
+append to both roles. Restoring either default preserves these instructions.
+Changes apply to the next session. **Settings > Open Prompts** opens the same
+editor; its fields and restore buttons are disabled during an active session.
+Refer to
+[Configure Prompts](../docs/how-to/configure-prompts.md) for API limits.
+
+Open **Settings** or **Configure** to select a catalog engine and voice.
+The configuration popup lists the engines returned by the deployment catalog,
+including Magpie Zeroshot when enabled. Enter
+up to 200 characters and select **Preview voice** before connecting. During a
+session, a voice change uses `set-voice` within the current engine.
+
+For Magpie Zeroshot, upload 3–10 seconds of clear speech and
+explicitly enable **Use sample for zero-shot voice**. The browser converts the
+clip to 22.05 kHz, 16-bit mono PCM WAV and saves it in IndexedDB. The sample is
+carried in session configuration, so replicas do not require shared files.
+Select **Remove sample** to delete the saved clip. Preview uses the enabled
+sample. Preset voice selection is disabled while the enabled sample supplies
+the voice. Refer to [voice sample limits](../docs/how-to/configure-tts.md#preview-and-upload-voices-in-the-astra-client).
+
+Prompt and sample storage is specific to the browser profile and origin.
+The Generic Frontend/Backend Agent uses the browser IANA timezone for local
+clock requests. Ask to show the architecture in either curated example to
+display its repository-owned SVG alongside the conversation.
 
 ## Inspect Frontend/Backend Latency
 
@@ -151,24 +184,32 @@ qualify that deployment.
 ### Run in development
 
 ```bash
-npm install
-npm run dev
+npm --prefix astra_client ci
+npm --prefix astra_client run dev
 ```
 
-The Vite dev server starts at `http://localhost:5173` with hot-module reload, which is convenient for fast UI iteration. The full experience also needs the backend running for the `/api/*` endpoints and the WebRTC/WebSocket session, so the simplest way to exercise the complete UI is the backend-served build below.
+Run these commands from the repository root. Vite starts at
+`http://localhost:5173` with hot-module reload. The checked-in Vite configuration
+does not proxy `/api/*`; configure routing to a running backend before testing
+sessions. The production UI image provides this proxy.
 
 ### Build for production
 
 ```bash
-npm run build
+npm --prefix astra_client run build
 ```
 
-The build is type-checked with `tsc` and emitted to `dist/`. The Python server serves it automatically from `client/dist/`, so after building you reach the UI at `https://localhost:7860`. Rebuild whenever you change the client and redeploy.
+The build is type-checked with `tsc` and emitted to `astra_client/dist/`.
+Rebuild the [Astra UI image](../docker/Dockerfile.nvcf-ui) after changing the
+client. The container listens on port `7860`; its published host port depends
+on your deployment. Set `BACKEND_ORIGIN` for a direct HTTP backend, or
+`NVCF_HOST` and `NVIDIA_API_KEY` for the NVCF proxy. Keep credentials in the
+container environment.
 
 ### Lint
 
 ```bash
-npm run lint
+npm --prefix astra_client run lint
 ```
 
 ESLint runs the TypeScript, React Hooks, and React Refresh rules defined in `eslint.config.js`.
@@ -181,8 +222,11 @@ The client reads its configuration from the backend (`src/server.py`) and starts
 | --- | --- |
 | `/api/deployment` | Active example, available services, and UI capabilities |
 | `/api/session-config` | Prompts and default session settings |
+| `/api/prompts` | Prompt catalog with frontend/backend role metadata |
 | `/api/tools` | Tool specifications allowed for the selected example |
 | `/api/tts-config` | Available TTS voices and languages |
+| `POST /api/tts/preview` | Bounded pre-session voice preview as WAV audio |
+| `/api/architecture/{generic,omni}.svg` | Repository-owned architecture images |
 | `/api/ice-servers` | STUN/TURN configuration for WebRTC |
 | `/api/webcam-config` | Webcam capture defaults for multimodal examples |
 | `/api/start` | Start a pipeline session |
