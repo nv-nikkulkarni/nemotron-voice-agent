@@ -206,3 +206,20 @@ def test_reference_voice_uses_zeroshot_model_voice_and_rejects_other_engines():
         DemoNvidiaTTSService(
             model_function_map={"model_name": "chatterbox-tts-multilingual"}, voice_sample=voice_sample
         )
+
+
+def test_timezone_database_is_available_without_host_zoneinfo():
+    import os
+    import subprocess
+    import sys
+
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from zoneinfo import ZoneInfo; assert ZoneInfo('Asia/Calcutta'); assert ZoneInfo('America/New_York')",
+        ],
+        env={**os.environ, "PYTHONTZPATH": ""},
+        check=True,
+        capture_output=True,
+    )

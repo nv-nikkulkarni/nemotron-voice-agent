@@ -1775,6 +1775,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "redis" },
+    { name = "tzdata" },
 ]
 
 [package.dev-dependencies]
@@ -1811,6 +1812,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "redis", specifier = ">=5.0.0" },
+    { name = "tzdata", specifier = ">=2026.3" },
 ]
 
 [package.metadata.requires-dev]

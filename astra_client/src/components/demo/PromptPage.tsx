@@ -5,7 +5,7 @@ import { useApp } from "../../context/useApp";
 export function PromptPage({ onClose }: Readonly<{ onClose: () => void }>) {
   const app = useApp();
   const { isConnected, isConnecting } = useConnectionState();
-  const active = isConnected || isConnecting;
+  const active = isConnected || isConnecting || app.promptsLoading;
   const frontend = app.selectedPrompt?.content ?? "";
   const backend = app.prompts.find((prompt) => prompt.role === "backend")?.content ?? "";
   return (
@@ -13,6 +13,7 @@ export function PromptPage({ onClose }: Readonly<{ onClose: () => void }>) {
       <div className="page-panel__head"><h2>Prompts · {app.selectedExample?.label ?? "Voice agent"}</h2>
         <button className="btn-secondary" onClick={onClose}>Back to conversation</button></div>
       <p className="set-hint">Prepare your next demo here. Edits are saved in this browser and applied when a new session starts.</p>
+      {app.promptsLoading && <p role="status" className="set-hint">Loading system prompt defaults…</p>}
       <label className="set-field"><span className="set-field__label">Frontend system prompt · spoken responses</span>
         <textarea disabled={active} className="set-textarea" rows={12} maxLength={32000} value={app.promptOverride || frontend}
           onChange={(event) => app.setPromptOverride(event.target.value === frontend ? "" : event.target.value)} />

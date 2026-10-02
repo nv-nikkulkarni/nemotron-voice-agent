@@ -295,7 +295,9 @@ corrections; it does not replace new tool calls for changing facts.
 including daylight saving rules. If the tool omits `timezone`, it uses the
 session's `client_timezone`, falling back to `UTC` when no session zone exists.
 The Astra client supplies its browser IANA timezone in `client_timezone` for
-local-clock requests. Explicitly requested zones take precedence.
+local-clock requests. Explicitly requested zones take precedence. The Python
+`tzdata` dependency supplies complete portable IANA data, including browser
+aliases such as `Asia/Calcutta` that an image's system database can omit.
 `show_architecture` returns a repository-owned image reference and a brief
 spoken description. The Astra client displays the architecture SVG after the
 validated tool result. Neither capability needs a provider key.

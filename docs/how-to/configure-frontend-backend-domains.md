@@ -138,6 +138,11 @@ The services also recognize these optional endpoint settings:
 | `PERPLEXITY_BASE_URL` | `https://api.perplexity.ai` |
 | `PERPLEXITY_MODEL` | `sonar` |
 
+The current-time tool reads its clock on each call. The packaged Python
+`tzdata` dependency provides complete portable IANA timezone data when system
+data is incomplete or absent. Browser aliases such as `Asia/Calcutta` remain valid;
+unknown zone names still require clarification.
+
 Do not pass credentials through `call_backend`, Thinker plans, prompt text, or client session configuration. Each service reads its credential directly from the process environment.
 
 When a credential is absent, the service returns an unavailable result. It does not use sample data or a stale fallback. This lets the Talker report the failure without presenting fabricated live information.

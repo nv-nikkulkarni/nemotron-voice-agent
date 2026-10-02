@@ -11,10 +11,17 @@ client provides the separate pre-session editor described below.
 
 In the Astra client, select **Prompts** before starting a session to open
 `/prompts`, or select **Settings > Open Prompts**. Editing and restoring
-defaults are disabled while a session is starting or live. Edit **Frontend system prompt** for spoken responses and, when
+defaults are disabled while a session is starting or live, and while prompt
+defaults load. Wait for **Loading system prompt defaults…** to clear before
+editing. Edit **Frontend system prompt** for spoken responses and, when
 available, **Backend system prompt** for planning. Frontend/Backend Agent and
 Omni Subagents expose their Thinker prompt in this editor. Other Omni agent
 prompts remain in `agent_prompts:` in the example's `prompts.yaml`.
+
+An unedited Astra session uses the selected frontend catalog prompt shown in
+the editor, including its native examples. The client sends its catalog key
+without substituting a separate demo prompt. Your saved edits replace that
+content, and persistent instructions append as described below.
 
 The editor saves frontend and backend overrides separately for each pipeline
 in browser localStorage. **Persistent instructions** are shared across pipelines

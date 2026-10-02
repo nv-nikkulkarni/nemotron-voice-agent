@@ -82,7 +82,9 @@ backend Thinker instructions. The editor saves each pipeline's overrides in
 browser localStorage. **Persistent instructions** apply across pipelines and
 append to both roles. Restoring either default preserves these instructions.
 Changes apply to the next session. **Settings > Open Prompts** opens the same
-editor; its fields and restore buttons are disabled during an active session.
+editor; its fields and restore buttons are disabled during an active session
+and while catalog defaults load. Unedited sessions use the displayed catalog
+prompt, preserving its native examples.
 Refer to
 [Configure Prompts](../docs/how-to/configure-prompts.md) for API limits.
 

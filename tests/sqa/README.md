@@ -99,15 +99,28 @@ inside the container.
 The suite checks frontend persona and backend prompt edits across a reload,
 2 catalog voice previews, a stock quote followed by a same-company refresh,
 and a current-time request with the browser timezone set to `Asia/Kolkata`.
+It asserts Chromium's `Asia/Calcutta` alias in session configuration and both
+edited Generic role prompts.
 It also checks Generic and Omni architecture images, “Nemotron 3 Diarization,”
 “Codex and spinner,” concise speech without Markdown markers, and a 0.65 s
 pause inside an unfinished Tokyo weather request. Every completed session
-requires capture teardown acknowledgement. The optional sample branch checks
-upload, explicit sample activation, disabled voice presets, and a spoken
-Halloween greeting.
+requires capture teardown acknowledgement. After the Generic conversation,
+the suite restores both default prompts and checks that persistent instructions
+remain. The optional sample branch checks upload, explicit sample activation,
+disabled voice presets, and session configuration with the restored prompts
+and enabled sample. It records a Halloween greeting and a cloned-voice
+“Nemotron 3 Diarization” turn.
+
+Preview checks inspect the WAV Blob used by the browser audio player and
+require playback to start. They prefer Aria and Diego when both are available,
+otherwise the first 2 catalog voices. A missing Chromium DevTools response
+body does not invalidate a valid player Blob.
 
 Results, WAVs, and screenshots are written under `SQA_OUT`, including
-`demo-feedback-report.json`. Inspect the recorded audio for pronunciation and
+`demo-feedback-report.json`. Session-config evidence contains only the
+pipeline, timezone, prompt-edit and persistent-instruction flags, and encoded
+sample length. It does not store prompt contents or reference sample data.
+Inspect the recorded audio for pronunciation and
 intended timbre. Passing these automated checks does not establish human
 listening acceptance or replace the comprehensive and other release suites.
 

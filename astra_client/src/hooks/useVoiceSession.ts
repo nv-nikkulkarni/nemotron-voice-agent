@@ -21,7 +21,6 @@ import {
 } from "../api";
 import { demoConfig } from "../config";
 import type { PipelinePreset } from "../demo/presets";
-import { DEMO_PROMPT_OVERRIDES } from "../demo/promptOverrides";
 import { advanceBotAudioSession } from "../demo/turnAwareMediaManager";
 
 type StartBotClient = {
@@ -179,11 +178,6 @@ export function useVoiceSession() {
           config.prompt_content = app.promptOverride;
         } else if (app.selectedPromptKey) {
           config.prompt_key = app.selectedPromptKey;
-          // Demo default: override only the wording (concise, speech-friendly)
-          // while keeping the real key so the backend still resolves this
-          // example's tools. Keeps the backend prompts.yaml pristine.
-          const demoPrompt = DEMO_PROMPT_OVERRIDES[example.key];
-          if (demoPrompt) config.prompt_content = demoPrompt;
         }
       } else if (app.selectedPromptKey) {
         config.prompt_key = app.selectedPromptKey;
