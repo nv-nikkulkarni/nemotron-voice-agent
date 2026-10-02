@@ -325,9 +325,11 @@ tts = NvidiaTTSService(
 Before starting a session, open **Settings** or the example's **Configure**
 popup. Choose a catalog engine and voice, enter up to 200 characters, and select
 **Preview voice**. Preview uses `POST /api/tts/preview`, returns WAV audio, and
-is disabled while a session is starting or live. A live catalog voice change
-uses `set-voice` within the current engine; changing engines requires a new
-session. The configuration popup lists available engines from the deployment
+is disabled while a session is starting or live. After the session is ready,
+a preset voice change uses `set-voice` within the current engine. The preset
+selector remains disabled while connecting or waiting for readiness, or while
+an enabled reference sample supplies the voice. Engine and language controls
+remain locked during the session; changing engines requires a new session. The configuration popup lists available engines from the deployment
 catalog, including the optional Magpie Zeroshot service when enabled.
 
 For the Frontend/Backend Agent or Omni Subagents, select Magpie Zeroshot

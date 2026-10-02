@@ -116,7 +116,14 @@ and enabled sample. It records a Halloween greeting and a cloned-voice
 Preview checks inspect the WAV Blob used by the browser audio player and
 require playback to start. They prefer Aria and Diego when both are available,
 otherwise the first 2 catalog voices. A missing Chromium DevTools response
-body does not invalidate a valid player Blob.
+body does not invalidate a valid player Blob. During the ready Generic session,
+the suite changes the preset to Aria, checks that engine radio controls stay
+locked, and continues with the next spoken turn.
+
+If a check fails while session-end controls remain available, the suite
+attempts graceful ending and records the failed session's teardown state before
+closing the browser. Inspect this state to confirm capture acknowledgement;
+completed-session checks require `captureFlushed`.
 
 Results, WAVs, and screenshots are written under `SQA_OUT`, including
 `demo-feedback-report.json`. Session-config evidence contains only the

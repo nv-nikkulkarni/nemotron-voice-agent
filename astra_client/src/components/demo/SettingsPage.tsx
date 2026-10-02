@@ -89,6 +89,7 @@ export function SettingsPage({ onClose, onPrompts }: Readonly<{ onClose: () => v
                     <button
                       key={svc.id}
                       type="button"
+                      disabled={sessionActive}
                       role="radio"
                       aria-checked={on}
                       className={`set-tts-btn ${on ? "on" : ""}`}

@@ -24,7 +24,7 @@ type VoiceOverrideState = {
 
 export function VoiceSettings() {
   const client = usePipecatClient();
-  const { isConnected, isConnecting, isLocked } = useConnectionState();
+  const { state, isConnected, isConnecting, isLocked } = useConnectionState();
   const {
     selectedExample,
     selectedASR,
@@ -207,7 +207,7 @@ export function VoiceSettings() {
         <select
           className="select-dark"
           value={activeVoice}
-          disabled={sampleActive || isConnecting || isLocked}
+          disabled={sampleActive || isConnecting || (isConnected && state !== "ready")}
           title={sampleActive ? "Your custom sample supplies the voice. Disable the sample before choosing a preset." : "Choose the speaking voice"}
           onChange={(e) => handleVoiceChange(e.target.value)}
         >

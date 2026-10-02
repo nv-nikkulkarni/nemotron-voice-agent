@@ -94,7 +94,10 @@ Open **Settings** or **Configure** to select a catalog engine and voice.
 The configuration popup lists the engines returned by the deployment catalog,
 including Magpie Zeroshot when enabled. Enter
 up to 200 characters and select **Preview voice** before connecting. During a
-session, a voice change uses `set-voice` within the current engine.
+ready session, a preset voice change uses `set-voice` within the current
+engine. Preset selection is disabled while connecting or waiting for readiness.
+Engine and language controls remain locked during the session; choose another
+engine after ending it.
 
 For Magpie Zeroshot, upload 3–10 seconds of clear speech and
 explicitly enable **Use sample for zero-shot voice**. The browser converts the

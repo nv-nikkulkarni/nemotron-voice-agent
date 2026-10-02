@@ -132,7 +132,19 @@ try {
     timezone: "Asia/Calcutta", frontendEdited: true, backendEdited: true, persistent: true, sampleBytes: 0 });
   assert(await H.waitForSettledWelcome(page));
   assert(await page.getByRole("button", { name: "Prompts", exact: true }).isDisabled());
-  for (let index = 0; index < turns.length; index++) await runTurn(generic, turns[index], index + 1);
+  for (let index = 0; index < turns.length; index++) {
+    await runTurn(generic, turns[index], index + 1);
+    if (index === 4) {
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+      const voice = settings.locator(".voice-studio select").last();
+      assert(await voice.isEnabled(), "preset voice changes must be available in a ready session");
+      await voice.selectOption("Magpie-Multilingual.EN-US.Aria");
+      generic.liveVoiceSelected = await voice.inputValue();
+      for (const engine of await settings.getByRole("radio").all()) assert(await engine.isDisabled());
+      await settings.getByRole("button", { name: "Close settings", exact: true }).click();
+    }
+  }
   // A real 0.65-second pause inside an unfinished request must not produce two user turns.
   const first = `${H.OUT}/pause-first.wav`, last = `${H.OUT}/pause-last.wav`, joined = `${H.OUT}/pause-user.wav`;
   await synthSpeech("Could you check the weather", first); await synthSpeech("in Tokyo right now?", last);
@@ -175,6 +187,11 @@ try {
 } catch (error) { result.hardFails.push(error.stack || String(error)); }
 finally {
   await H.shot(page, `${H.OUT}/final.png`);
+  if (result.hardFails.length && await page.locator(".clean-end").count()) {
+    result.failedSessionId = await H.sessionId(page);
+    await H.endConversation(page);
+    result.failedTeardown = await page.evaluate(() => window.__session);
+  }
   await browser.close();
   result.signals = signals;
   for (const key of ["consoleErrors", "badResponses", "wsClosures"]) {
