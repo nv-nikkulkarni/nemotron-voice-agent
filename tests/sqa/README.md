@@ -104,8 +104,11 @@ edited Generic role prompts. The spoken clock response must include
 `HH:MM AM/PM` and match fresh browser-local time within 1 minute of either
 turn start or completion.
 It also checks Generic and Omni architecture images, “Nemotron 3 Diarization,”
-“Codex and spinner,” concise speech without Markdown markers, and a 0.65 s
-pause inside an unfinished Tokyo weather request. Every completed session
+“Codex and spinner,” concise speech without Markdown markers, and an inserted
+0.65 s gap inside an unfinished Tokyo weather request. The actual WAV pause
+also includes TTS trailing and leading padding. The suite records the largest
+interior silence at a -35 dB threshold in `pauseTiming` and requires the full
+request to remain 1 user turn. Every completed session
 requires capture teardown acknowledgement. After the Generic conversation,
 the suite restores both default prompts and checks that persistent instructions
 remain. The optional sample branch checks upload, explicit sample activation,

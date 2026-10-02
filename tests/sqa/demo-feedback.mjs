@@ -6,7 +6,7 @@ import fs from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as H from "./lib/harness.mjs";
-import { synthSpeech } from "./lib/audio.mjs";
+import { synthSpeech, wavDuration } from "./lib/audio.mjs";
 const exec = promisify(execFile);
 const result = { runId: H.RUN_ID, conversations: [], sessionConfigs: [], hardFails: [] };
 const signals = H.newSignals();
@@ -145,14 +145,23 @@ try {
       await settings.getByRole("button", { name: "Close settings", exact: true }).click();
     }
   }
-  // A real 0.65-second pause inside an unfinished request must not produce two user turns.
+  // Add 0.65 seconds between speech clips; measure the actual gap including TTS padding.
   const first = `${H.OUT}/pause-first.wav`, last = `${H.OUT}/pause-last.wav`, joined = `${H.OUT}/pause-user.wav`;
   await synthSpeech("Could you check the weather", first); await synthSpeech("in Tokyo right now?", last);
   await exec("ffmpeg", ["-y", "-i", first, "-i", last, "-filter_complex",
     "[0:a]apad=pad_dur=0.65[a];[a][1:a]concat=n=2:v=0:a=1[out]", "-map", "[out]", joined]);
+  const detection = await exec("ffmpeg", ["-hide_banner", "-i", joined, "-af",
+    "silencedetect=noise=-35dB:d=0.08", "-f", "null", "-"]);
+  const duration = await wavDuration(joined);
+  const interiorSilences = [...detection.stderr.matchAll(/silence_end:\s*([\d.]+).*silence_duration:\s*([\d.]+)/g)]
+    .map((match) => ({ end: +match[1], duration: +match[2] }))
+    .filter((gap) => gap.end - gap.duration > 0.05 && gap.end < duration - 0.05);
+  generic.pauseTiming = { insertedSeconds: 0.65, measuredSeconds: Math.max(...interiorSilences.map((gap) => gap.duration)), thresholdDb: -35 };
+  assert(generic.pauseTiming.measuredSeconds >= 0.64, "fixture must contain the requested pause");
   await runTurn(generic, { text: "Could you check the weather [pause] in Tokyo right now?", heard: /weather.*tokyo/i,
     expect: /tokyo|degree|celsius/i }, 8, joined);
   assert.equal(generic.turns.at(-1).domUserMessages.length, 1, "mid-sentence pause split the user turn");
+  console.log("Pause timing", JSON.stringify(generic.pauseTiming), "one user turn");
   await finish(generic);
   await page.getByRole("button", { name: "Prompts", exact: true }).click();
   await page.getByRole("button", { name: "Restore frontend default", exact: true }).click();

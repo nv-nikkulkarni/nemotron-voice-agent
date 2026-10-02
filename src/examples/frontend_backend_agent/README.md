@@ -45,7 +45,7 @@ turn after 1 transcribed word when the bot is not speaking. This prevents a
 single stray token from permanently clearing buffered bot audio. The server
 emits a `user-interruption-trigger` event and a `user_interruption_trigger` log
 with the bounded triggering transcript and word count. Smart Turn remains the
-separate end-of-turn detector and is unchanged.
+separate end-of-turn detector.
 
 When direct tool speech is enabled, the structured function result is the single retained copy of the deterministic backend response; the separately emitted TTS frame is not appended again as an assistant message. The Talker remembers a bounded normalized signature outside the prompt context. If a later completion substantially replays that cached result without a native tool call, the runtime withholds it and retries once with an internal contract correction. It never selects a domain tool or constructs a function call. A second invalid replay fails closed with deterministic speech.
 
@@ -229,7 +229,7 @@ The following environment variables bound shared and domain-specific orchestrati
 | Environment Variable | Default | Purpose |
 | --- | --- | --- |
 | `CHAT_HISTORY_RECENT_TURNS` | `20` | Retains this many user turns with their associated messages and tool results; initial prompts stay pinned. |
-| `FRONTEND_BACKEND_VAD_STOP_SECS` | `0.8` | VAD pause in seconds before yielding trailing ASR text; Smart Turn still decides turn completion. |
+| `FRONTEND_BACKEND_VAD_STOP_SECS` | `1.6` | Local VAD pause in seconds; accommodates pauses and trailing words at the cost of end-of-turn latency. Native ASR can finalize earlier; Smart Turn decides completion. |
 | `FRONTEND_BACKEND_SMART_TURN_STOP_SECS` | `2.0` | Semantic turn silence fallback in seconds; minimum `0.8`. |
 | `FRONTEND_BACKEND_TALKER_FILLER_MODE` | `emit` | Uses `off`, `observe`, or `emit` to suppress, validate-only, or speak an accepted Talker filler |
 | `FRONTEND_BACKEND_TOOL_RESULT_MODE` | Domain default: Generic `direct`; Airline `talker`; NVCF chart `direct` | An explicit `direct`, `hybrid`, or `talker` value overrides the backend default. Generic `hybrid` uses the Talker only for successful weather results. |
@@ -243,6 +243,13 @@ The following environment variables bound shared and domain-specific orchestrati
 | `AIRLINE_BACKEND_TIMEOUT_SECONDS` | `30.0` | Bounds airline planning and tool execution together |
 
 The single-GPU profile uses a dedicated Model Runner V1 service, separate from the V2 service used by the generic and multilingual profiles. The Thinker sets `thinking_token_budget=1024` and `max_tokens=4096`, while the single-GPU Compose profile gives backend tool calls 90 seconds to complete. The numeric thinking budget requires Model Runner V1 in vLLM 0.27.1.
+
+The `1.6`-second local VAD pause allows unfinished requests to continue across
+longer pauses. It adds end-of-turn latency compared with shorter thresholds.
+The Smart Turn silence fallback remains `2.0` seconds, and bot-aware barge-in
+start thresholds stay separate. Native ASR uses `stop_history=-1` to retain
+Nemotron Speech model defaults; a native final transcript can arrive before
+the local VAD stop. Local turn detection still decides semantic completion.
 
 The Generic Talker supplies `filler_text` in the same native `call_backend`
 selection. The runtime validates that candidate as 3 to 12 words, at most 96
@@ -268,7 +275,10 @@ Real-Time Voice Interaction (RTVI) metrics expose the later planning rounds as
 stays correlated with the same backend call and user turn.
 
 The default Generic Talker prompt requests one short sentence of at most
-35 words unless the user asks for detail. Weather speech defaults to returned
+35 words unless the user asks for detail. The web-search model prompt requests
+1 or 2 factual spoken sentences, at most 35 words by default, including direct
+tool speech. Explicit detail requests permit expansion within its retained
+400-token output budget. These word limits are prompt guidance. Weather speech defaults to returned
 temperature and conditions. With `details: true`, it also includes available
 feels-like temperature, humidity, and wind speed. Deterministic weather speech
 and the guarded Talker rephrasing use only validated provider results.

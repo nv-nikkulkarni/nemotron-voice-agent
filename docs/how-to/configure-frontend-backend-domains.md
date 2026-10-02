@@ -17,8 +17,9 @@ The shared Pipecat pipeline separates low-latency conversation from slower task 
 
 The Talker sees only 2 functions. Internal functions, credentials, backend state, and tool results remain behind the domain boundary. The Thinker produces a bounded plan; the implementation does not use a ReAct observe-and-replan loop.
 
-The shared Frontend/Backend Agent pipeline waits `0.8` seconds of
-voice-activity-detector silence before yielding the ASR transcript. Smart Turn
+The shared Frontend/Backend Agent pipeline waits `1.6` seconds of
+voice-activity-detector silence before the local VAD stop event finalizes any
+remaining ASR audio. Native ASR final frames can arrive earlier. Smart Turn
 still decides semantic completion, with a `2.0`-second silence fallback.
 Override these pipeline-scoped values with `FRONTEND_BACKEND_VAD_STOP_SECS`
 and `FRONTEND_BACKEND_SMART_TURN_STOP_SECS` after real-audio testing. Shorter
@@ -163,7 +164,10 @@ non-positive prices are not spoken as valid quotes.
 The default Generic Talker prompt requests one short sentence of at most
 35 words unless you ask for detail. Weather defaults to temperature and
 conditions; request humidity, wind, or feels-like temperature for an expanded
-provider-grounded response.
+provider-grounded response. The web-search model prompt requests 1 or 2 factual
+spoken sentences, at most 35 words by default, even when results are spoken
+directly. Explicit requests for detail permit expansion within its 400-token
+output budget; the word limit is prompt guidance.
 
 Refer to [Frontend/Backend Session Prompts](configure-prompts.md#frontendbackend-session-prompts)
 for Talker and Thinker content overrides and instructions appended to both roles.

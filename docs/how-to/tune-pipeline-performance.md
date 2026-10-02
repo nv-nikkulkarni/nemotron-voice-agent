@@ -12,11 +12,13 @@ This section covers pipeline configurations for optimizing the performance and u
 
 By default the cascaded pipeline uses Pipecat's ML-based [**Smart Turn**](https://docs.pipecat.ai/api-reference/server/utilities/turn-detection/smart-turn-overview) detection to decide when the user has finished speaking, so the agent replies promptly without cutting the user off. [Silero VAD](https://docs.pipecat.ai/server/utilities/audio/silero-vad-analyzer) (`stop_secs=0.2`) detects the pause, and the Smart Turn model then judges whether the turn is actually complete. If the model still has not finalized after the Smart Turn silence fallback (default **1.0 s**, `SMART_TURN_STOP_SECS`), the turn completes anyway (fallback).
 
-The Frontend/Backend Agent overrides the initial VAD pause to `0.8 s` and the
+The Frontend/Backend Agent overrides the initial VAD pause to `1.6 s` and the
 Smart Turn fallback to `2.0 s` to allow trailing words and follow-ups to arrive.
 Its overrides are `FRONTEND_BACKEND_VAD_STOP_SECS` and
 `FRONTEND_BACKEND_SMART_TURN_STOP_SECS`; the latter has a minimum of `0.8 s`.
-Other examples retain the shared defaults above.
+The longer VAD pause accommodates unfinished requests across speech gaps and
+adds end-of-turn latency. It does not change the separate barge-in start
+thresholds. Other examples retain the shared defaults above.
 
 Smart Turn controls when a user turn ends. It does not decide whether a sound
 starts a barge-in. The Generic Frontend/Backend Agent uses Pipecat's bot-aware
@@ -34,7 +36,7 @@ a bounded transcript and word count.
 2. Silero VAD detects a pause in speech. On each `VADUserStoppedSpeakingFrame`, the local NVIDIA STT subclass sends an 80 ms PCM silence chunk when the ASR stream is active. The chunk matches the configured audio channel count and includes the NVIDIA runtime configuration `force_eou=true`. If the ASR stream reconnects before sending the chunk, the subclass preserves its queued `force_eou` marker for the new stream.
 3. When NVIDIA returns `is_final`, stock `NvidiaSTTService` response handling emits `TranscriptionFrame(finalized=True)`.
 4. The Smart Turn model analyzes the recent audio and classifies the turn as **complete** or **incomplete**. If it is incomplete but silence continues past the Smart Turn stop threshold (default 1.0 s, `SMART_TURN_STOP_SECS`), the turn completes anyway (fallback).
-5. Pipecat's stock turn analyzer strategy remains responsible for semantic turn closure. A finalized transcript closes a complete turn immediately; the existing STT timeout remains the fallback. The transcript goes to the LLM, and TTS streams the reply back.
+5. Pipecat's stock turn analyzer strategy combines the local semantic decision with ASR transcript readiness. Native ASR finalization alone does not replace local turn detection. After the turn closes, the transcript goes to the LLM and TTS streams the reply.
 
 The VAD-stop finalization is an early transcript yield; it does not close the
 semantic user turn. If the user resumes speaking, VAD starts a new speech
@@ -45,7 +47,9 @@ neural network transducer (RNNT) model, such as a Nemotron ASR Streaming
 model. Unsupported models ignore `force_eou` and instead use ASR endpointing.
 Generic and Multilingual configure `stop_history=400`, which finalizes after
 400 ms of trailing silence. The Frontend/Backend Agent uses `stop_history=-1`
-to retain the selected ASR model's defaults.
+to retain native Nemotron Speech model defaults. Native ASR final frames can
+arrive before the local VAD stop event; the sequence above describes their
+roles rather than requiring that arrival order.
 
 ### Configuration
 
