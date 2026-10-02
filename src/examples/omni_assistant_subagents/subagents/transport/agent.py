@@ -422,6 +422,7 @@ class OmniTransportAgent(PipelineWorker):
                     }
                 )
             )
+
         @self.event_handler("on_pipeline_finished")
         async def on_pipeline_finished(task, frame):  # noqa: ARG001
             # The transport pipeline owns every session audio frame. Finalize only

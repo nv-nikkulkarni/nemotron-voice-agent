@@ -286,6 +286,7 @@ async def bot(runner_args: RunnerArguments) -> None:
         filler_selector=domain.filler_selector,
         interrupted_speech_consumer=barge_in_state.consume_interrupted_speech,
         max_query_chars=domain.max_query_chars,
+        enforce_future_travel_dates=domain.key == "airline",
         stage_metrics=stage_metrics,
     ).items():
         cancel_on_interruption = name != "call_backend"

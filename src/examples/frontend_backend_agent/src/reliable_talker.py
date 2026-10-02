@@ -490,21 +490,29 @@ def _post_result_invalid_reason(chunks: list[ChatCompletionChunk], payload: Mapp
 
 
 def _latest_finished_tool_result(context: LLMContext) -> tuple[str, dict] | None:
-    """Return a final async result only when no newer user turn supersedes it."""
+    """Return a settled tool result only when no newer user turn supersedes it."""
     for message in reversed(context.get_messages()):
         if not isinstance(message, dict):
             continue
         if message.get("role") == "user":
             return None
         parsed = async_tool_messages.parse_message(message)
-        if parsed is None or parsed.status != "finished" or not parsed.result:
+        if parsed is not None:
+            if parsed.status != "finished" or not parsed.result:
+                continue
+            tool_call_id, result_text = parsed.tool_call_id, parsed.result
+        elif message.get("role") == "tool" and message.get("tool_call_id"):
+            # Pipecat settles an async call as an ordinary tool result when no
+            # newer user/developer turn arrived while the call was running.
+            tool_call_id, result_text = str(message["tool_call_id"]), message.get("content")
+        else:
             continue
         try:
-            result = json.loads(parsed.result)
+            result = json.loads(result_text)
         except (json.JSONDecodeError, TypeError):
             return None
         if isinstance(result, dict) and str(result.get("response_text") or "").strip():
-            return parsed.tool_call_id, result
+            return tool_call_id, result
         return None
     return None
 

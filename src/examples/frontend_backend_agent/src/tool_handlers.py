@@ -101,6 +101,7 @@ def build_handlers(
     filler_selector: Callable[[str], str] | None = None,
     interrupted_speech_consumer: Callable[[], bool] | None = None,
     max_query_chars: int = 4000,
+    enforce_future_travel_dates: bool = True,
     stage_metrics: StageMetricsCoordinator | None = None,
 ) -> dict[str, Callable]:
     """Return tool handlers bound to one session-local backend agent."""
@@ -125,7 +126,7 @@ def build_handlers(
                 }
             )
             return
-        past_date = _past_date_in_query(query)
+        past_date = _past_date_in_query(query) if enforce_future_travel_dates else None
         if past_date is not None:
             consecutive_planner_errors = 0
             payload = response_hint(

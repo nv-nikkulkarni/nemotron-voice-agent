@@ -6,7 +6,8 @@ description: Operate, deploy, qualify, troubleshoot, and hand off the NVIDIA Nem
 # Operate Nemotron Voice Agent
 
 Use this skill as the project-specific operating manual. Keep generic Compose work in
-`skills/deploy/` and configuration work in `skills/configure-pipeline/`; use this skill
+`nemotron-voice-agent-deploy` under `.agents/skills/` and configuration work in
+`nemotron-voice-agent-configure-pipeline` under `.agents/skills/`. Use this skill
 for the custom Astra, NVCF, Viking, concurrency, capture, and SQA stack.
 
 ## Establish Truth Before Acting

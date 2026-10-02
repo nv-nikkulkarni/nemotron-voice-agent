@@ -214,7 +214,8 @@ scene. A loading view is not an unavailable camera.
 | `tests/sqa/` | real-browser, real-audio qualification |
 | `tests/sqa/reports/` | concise promotion evidence |
 | `docs/` | public architecture, configuration, and troubleshooting |
-| `skills/` | repository workflows and this operational knowledge |
+| `.agents/skills/` | shared deployment, configuration, and Pipecat upgrade workflows |
+| `skills/` | voice-agent builder and custom operational knowledge |
 
 ## Git and Branch Policy
 

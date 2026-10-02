@@ -146,8 +146,7 @@ def _validate_image(name: str, data: bytes, source: str) -> None:
         ext = os.path.splitext(name.strip())[1].lower()
         if ext not in _ALLOWED_IMAGE_EXTS:
             raise ValueError(
-                f"unsupported image extension {ext or '(none)'}; "
-                f"allowed: {', '.join(sorted(_ALLOWED_IMAGE_EXTS))}"
+                f"unsupported image extension {ext or '(none)'}; allowed: {', '.join(sorted(_ALLOWED_IMAGE_EXTS))}"
             )
 
 

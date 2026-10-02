@@ -25,6 +25,7 @@ from examples.frontend_backend_agent.src.reliable_talker import (
     TOOL_RESULT_CORRECTION,
     WEATHER_GROUNDING_CORRECTION,
     ReliableNvidiaLLMService,
+    _latest_finished_tool_result,
     _weather_grounding_missing,
 )
 
@@ -69,6 +70,7 @@ class ReliableTalkerTests(unittest.IsolatedAsyncioTestCase):
         *,
         response_text: str = "The current check is temporarily unavailable.",
         newer_user_text: str | None = None,
+        deferred: bool = True,
     ) -> LLMContext:
         result = {
             "type": "tool_result",
@@ -78,7 +80,9 @@ class ReliableTalkerTests(unittest.IsolatedAsyncioTestCase):
         }
         messages = [
             {"role": "user", "content": "Check Pune weather."},
-            async_tool_messages.build_final_result_message("call-weather", json.dumps(result)),
+            async_tool_messages.build_final_result_message("call-weather", json.dumps(result))
+            if deferred
+            else {"role": "tool", "tool_call_id": "call-weather", "content": json.dumps(result)},
         ]
         if newer_user_text is not None:
             messages.append({"role": "user", "content": newer_user_text})
@@ -182,6 +186,30 @@ class ReliableTalkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(talker.contexts), 2)
         self.assertEqual(talker.contexts[1].get_messages()[-1]["content"], TOOL_RESULT_CORRECTION)
         self.assertEqual(talker.fallbacks, [])
+
+    async def test_ordinary_tool_result_redelegation_retries_as_text_only(self) -> None:
+        context = self._finished_result_context(deferred=False)
+        talker = _ScriptedTalker(
+            [[_tool_chunk("Check Pune weather again.")], [_chunk(content="The check is unavailable.")]]
+        )
+
+        chunks = await _collect(talker, context)
+
+        self.assertEqual(chunks[0].choices[0].delta.content, "The check is unavailable.")
+        self.assertEqual(len(talker.contexts), 2)
+        self.assertEqual(talker.contexts[1].get_messages()[-1]["content"], TOOL_RESULT_CORRECTION)
+        self.assertEqual(talker.fallbacks, [])
+        self.assertEqual(_latest_finished_tool_result(context)[0], "call-weather")
+
+    async def test_newer_user_turn_can_delegate_after_ordinary_tool_result(self) -> None:
+        context = self._finished_result_context(deferred=False, newer_user_text="How about London?")
+        talker = _ScriptedTalker([[_tool_chunk("Get the current weather in London.")]])
+
+        chunks = await _collect(talker, context)
+
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(len(talker.contexts), 1)
+        self.assertIsNone(_latest_finished_tool_result(context))
 
     async def test_repeated_invalid_finished_result_uses_trusted_text(self) -> None:
         trusted = "The current weather check timed out. Please try again."

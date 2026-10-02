@@ -1131,6 +1131,17 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(spoken, ["The result is five."])
         self.assertFalse(params.results[0][1].run_llm)
 
+    async def test_generic_historical_query_reaches_backend(self) -> None:
+        thinker = _DelayedThinker(delay=0)
+        handler = build_handlers(thinker, enforce_future_travel_dates=False)["call_backend"]
+        params = _FunctionParams({"query": "Search for news from 2020-01-01."})
+
+        with patch.dict(os.environ, {}, clear=True):
+            await handler(params)
+
+        self.assertEqual(params.results[0][0]["response_text"], "The result is five.")
+        self.assertNotEqual(params.results[0][0].get("reason"), "past_date")
+
     async def test_explicit_talker_mode_overrides_generic_direct_default(self) -> None:
         thinker = _DelayedThinker(delay=0)
         thinker.tool_result_mode_default = "direct"

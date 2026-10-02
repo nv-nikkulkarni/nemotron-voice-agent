@@ -8,7 +8,7 @@ validates each plan in Python, runs the allowed domain tools, and returns a
 structured result to the Talker. The generic backend can use up to 3 planning
 rounds when later work depends on an earlier tool result.
 
-The example validates known past travel dates before it invokes the backend agent. It asks the user for a future date without waiting for planning or backend tools. If planning fails, the example limits retries and then returns a terminal user-facing error instead of repeatedly delegating the same request. The initial synthetic greeting runs with tool execution disabled, so it cannot invoke the backend agent; normal tool behavior resumes for user turns.
+The airline domain validates known past travel dates before it invokes the backend agent. It asks the user for a future date without waiting for planning or backend tools. If planning fails, the example limits retries and then returns a terminal user-facing error instead of repeatedly delegating the same request. The initial synthetic greeting runs with tool execution disabled, so it cannot invoke the backend agent; normal tool behavior resumes for user turns.
 
 ![Frontend/Backend Agent architecture](images/frontend-backend-agent-architecture.png)
 

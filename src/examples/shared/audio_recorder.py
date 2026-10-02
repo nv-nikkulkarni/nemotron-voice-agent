@@ -109,8 +109,5 @@ def create_audio_recorder(session_id: str = "") -> AudioBufferProcessor | None:
             return
         await _save("tts", audio, sample_rate)
 
-    logger.info(
-        f"Audio recorder enabled (per-turn) — ASR={ENABLE_ASR_DUMP}, TTS={ENABLE_TTS_DUMP}, "
-        f"session={sid}"
-    )
+    logger.info(f"Audio recorder enabled (per-turn) — ASR={ENABLE_ASR_DUMP}, TTS={ENABLE_TTS_DUMP}, session={sid}")
     return recorder
