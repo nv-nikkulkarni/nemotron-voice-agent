@@ -100,18 +100,20 @@ example's `prompts.yaml`. Omni Subagents uses `omni_subagents_assistant`.
 A missing default prompt prevents `/api/deployment` from loading the example
 catalog, even when the application pods are Ready.
 
-The Server catalogs use the following Kubernetes Service aliases:
+The Magpie Server catalog uses `magpie-multilingual-tts-service:50051`.
+This Service aliases `tts-service` and selects the same Magpie pod. Both
+Services expose gRPC on `50051` and HTTP health on `9000`. The alias adds no
+model replicas or GPU requests. The original Service remains available to
+the prewarmer and existing clients. Refer to the
+[Magpie Service template](../nvcf_helm/templates/service-tts.yaml).
 
-| Catalog Endpoint | Existing Service | Target |
-| --- | --- | --- |
-| `magpie-multilingual-tts-service:50051` | `tts-service:50051` | The same Magpie pod's named `grpc` port; both Services also expose HTTP health on `9000`. |
-| `nvidia-llm-omni:8000` | `nvidia-llm-vllm-omni:8002` | The same Omni pod's named `http` port, which listens on `8002`. |
-
-These aliases select the existing model pods. They add no model replicas or
-GPU requests. The original Service names remain available to the prewarmer
-and existing clients. Verify the rendered Services and their endpoints when
-model options are missing from the UI. Refer to the
-[Magpie Service template](../nvcf_helm/templates/service-tts.yaml) and
+The chart serves Omni through vLLM at `nvidia-llm-vllm-omni:8002`.
+The catalog's `singlegpu` entry uses this endpoint, with `/health` for
+readiness. The Server entry `nvidia-llm-omni:8000` is for an actual Omni NIM
+and uses `/v1/health/ready`. Do not alias that NIM endpoint to vLLM:
+its reachable hostname selects the NIM profile, whose readiness request
+returns `404` against vLLM and causes `/api/session-config` to return `503`.
+Keep the vLLM Service and matching catalog entry for this chart. Refer to the
 [Omni Service template](../nvcf_helm/templates/service-omni.yaml).
 
 Check `/health` for the JSON body `{"status":"ok"}` and an

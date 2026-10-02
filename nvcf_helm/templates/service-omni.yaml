@@ -1,5 +1,6 @@
 {{- if .Values.omni.enabled -}}
-# Preserve the single-GPU hostname and expose the server catalog hostname.
+# The chart runs vLLM, so expose the single-GPU catalog endpoint and its /health
+# contract. The server catalog hostname selects a NIM readiness contract.
 apiVersion: v1
 kind: Service
 metadata:
@@ -15,24 +16,6 @@ spec:
   ports:
     - name: http
       port: {{ .Values.omni.port }}
-      targetPort: http
-      protocol: TCP
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: nvidia-llm-omni
-  labels:
-    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
-    app.kubernetes.io/component: omni
-spec:
-  type: ClusterIP
-  selector:
-    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: omni
-  ports:
-    - name: http
-      port: 8000
       targetPort: http
       protocol: TCP
 {{- end }}

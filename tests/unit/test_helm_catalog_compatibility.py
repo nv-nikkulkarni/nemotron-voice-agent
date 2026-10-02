@@ -11,6 +11,9 @@ from urllib.parse import urlparse
 import pytest
 import yaml
 
+import examples_registry
+import server
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -39,10 +42,19 @@ def test_chart_prompt_defaults_exist(resources):
             assert prompt in prompts
 
 
-def test_catalog_server_endpoints_route_to_existing_model_pods(resources):
+def test_catalog_server_endpoints_route_to_existing_model_pods(resources, monkeypatch):
     """Require catalog aliases to select the existing backend and named port."""
     services = {item["metadata"]["name"]: item for item in resources if item["kind"] == "Service"}
-    catalog = yaml.safe_load((ROOT / "src/examples/omni_assistant_subagents/services.local.yaml").read_text())["server"]
+    monkeypatch.setenv("APP_RUNTIME", "container")
+    monkeypatch.setattr(examples_registry, "local_services_enabled", lambda: True)
+
+    def reachable(endpoint):
+        url = urlparse(endpoint if "://" in endpoint else f"grpc://{endpoint}")
+        service = services.get(url.hostname)
+        return bool(service and any(p["port"] == url.port for p in service["spec"]["ports"]))
+
+    monkeypatch.setattr(examples_registry, "is_endpoint_reachable", reachable)
+    catalog = examples_registry._load_local_service_catalog(ROOT / "src/examples/omni_assistant_subagents")
     deployments = [item for item in resources if item["kind"] == "Deployment"]
     for slot, key, legacy in [
         ("tts", "magpie-multilingual-tts", "tts-service"),
@@ -68,3 +80,7 @@ def test_catalog_server_endpoints_route_to_existing_model_pods(resources):
             for c in matching[0]["spec"]["template"]["spec"]["containers"]
             for p in c.get("ports", [])
         )
+        if slot == "llm":
+            health_url, _ = server._local_llm_health_url(endpoint, entry["model_id"])
+            probe = matching[0]["spec"]["template"]["spec"]["containers"][0]["readinessProbe"]["httpGet"]
+            assert urlparse(health_url).path == probe["path"]
