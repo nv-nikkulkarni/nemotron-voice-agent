@@ -106,8 +106,12 @@ samples and aligned Magpie “Nemotron” timing. Refer to
 for sample limits and the pronunciation qualification boundary.
 
 Ask to show the voice-agent architecture to display the repository-owned Omni
-SVG in the Astra client. This presentation action does not require a media
-upload or a provider key. Other media requests keep their analyzer routing.
+SVG in the Astra client. The Speaker prompt pairs the image with a short
+explanation: browser audio passes through the Transport worker to the Omni
+Speaker, which coordinates reasoning and media workers before the selected
+NVIDIA TTS voice speaks the reply. This presentation action does not require
+a media upload or a provider key. Other media requests keep their analyzer
+routing.
 
 ## Tips & best practices
 
