@@ -34,7 +34,10 @@ def test_generic_prompt_loads_subject_neutral_native_repeat_example() -> None:
 def test_generic_prompt_models_the_real_async_weather_result_envelope() -> None:
     messages = pipeline._load_prompt_few_shots("generic_talker", custom_prompt=False)
 
-    assert len(messages) == 25
+    assert len(messages) == 27
+    assert messages[-2] == {"role": "user", "content": "What can you do?"}
+    assert messages[-1]["role"] == "assistant" and not messages[-1].get("tool_calls")
+    assert len(messages[-1]["content"].split()) < 25
     assert [message["role"] for message in messages[5:10]] == ["user", "assistant", "tool", "developer", "assistant"]
     running = json.loads(messages[7]["content"])
     finished = json.loads(messages[8]["content"])

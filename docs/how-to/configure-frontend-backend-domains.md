@@ -165,7 +165,11 @@ Authentication failures and invalid quote data fail closed. Non-finite or
 non-positive prices are not spoken as valid quotes.
 
 The default Generic Talker prompt requests one short sentence of at most
-35 words unless you ask for detail. Weather defaults to temperature and
+35 words unless you ask for detail. For capability questions such as “What can
+you do?”, native guidance requests 3 or 4 concrete examples in 1 sentence under
+25 words. It omits identity introductions, extra offers, and closing questions
+unless requested. Explicit requests for detail still permit longer responses.
+Weather defaults to temperature and
 conditions; request humidity, wind, or feels-like temperature for an expanded
 provider-grounded response. The web-search model prompt requests 1 or 2 factual
 spoken sentences, at most 35 words by default, even when results are spoken

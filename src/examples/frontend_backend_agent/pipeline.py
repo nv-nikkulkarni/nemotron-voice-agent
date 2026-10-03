@@ -173,6 +173,8 @@ async def bot(runner_args: RunnerArguments) -> None:
             "\n\nSession execution contract:\n"
             "Answer in plain spoken prose, one short sentence of at most 35 words by default; "
             "give more detail only when explicitly requested. Never output markdown or spoken punctuation names. "
+            "For capability questions, name three or four concrete examples in one sentence under 25 words. "
+            "Omit identity introductions, extra offers, and closing questions unless requested. "
             "For current time, live weather, stock prices, searches, calculations, random generation, "
             "or showing the public architecture, use call_backend with a self-contained query. "
             "Never claim unavailable live-data access without trying the enabled capability. "

@@ -275,10 +275,16 @@ Real-Time Voice Interaction (RTVI) metrics expose the later planning rounds as
 stays correlated with the same backend call and user turn.
 
 The default Generic Talker prompt requests one short sentence of at most
-35 words unless the user asks for detail. The web-search model prompt requests
+35 words unless the user asks for detail. Capability questions such as “What
+can you do?” use native guidance for 3 or 4 concrete examples in 1 sentence
+under 25 words. Identity introductions, extra offers, and closing questions are
+omitted unless requested. Explicit detail requests still permit expansion.
+The web-search model prompt requests
 1 or 2 factual spoken sentences, at most 35 words by default, including direct
 tool speech. Explicit detail requests permit expansion within its retained
-400-token output budget. These word limits are prompt guidance. Weather speech defaults to returned
+400-token output budget. These word limits are prompt guidance.
+
+Weather speech defaults to returned
 temperature and conditions. With `details: true`, it also includes available
 feels-like temperature, humidity, and wind speed. Deterministic weather speech
 and the guarded Talker rephrasing use only validated provider results.
