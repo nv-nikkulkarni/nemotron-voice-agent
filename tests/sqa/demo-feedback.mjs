@@ -29,7 +29,7 @@ const turns = [
   { text: "Check that same company again please.", heard: /company|again/i, expect: /nvidia|NVDA/i },
   { text: "What time is it right now?", heard: /time/i, expect: /\d{1,2}:\d{2}\s*(AM|PM)/i, clock: true },
   { text: "Show me your architecture.", heard: /show\s+me\s+your\s+architecture/i, expect: /architecture|diagram|design/i, architecture: "generic" },
-  { text: "Please say Nemotron 3 Diarization.", heard: /nemotron|diarization/i, expect: /nemotron|diarization/i },
+  { text: "Please say Nemotron 3 Diarization.", heard: /nemotron|diarization/i, expect: /^Nemotron 3 Diarization[.!]?$/i },
   { text: "Please repeat these two words: Codex and spinner.", heard: /codex.*spinner/i, expect: /codex.*spinner/i },
   { text: "What can you do?", heard: /what|can|do/i, expect: /help|weather|stock|question|time/i, short: true },
 ];
@@ -221,7 +221,7 @@ try {
     await runTurn(clone, { text: "Welcome me to your Halloween party in one sentence.", heard: /halloween|party/i,
       expect: /welcome|halloween|party/i }, 1);
     await runTurn(clone, { text: "Please say Nemotron 3 Diarization.", heard: /nemotron|diarization/i,
-      expect: /nemotron|diarization/i }, 2);
+      expect: /^Nemotron 3 Diarization[.!]?$/i }, 2);
     await finish(clone);
   }
 } catch (error) { result.hardFails.push(error.stack || String(error)); }

@@ -108,8 +108,12 @@ For both architecture turns, the input transcript must match the spoken
 request “Show me your architecture.” The suite separately checks a spoken
 diagram description and a rendered Generic or Omni image. A correct image or
 answer alone does not establish input transcription acceptance.
-It also checks “Nemotron 3 Diarization,”
-“Codex and spinner,” concise speech without Markdown markers, and a reproducible
+The Generic and optional cloned-voice product turns require the exact reply
+“Nemotron 3 Diarization,” ignoring case and allowing only an optional final
+period or exclamation mark. “Three” or “Diorization” in the reply fails this
+text gate. It does not establish human pronunciation acceptance.
+The suite also checks “Codex and spinner,” concise speech without Markdown
+markers, and a reproducible
 1.7 s pause inside an unfinished Tokyo weather request. The fixture trims
 only detected edge silence and requires measured interior silence from
 1.65 to 1.8 s at a -35 dB threshold. `pauseTiming` records the target,

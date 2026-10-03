@@ -110,6 +110,33 @@ class ReliableTalkerTests(unittest.IsolatedAsyncioTestCase):
         ]
         return LLMContext(messages, tools=[], tool_choice="auto")
 
+    async def test_generic_progress_only_response_retries_native_selection_once(self) -> None:
+        for remembered in (False, True):
+            with self.subTest(remembered=remembered):
+                talker = _ScriptedTalker([[_chunk(content="Let me check AMD news.")], [_tool_chunk("What about AMD?")]])
+                talker.conversation_start_index = 0
+                if remembered:
+                    talker.remember_backend_response("A verified NVIDIA headline.")
+                messages = [{"role": "user", "content": "What about AMD?"}]
+                context = LLMContext(messages)
+                chunks = await _collect(talker, context)
+                self.assertEqual(len(talker.contexts), 2)
+                self.assertTrue(chunks[0].choices[0].delta.tool_calls)
+                self.assertEqual(talker.fallbacks, [])
+                self.assertEqual(context.get_messages(), messages)
+
+    async def test_generic_progress_retry_is_bounded_and_literal_repeat_is_allowed(self) -> None:
+        talker = _ScriptedTalker([[_chunk(content="Let me check that.")], [_chunk(content="Fetching recent news.")]])
+        talker.conversation_start_index = 0
+        self.assertEqual(await _collect(talker, LLMContext([{"role": "user", "content": "Recent news?"}])), [])
+        self.assertEqual(len(talker.contexts), 2)
+        self.assertEqual(talker.fallbacks, [EMPTY_RESPONSE_FALLBACK])
+        literal = _ScriptedTalker([[_chunk(content="Let me check that.")]])
+        literal.conversation_start_index = 0
+        chunks = await _collect(literal, LLMContext([{"role": "user", "content": "Please say Let me check that."}]))
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(len(literal.contexts), 1)
+
     async def test_visible_response_does_not_retry(self) -> None:
         talker = _ScriptedTalker([[_chunk(content="Hello there.")]])
 

@@ -21,8 +21,10 @@ CALL_BACKEND_TOOL: dict = {
     "function": {
         "name": "call_backend",
         "description": (
-            "Delegate one self-contained request that requires current or externally verified data, "
-            "a deterministic calculation, or explicit random generation. Do not speak in the same turn."
+            "Delegate the latest user request that requires current or externally verified data, "
+            "a deterministic calculation, or explicit random generation. Contextual follow-ups to these "
+            "requests also require a fresh delegation. The backend receives actual conversation history. "
+            "Do not speak in the same turn or answer with a promise to check."
         ),
         "parameters": {
             "type": "object",
@@ -32,8 +34,8 @@ CALL_BACKEND_TOOL: dict = {
                     "minLength": 1,
                     "maxLength": 2000,
                     "description": (
-                        "The complete current request, with necessary conversational context and the user's "
-                        "latest corrections."
+                        "The latest user request, verbatim when possible. The backend resolves omitted action "
+                        "or subject from actual conversation history. Never substitute an older request or subject."
                     ),
                 },
                 "filler_text": {

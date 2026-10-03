@@ -57,8 +57,18 @@ class NvidiaGenericPlanner:
     async def plan(self, *, query: str, state: dict[str, Any]) -> dict[str, Any]:
         """Return a parsed plan; the dispatcher remains the authority for validation."""
         now = datetime.now(ZoneInfo(str(state.get("client_timezone") or "UTC")))
+        dialogue = state.get("conversation_context") or []
+        latest_user_request = next(
+            (
+                item["content"]
+                for item in reversed(dialogue)
+                if item.get("role") == "user" and isinstance(item.get("content"), str)
+            ),
+            query,
+        )
         payload = {
-            "untrusted_user_request": query,
+            "untrusted_user_request": latest_user_request,
+            "untrusted_talker_proposal": query,
             "enabled_tools": list(self._enabled_tools),
             "session_state": state,
             "runtime_context": {

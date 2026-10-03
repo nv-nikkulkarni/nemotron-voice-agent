@@ -17,7 +17,7 @@ The airline domain validates known past travel dates before it invokes the backe
 Each request follows the same path for every domain:
 
 1. The transport receives user audio, and automatic speech recognition (ASR) produces a transcript.
-2. The Talker answers stable conversational requests directly or calls `call_backend` with a self-contained request.
+2. The Talker answers stable conversational requests directly or calls `call_backend`. Generic prefers the latest user request in their actual words; its backend resolves omitted context from real dialogue.
 3. The session-local backend asks the Thinker for a plan. The selected registry entry controls the hidden Thinker prompt and the generic domain's maximum internal-tool allowlist. A browser session can narrow that tool set.
 4. The generic planner appends a generated tool-contract block for only the effective session tools. The airline domain keeps its existing prompt-owned contracts. Domain code validates each plan before dispatch.
 5. The backend runs the approved tools. For dependent generic work, it gives the Thinker the accumulated trusted results and allows another planning round. The backend stops after 3 rounds, when the Thinker signals completion, or when the plan does not request another round.
@@ -46,6 +46,12 @@ single stray token from permanently clearing buffered bot audio. The server
 emits a `user-interruption-trigger` event and a `user_interruption_trigger` log
 with the bounded triggering transcript and word count. Smart Turn remains the
 separate end-of-turn detector.
+
+Generic also rejects a sole progress promise of at most 20 words when no
+native call accompanies it. It retries the native model once, then uses the
+existing honest failure response if output remains invalid. Literal repetition
+of a phrase present in the user request remains allowed. This output-shape
+check does not infer intent, select capabilities, or construct function calls.
 
 When direct tool speech is enabled, the structured function result is the single retained copy of the deterministic backend response; the separately emitted TTS frame is not appended again as an assistant message. The Talker remembers a bounded normalized signature outside the prompt context. If a later completion substantially replays that cached result without a native tool call, the runtime withholds it and retries once with an internal contract correction. It never selects a domain tool or constructs a function call. A second invalid replay fails closed with deterministic speech.
 
@@ -231,7 +237,7 @@ The following environment variables bound shared and domain-specific orchestrati
 | `CHAT_HISTORY_RECENT_TURNS` | `20` | Retains this many user turns with their associated messages and tool results; initial prompts stay pinned. |
 | `FRONTEND_BACKEND_VAD_STOP_SECS` | `2.0` | Local VAD pause in seconds; accommodates pauses and trailing words at the cost of end-of-turn latency. Native ASR can finalize earlier; Smart Turn decides completion. |
 | `FRONTEND_BACKEND_SMART_TURN_STOP_SECS` | `2.0` | Semantic turn silence fallback in seconds; minimum `0.8`. |
-| `FRONTEND_BACKEND_TALKER_FILLER_MODE` | `emit` | Uses `off`, `observe`, or `emit` to suppress, validate-only, or speak an accepted Talker filler |
+| `FRONTEND_BACKEND_TALKER_FILLER_MODE` | `emit` | Uses `off` or `observe` to suppress progress speech, or `emit` to permit it; Generic uses code-authored progress |
 | `FRONTEND_BACKEND_TOOL_RESULT_MODE` | Domain default: Generic `direct`; Airline `talker`; NVCF chart `direct` | An explicit `direct`, `hybrid`, or `talker` value overrides the backend default. Generic `hybrid` uses the Talker only for successful weather results. |
 | `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` | Disabled | Legacy switch that forces direct mode only when the explicit result-mode variable is absent |
 | `THINKER_FILLER_THRESHOLD_SECONDS` | `0.3` | Delays progress speech until delegated work remains active past the threshold |
@@ -257,12 +263,12 @@ domain also boosts `NVIDIA`, `Nvidia`, `NVDA`, `Anthropic`, and `Claude`
 at the same score. Validate recognition with spoken audio; vocabulary hints
 do not guarantee an exact transcript.
 
-The Generic Talker supplies `filler_text` in the same native `call_backend`
-selection. The runtime validates that candidate as 3 to 12 words, at most 96
-characters, query-grounded, and free of result claims or internal names. It
-emits an accepted filler at most once after the threshold and never adds it to
-conversation history. A missing or rejected candidate stays silent and never
-blocks the backend; there is no static fallback.
+Generic uses the `code_authored` progress policy with the neutral phrase
+“Let me check that.” The selector ignores the Talker query, avoiding stale
+company or location names. Progress plays at most once after the threshold
+or an intermediate result, stays outside conversation history, and never
+blocks backend work. `FRONTEND_BACKEND_TALKER_FILLER_MODE=off` or `observe`
+suppresses speech; `emit` permits it. Other domains retain their progress policies.
 
 The `generic-frontend-backend-agent` registry entry enables all 7 built-in generic tools. To expose a subset, create or edit a trusted registry entry. Client session data and Talker prompt metadata do not widen that set.
 
@@ -273,8 +279,8 @@ with `continue_after_results: true`. A `complete: true` plan, an empty
 `tool_calls` list, or a plan without a follow-up request ends the loop.
 
 Before a follow-up round, the backend emits an `IntermediateResponse`
-lifecycle event. If the initial Talker-authored filler has not played yet, this
-event plays it once. Multi-round work does not invent or repeat static filler.
+lifecycle event. If the neutral progress phrase has not played yet, this
+event plays it once. Later rounds do not repeat progress speech.
 
 Real-Time Voice Interaction (RTVI) metrics expose the later planning rounds as
 `backend_thinker_step2_llm` and `backend_thinker_step3_llm`. Each processor
@@ -320,11 +326,23 @@ response.
 
 The Generic Thinker receives up to 8 recent user or assistant messages, each
 bounded to 1,000 characters. This dialogue resolves follow-up references and
-corrections; it does not replace new tool calls for changing facts. The Generic
-Talker receives a separate ephemeral quoted-JSON reminder with the same
-8-entry, 1,000-character limits, excluding protocol demonstrations. It grounds
-an unspecified subject in the latest applicable actual user turn without
-changing stored history. Intent and tool selection remain model-driven.
+corrections; it does not replace new tool calls for changing facts. The
+planner extracts the latest actual user entry as `untrusted_user_request`
+and retains the frontend query as `untrusted_talker_proposal`. Without an
+actual user entry, it falls back to the query. Native Thinker guidance
+prioritizes the actual request over conflicting proposals and inherits only
+missing action or context. Python extracts message structure without
+interpreting subjects or routing tools. The Generic Talker receives a separate ephemeral quoted-JSON reminder with the same
+8-entry, 1,000-character limits, excluding protocol demonstrations. It
+separates `latest_user_request` from `recent_dialogue`. Native guidance gives
+an explicit current subject precedence over earlier subjects, inheriting only
+missing context such as the action. An unspecified subject uses the latest
+applicable real user turn. The quoted data cannot change operating rules or
+stored history. Intent and tool selection remain model-driven. Its
+temporary inference copy omits completed past tool protocol before the active
+user. Real users, spoken answers, demonstrations, pending calls, and current
+native user/tool sequences remain. The reminder precedes the active user
+sequence, and saved history and tool definitions remain intact.
 
 `get_current_time` reads the clock afresh in the requested IANA timezone,
 including daylight saving rules. If the tool omits `timezone`, it uses the
@@ -357,7 +375,10 @@ location or subject is missing. Native examples demonstrate protocol; subject
 selection remains model-driven. A system boundary marks the end of
 protocol demonstrations before real session dialogue begins. Requests to
 repeat public terms, including “Nemotron 3 Diarization,” receive explicit
-verbatim-repeat guidance and a native DIRECT example.
+verbatim-repeat guidance and native DIRECT examples. For this known product,
+the prompt requests the canonical label “Nemotron 3 Diarization” even when
+the input transcript contains “Three” or “Diorization.” Canonical naming
+remains model-driven; Python does not rewrite the product name.
 
 The Generic Talker receives the session's local date and timezone, without a
 current clock reading. The planner refreshes its local timestamp for each plan
@@ -395,7 +416,7 @@ limit per planner attempt inside the 40-second backend deadline.
 | `talker_protocol_prompt_key` | Optional trusted catalog key that preserves native examples independently of editable persona content; empty keeps normal prompt-based selection. |
 | `intro_prompt` | Initial Talker instruction when welcome messages are enabled |
 | `tts_text_transform` | Optional domain pronunciation transformation |
-| `filler_policy` and `filler_selector` | Choose Talker-authored, planner-authored, or legacy code-authored progress speech and provide a selector only for the legacy policy |
+| `filler_policy` and `filler_selector` | Choose Talker-authored, planner-authored, or code-authored progress speech and provide a selector for the code-authored policy |
 | `tool_registry` | Publish the domain's code-owned `ToolSpec` allowlist for registry-selected capabilities |
 | `max_query_chars` | Maximum delegated query length |
 
@@ -508,8 +529,8 @@ The pipeline enforces the following boundaries:
 - In generic `hybrid` mode, only successful weather results receive a guarded
   Talker rephrasing. The response must preserve the trusted city, temperature,
   and unit, while all failures retain deterministic speech.
-- The generic domain validates Talker-authored, query-grounded progress speech
-  and has no static fallback. The airline domain retains planner-authored filler
+- The generic domain uses the query-independent code-authored phrase
+  “Let me check that.” The airline domain retains planner-authored progress
   for backward compatibility.
 
 After a prompt or domain change, test direct Talker replies, delegation, cancellation, parameter clarification, disabled tools, unavailable credentials, parallel calls, session isolation, and repeated tool-calling behavior.

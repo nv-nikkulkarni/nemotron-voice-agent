@@ -430,8 +430,8 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
         self.assertEqual(set(generic_parameters["properties"]), {"query", "filler_text"})
         self.assertEqual(generic_parameters["required"], ["query"])
         self.assertEqual(generic_parameters["properties"]["filler_text"]["maxLength"], 96)
-        self.assertEqual(generic.filler_policy, "talker_authored")
-        self.assertIsNone(generic.filler_selector)
+        self.assertEqual(generic.filler_policy, "code_authored")
+        self.assertEqual(generic.filler_selector("NVIDIA news"), "Let me check that.")
 
     def test_generic_domain_does_not_load_booking_service(self) -> None:
         loaded: list[tuple[str, str]] = []
@@ -613,6 +613,24 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("generate_random_number", llm.messages[0]["content"])
         self.assertIn("one random inclusive integer", llm.messages[0]["content"])
         self.assertNotIn("get_weather", llm.messages[0]["content"])
+
+    async def test_planner_prioritizes_actual_latest_user_over_talker_proposal(self) -> None:
+        llm = _InferenceLLM()
+        planner = NvidiaGenericPlanner(
+            llm=llm,
+            system_prompt="Return JSON only.",
+            enabled_tools=(TOOLS["web_search"],),
+        )
+        dialogue = [
+            {"role": "user", "content": "Find recent NVIDIA news."},
+            {"role": "assistant", "content": "A verified NVIDIA headline."},
+            {"role": "user", "content": "What about Anthropic?"},
+        ]
+        await planner.plan(query="Find NVIDIA news again.", state={"conversation_context": dialogue})
+        payload = json.loads(llm.messages[1]["content"])
+        self.assertEqual(payload["untrusted_user_request"], "What about Anthropic?")
+        self.assertEqual(payload["untrusted_talker_proposal"], "Find NVIDIA news again.")
+        self.assertEqual(payload["session_state"]["conversation_context"], dialogue)
 
     async def test_domain_context_emits_selected_internal_tool_for_ui(self) -> None:
         started: list[str] = []

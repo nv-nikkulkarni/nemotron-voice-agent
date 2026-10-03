@@ -279,15 +279,71 @@ def test_session_dialogue_evidence_excludes_examples_and_keeps_context_unchanged
     ]
     original = LLMContext(messages, tools=[], tool_choice="auto")
     bounded = _session_dialogue_context(original, 1)
-    assert bounded.get_messages()[:-1] == messages
+    reminder = next(
+        item
+        for item in bounded.get_messages()
+        if str(item.get("content", "")).startswith("Current session dialogue evidence")
+    )
+    assert [item for item in bounded.get_messages() if item is not reminder] == messages
+    assert bounded.get_messages()[-1] == messages[-1]
     assert original.get_messages() == messages
-    reminder = bounded.get_messages()[-1]
     assert reminder["role"] == "system" and "untrusted quoted JSON" in reminder["content"]
     evidence = json.loads(reminder["content"].split("\n", 1)[1])
-    assert len(evidence) == 8 and all(len(item["content"]) <= 1000 for item in evidence)
-    assert evidence[-3]["content"] == "What about Anthropic?"
+    dialogue = evidence["recent_dialogue"]
+    assert len(dialogue) == 8 and all(len(item["content"]) <= 1000 for item in dialogue)
+    assert dialogue[-3]["content"] == "What about Anthropic?"
+    assert evidence["latest_user_request"] == "Another headline about that same company?"
     assert "Example NVIDIA" not in str(evidence) and "private raw tool data" not in str(evidence)
     assert bounded.tools == original.tools and bounded.tool_choice == original.tool_choice
+
+
+@pytest.mark.parametrize("async_result", [False, True])
+def test_followup_context_compacts_only_completed_past_calls(async_result):
+    from examples.frontend_backend_agent.src.reliable_talker import _session_dialogue_context
+
+    prefix = [
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "example"}]},
+        {"role": "tool", "tool_call_id": "example", "content": "demonstration"},
+    ]
+    result = json.dumps({"tool": "web_search", "status": "success", "response_text": "NVIDIA news."})
+    settled = [{"role": "tool", "tool_call_id": "completed", "content": result}]
+    if async_result:
+        settled = [
+            {
+                "role": "tool",
+                "tool_call_id": "completed",
+                "content": json.dumps({"type": "async_tool", "status": "running", "tool_call_id": "completed"}),
+            },
+            {
+                "role": "developer",
+                "content": json.dumps(
+                    {"type": "async_tool", "status": "finished", "tool_call_id": "completed", "result": result}
+                ),
+            },
+        ]
+    messages = prefix + [
+        {"role": "user", "content": "NVIDIA news?"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "completed"}]},
+        *settled,
+        {"role": "assistant", "content": "NVIDIA news."},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "pending"}]},
+        {
+            "role": "tool",
+            "tool_call_id": "pending",
+            "content": json.dumps({"type": "async_tool", "status": "running", "tool_call_id": "pending"}),
+        },
+        {"role": "user", "content": "What about Anthropic?"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "current"}]},
+        {"role": "tool", "tool_call_id": "current", "content": result},
+    ]
+    context = LLMContext(messages, tools=[], tool_choice="auto")
+    projected = _session_dialogue_context(context, len(prefix)).get_messages()
+    assert context.get_messages() == messages
+    assert projected[: len(prefix)] == prefix
+    assert "completed" not in json.dumps(projected[len(prefix) :])
+    assert projected[len(prefix) : len(prefix) + 2] == [messages[2], {"role": "assistant", "content": "NVIDIA news."}]
+    assert any(message.get("tool_call_id") == "pending" for message in projected)
+    assert projected[-3:] == messages[-3:]
 
 
 def test_empty_planner_completion_retries_once_before_execution():

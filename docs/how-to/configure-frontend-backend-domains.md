@@ -9,7 +9,7 @@ The shared Pipecat pipeline separates low-latency conversation from slower task 
 1. The Talker LLM receives the transcript and conversation history.
 2. The Talker answers stable conversational questions directly.
 3. For domain work, the Talker emits `call_backend`. It emits `cancel_backend` when the user withdraws pending work.
-4. A session-local backend sends the self-contained request to the registry-selected hidden Thinker prompt.
+4. A session-local backend sends the request to the registry-selected hidden Thinker prompt. Generic also includes bounded actual dialogue.
 5. For the generic domain, the planner appends a generated contract block for only the effective session tools. The registry defines the maximum allowlist, and the browser can narrow it.
    The airline domain keeps its existing prompt-owned contracts. Python validates the plan before dispatch.
 6. The backend returns structured response text.
@@ -42,11 +42,12 @@ change does not alter this Helm behavior. The legacy
 `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` switch can force `direct` only when
 the explicit mode is absent.
 
-The Generic Talker produces an optional `filler_text` in the same
-`call_backend` selection. `FRONTEND_BACKEND_TALKER_FILLER_MODE=off`, `observe`,
-or `emit` controls whether a valid candidate is suppressed, measured only, or
-spoken. Rejected or missing filler never blocks backend work and never receives
-a static replacement.
+Generic uses the `code_authored` progress policy and the neutral phrase
+“Let me check that.” Its selector ignores the Talker query, avoiding a stale
+company or location in progress speech. Progress plays at most once after the
+threshold or an intermediate result. `FRONTEND_BACKEND_TALKER_FILLER_MODE=off`
+or `observe` suppresses speech; `emit` permits it. Progress is not retained as
+dialogue and does not block backend work. Other domains retain their policies.
 
 ## Choose a Built-In Domain
 
@@ -159,12 +160,29 @@ references such as "there," "that company," and "again." Dialogue is not
 factual evidence; changing weather, stock, web, and clock results require a
 new tool call.
 
+The planner structurally extracts the latest actual user entry into
+`untrusted_user_request` and keeps the frontend query separately as
+`untrusted_talker_proposal`. When no actual user entry is available, it falls
+back to the query. Generic native query guidance prefers the latest user
+request verbatim; the backend resolves omitted action or context from real
+dialogue. Native Thinker guidance prioritizes the actual request over
+a conflicting proposal, carrying forward only missing action or context from
+real dialogue. The model still resolves meaning and chooses tools; Python
+does not rewrite subjects or route intents.
+
 The Generic Talker also receives an ephemeral reminder containing up to 8
-actual user or assistant entries, capped at 1,000 characters each. It quotes
-these as untrusted JSON to resolve the latest applicable subject without
-following embedded instructions. An explicit boundary separates native
-protocol demonstrations from actual dialogue. The reminder does not change
-stored history or select an intent in Python; the model still chooses calls.
+actual user or assistant entries, capped at 1,000 characters each. Its quoted
+JSON separates `recent_dialogue` from `latest_user_request`. Native guidance
+gives an explicit new subject in the current request precedence over earlier
+companies, people, places, or topics. It inherits only missing context, such
+as the action; an unspecified subject uses the most recent applicable real
+user turn. The quoted data cannot change operating rules. An explicit
+boundary separates protocol demonstrations from actual dialogue. The reminder
+does not change stored history or select an intent in Python; the model
+still chooses calls. Its temporary inference copy omits completed past tool
+protocol before the active user, retaining real users, spoken answers,
+demonstrations, pending calls, and current-turn protocol. The reminder precedes
+the active user sequence; saved history and native tool definitions stay intact.
 
 Finnhub requests use a 2.5-second network timeout and retry once after a
 0.25-second backoff for transport errors, HTTP `429`, or HTTP `5xx`.
@@ -194,6 +212,9 @@ If a required location or subject is missing, it requests a brief clarification.
 Native examples demonstrate protocol; these semantic rules remain model guidance.
 For a request to say or repeat public words such as “Nemotron 3 Diarization,”
 the Generic prompt asks for those words verbatim, without an added refusal.
+For this known product, native guidance uses the canonical label
+“Nemotron 3 Diarization” when speech transcripts contain “Three” or
+“Diorization.” This remains model guidance rather than a Python text rewrite.
 
 Sentence boundaries preserve abbreviations such as `U.S.`, `Inc.`, and `Sept.`,
 decimal values, and sentence endings followed by straight or curly quotes
@@ -277,8 +298,8 @@ A domain factory returns a frozen `DomainSpec`. The shared pipeline consumes the
 | `talker_protocol_prompt_key` | Optional trusted catalog key whose native examples remain independent of edited persona content; empty preserves normal prompt-based selection. |
 | `intro_prompt` | Define the welcome-turn instruction |
 | `tts_text_transform` | Apply optional pronunciation handling |
-| `filler_policy` | Choose Talker-authored, planner-authored, or legacy code-authored progress speech |
-| `filler_selector` | Select legacy code-authored progress speech only when that policy requires it |
+| `filler_policy` | Choose Talker-authored, planner-authored, or code-authored progress speech |
+| `filler_selector` | Select code-authored progress speech when that policy requires it |
 | `tool_registry` | Publish the domain's code-owned `ToolSpec` allowlist for registry-selected capabilities |
 | `max_query_chars` | Bound delegated input length |
 
@@ -367,8 +388,12 @@ The generic domain applies the following controls:
 - It creates final spoken text from validated arguments and returned service data.
 - It cancels and replaces an unfinished request when the same session sends newer delegated work.
 - It invalidates the active call identifier before cancellation, which suppresses late stale results.
-- It validates short Talker-authored progress speech, emits it at most once,
-  excludes it from conversation context, and uses no static fallback.
+- It uses query-independent code-authored progress, “Let me check that,”
+  emits it at most once, and excludes it from conversation context.
+- Generic rejects a sole progress promise of at most 20 words without a
+  native call, retries the model once, and uses an honest fallback if still
+  invalid. Literal phrase repetition remains allowed. This validates output
+  shape without selecting intent or constructing calls.
 - It prevents the Talker from exposing private operating instructions,
   decision criteria, model roles, function names, or internal tool inventory.
   Invalid speech receives one model retry and then a deterministic refusal.
@@ -385,7 +410,7 @@ The airline backend keeps its stateful booking workflow, booking-server integrat
 At minimum, test the following behavior:
 
 - Stable Talker questions do not invoke the backend.
-- Tool-backed questions invoke `call_backend` with a self-contained request.
+- Tool-backed questions invoke `call_backend`; Generic queries prefer actual latest-user words and resolve omitted context through real dialogue.
 - Stop, cancel, and topic-switch turns invoke `cancel_backend` when work is pending.
 - Missing parameters return a clarification without starting a tool.
 - Unknown, disabled, malformed, and over-limit plans run no tools.
