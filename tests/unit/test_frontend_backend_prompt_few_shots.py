@@ -34,7 +34,7 @@ def test_generic_prompt_loads_subject_neutral_native_repeat_example() -> None:
 def test_generic_prompt_models_the_real_async_weather_result_envelope() -> None:
     messages = pipeline._load_prompt_few_shots("generic_talker", custom_prompt=False)
 
-    assert len(messages) == 31
+    assert len(messages) == 26
     assert messages[-1] == {"role": "assistant", "content": "Nemotron 3 Diarization."}
     assert messages[-6] == {"role": "user", "content": "What can you do?"}
     assert messages[-5]["role"] == "assistant" and not messages[-5].get("tool_calls")
@@ -89,13 +89,12 @@ def test_invalid_catalog_few_shots_fail_closed(messages: object, error: str) -> 
         pipeline._load_prompt_few_shots("example", custom_prompt=False)
 
 
-def test_generic_persona_edits_retain_native_clock_and_architecture_examples() -> None:
+def test_generic_persona_edits_retain_architecture_without_demonstrating_clock_unavailability() -> None:
     messages = pipeline._load_prompt_few_shots(
         "generic_edited", custom_prompt=True, protocol_prompt_key="generic_talker"
     )
-    clock = json.loads(messages[16]["tool_calls"][0]["function"]["arguments"])
-    architecture = json.loads(messages[21]["tool_calls"][0]["function"]["arguments"])
-    assert "clock" in clock["query"] and "browser timezone" in clock["query"]
+    architecture = json.loads(messages[16]["tool_calls"][0]["function"]["arguments"])
+    assert all("clock is temporarily unavailable" not in str(message).lower() for message in messages)
     assert "show_architecture" in architecture["query"]
     assert messages == pipeline._load_prompt_few_shots(
         "generic_talker", custom_prompt=False, protocol_prompt_key="generic_talker"

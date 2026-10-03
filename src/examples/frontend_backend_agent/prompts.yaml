@@ -524,25 +524,6 @@ generic_talker:
     - role: assistant
       content: "Reykjavik is at minus 5 degrees Celsius with snow, 82 percent humidity, and winds around 18 kilometres per hour."
     - role: user
-      content: "What time is it right now?"
-    - role: assistant
-      content: null
-      tool_calls:
-        - id: prompt-example-current-time
-          type: function
-          function:
-            name: call_backend
-            arguments: '{"query":"Get the current time in my browser timezone using the clock capability.","filler_text":"Let me check the time."}'
-    - role: tool
-      tool_call_id: prompt-example-current-time
-      content: >-
-        {"type":"async_tool","status":"running","tool_call_id":"prompt-example-current-time","description":"Wait for the fresh clock result; never guess a time."}
-    - role: developer
-      content: >-
-        {"type":"async_tool","status":"finished","tool_call_id":"prompt-example-current-time","result":"{\"type\":\"response_hint\",\"reason\":\"service_error\",\"response_text\":\"The clock is temporarily unavailable. Please try again.\"}"}
-    - role: assistant
-      content: "The clock is temporarily unavailable. Please try again."
-    - role: user
       content: "Show me your architecture."
     - role: assistant
       content: null

@@ -61,6 +61,17 @@ the native model to reconsider the actual request. Retry count and model-owned
 function selection remain unchanged. Native calls and active real-result
 handling remain unchanged.
 
+Generic also withholds a numeric assertion of current or local time without
+an active finished result. Literal user-requested repetition remains allowed.
+The existing single retry supplies a clock-specific correction and constrains
+native selection to `call_backend`; the model still authors all arguments.
+Normal first-attempt tool choice remains `auto`. Final-result handling remains
+separate. This narrow output check does not
+validate arbitrary facts or dispatch a tool itself. When a Generic completion
+contains native calls, the runtime withholds accompanying model speech while
+preserving the calls. Code-authored progress and completed-result speech remain
+separate.
+
 When direct tool speech is enabled, the structured function result is the single retained copy of the deterministic backend response; the separately emitted TTS frame is not appended again as an assistant message. The Talker remembers a bounded normalized signature outside the prompt context. If a later completion substantially replays that cached result without a native tool call, the runtime withholds it and retries once with an internal contract correction. It never selects a domain tool or constructs a function call. A second invalid replay fails closed with deterministic speech.
 
 The runtime retains bounded successful subject arguments by capability. A
@@ -295,8 +306,9 @@ Real-Time Voice Interaction (RTVI) metrics expose the later planning rounds as
 stays correlated with the same backend call and user turn.
 
 The Generic Talker uses a code-owned [standing response policy](src/response_policy.py)
-independent of editable persona and persistent instructions. It requests the
-shortest complete answer in 1 sentence, normally 10–20 words and at most 35.
+independent of editable persona and persistent instructions. Its guidance
+applies to direct answers and speech after completed tool results. It requests
+the shortest complete answer in 1 sentence, normally 10–20 words and at most 35.
 Broad “tell me about” questions stay brief. Capability questions use 3 or 4
 examples in 1 sentence of at most 25 words. Explicit detail, steps, lists,
 comparisons, or multiple facts permit longer replies. Required exact responses,
@@ -379,9 +391,9 @@ not change the trusted backend domain or tool allowlist. Refer to
 [Frontend/Backend Session Prompts](../../../docs/how-to/configure-prompts.md#frontendbackend-session-prompts).
 
 For the Generic domain, editing the frontend persona or prompt key retains
-the `generic_talker` native protocol examples. These include fresh-clock and
-architecture delegation; the clock example contains a service error rather
-than an example time to repeat. Custom prompts in other domains do not inherit
+the `generic_talker` native protocol examples. These include weather and
+architecture delegation, with no clock-result demonstration. Current-time
+requests require a fresh clock tool result. Custom prompts in other domains do not inherit
 these examples. The runtime still validates calls against the enabled tools. Appended Generic
 execution guidance resolves subjects from real user dialogue, excludes example
 cities, companies, and values, and requests clarification when a required

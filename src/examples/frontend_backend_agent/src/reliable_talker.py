@@ -59,6 +59,12 @@ DEMONSTRATION_RESPONSE_CORRECTION = (
     "For delegated work emit a native call_backend using the actual user words, then wait for its real result. "
     "Do not replay an example answer or mention this retry."
 )
+UNVERIFIED_CLOCK_CORRECTION = (
+    "The previous completion asserted a current clock reading without a completed clock result. "
+    "That value is unverified and must not be spoken. Emit a native call_backend for the actual latest "
+    "user request, preserving its timezone and subject, and wait for its real result. Do not guess a time, "
+    "claim the clock is unavailable without trying it, or mention this retry."
+)
 TOOL_RESULT_CORRECTION = (
     "The asynchronous function result for the current turn is complete. Respond now with one concise, "
     "user-facing answer grounded only in its response_text and status. Do not call any function, do not "
@@ -84,6 +90,13 @@ _INTERNAL_MECHANICS_RE = re.compile(
     r"\b(?:direct|delegate|cancel)\s+(?:mode|contract|decision)\b|"
     r"\b(?:call_backend|cancel_backend|get_weather|get_stock_price|web_search|calculate_bmi|"
     r"generate_random_number)\b)",
+    re.IGNORECASE,
+)
+
+_CLOCK_VALUE_RE = re.compile(r"\b\d{1,2}:\d{2}\b")
+_LIVE_CLOCK_CLAIM_RE = re.compile(
+    r"\b(?:current|local)\s+time\b|\bright\s+now\b|"
+    r"\b(?:it['’]s|it\s+is|currently)\s+\d{1,2}:\d{2}\b",
     re.IGNORECASE,
 )
 
@@ -153,9 +166,10 @@ _REPLAY_STOPWORDS = frozenset(
 class ReliableNvidiaLLMService(NvidiaLLMService):
     """Retry one silent Talker completion, then emit a deterministic fallback.
 
-    This service deliberately does not inspect the user request, infer intent, or
-    construct a tool call. The model remains solely responsible for choosing a
-    direct response, ``call_backend``, or ``cancel_backend``.
+    This service validates completions without inferring request intent or
+    constructing tool calls. The model chooses direct response, ``call_backend``,
+    or ``cancel_backend``. An unverified clock assertion receives one constrained
+    ``call_backend`` retry; the model still authors its arguments.
     """
 
     def __init__(
@@ -239,7 +253,8 @@ class ReliableNvidiaLLMService(NvidiaLLMService):
         if start is not None:
             context = _session_dialogue_context(context, start)
         first_stream = await self._start_completion_stream(context)
-        return self._stream_with_liveness(context, first_stream)
+        stream = self._stream_with_liveness(context, first_stream)
+        return _native_protocol_stream(stream) if start is not None else stream
 
     async def _start_completion_stream(self, context: LLMContext) -> AsyncIterator[ChatCompletionChunk]:
         """Start one NVIDIA completion stream; isolated as a test seam."""
@@ -333,7 +348,10 @@ class ReliableNvidiaLLMService(NvidiaLLMService):
                 yield chunk
             return
 
-        if first_invalid_reason == "demonstration_replay":
+        if first_invalid_reason == "unverified_clock":
+            event = "talker_unverified_clock_retry"
+            message = "Talker asserted an unverified clock value; retrying once with native function selection"
+        elif first_invalid_reason == "demonstration_replay":
             event = "talker_demonstration_replay_retry"
             message = "Talker copied a demonstration result without a native call; retrying once"
         elif first_invalid_reason == "progress_only":
@@ -409,6 +427,8 @@ class ReliableNvidiaLLMService(NvidiaLLMService):
         ):
             return "progress_only"
         start = getattr(self, "conversation_start_index", None)
+        if start is not None and _unverified_clock_claim(context, _completion_text(chunks)):
+            return "unverified_clock"
         if (
             start is not None
             and not any(_chunk_has_native_tool_call(chunk) for chunk in chunks)
@@ -438,6 +458,8 @@ class ReliableNvidiaLLMService(NvidiaLLMService):
         return None
 
     def _correction_for(self, context: LLMContext, invalid_reason: str) -> str:
+        if invalid_reason == "unverified_clock":
+            return UNVERIFIED_CLOCK_CORRECTION
         if invalid_reason == "demonstration_replay":
             return DEMONSTRATION_RESPONSE_CORRECTION
         if invalid_reason == "progress_only":
@@ -478,6 +500,17 @@ class ReliableNvidiaLLMService(NvidiaLLMService):
         return latest
 
 
+async def _native_protocol_stream(stream: AsyncIterator[ChatCompletionChunk]) -> AsyncIterator[ChatCompletionChunk]:
+    """Keep Generic native calls intact while withholding accompanying speech."""
+    chunks = await _collect_stream(stream)
+    native = any(_chunk_has_native_tool_call(chunk) for chunk in chunks)
+    for chunk in chunks:
+        if native and chunk.choices and chunk.choices[0].delta.content is not None:
+            chunk = copy.deepcopy(chunk)
+            chunk.choices[0].delta.content = None
+        yield chunk
+
+
 def _session_dialogue_context(context: LLMContext, start: int) -> LLMContext:
     """Attach bounded actual dialogue as quoted evidence, without changing history."""
     dialogue = [
@@ -516,7 +549,12 @@ def _build_retry_context(context: LLMContext, correction: str = EMPTY_RESPONSE_C
     """Clone context and append an ephemeral correction without mutating history."""
     messages = copy.deepcopy(context.get_messages())
     messages.append({"role": "system", "content": correction})
-    return LLMContext(messages, tools=context.tools, tool_choice=context.tool_choice)
+    tool_choice = (
+        {"type": "function", "function": {"name": "call_backend"}}
+        if correction == UNVERIFIED_CLOCK_CORRECTION
+        else context.tool_choice
+    )
+    return LLMContext(messages, tools=context.tools, tool_choice=tool_choice)
 
 
 def _chunk_has_valid_output(chunk: ChatCompletionChunk) -> bool:
@@ -630,6 +668,15 @@ def _progress_only(context: LLMContext, text: str) -> bool:
     return bool(normalized) and normalized not in _normalize_response(_latest_user_text(context))
 
 
+def _unverified_clock_claim(context: LLMContext, text: str) -> bool:
+    """Reject an asserted live clock value, while allowing quoted user words."""
+    return bool(
+        _CLOCK_VALUE_RE.search(text)
+        and _LIVE_CLOCK_CLAIM_RE.search(text)
+        and _normalize_response(text) not in _normalize_response(_latest_user_text(context))
+    )
+
+
 def _demonstration_response_replay(context: LLMContext, start: int, text: str) -> bool:
     """Reject copied example result text; never infer an intent or construct a call."""
     normalized = _normalize_response(text)
@@ -662,6 +709,8 @@ def _internal_mechanics_exposed(text: str) -> bool:
 
 
 def _direct_correction(reason: str) -> str:
+    if reason == "unverified_clock":
+        return UNVERIFIED_CLOCK_CORRECTION
     if reason == "demonstration_replay":
         return DEMONSTRATION_RESPONSE_CORRECTION
     if reason == "progress_only":

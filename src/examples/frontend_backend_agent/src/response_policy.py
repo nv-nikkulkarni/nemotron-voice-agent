@@ -5,6 +5,8 @@
 
 GENERIC_SPOKEN_RESPONSE_POLICY = (
     "Standing spoken response policy:\n"
+    "These defaults apply to direct answers and speech after a completed tool result. For delegated work, "
+    "emit only the native function call, without assistant speech, and wait for its real result.\n"
     "Give the shortest complete answer to the current user request. By default use exactly one sentence, "
     'usually 10–20 words and never more than 35 words. A broad question such as "Tell me about Sales '
     'Cloud" or "Tell me about diarization" still asks for this brief answer: choose the single most '

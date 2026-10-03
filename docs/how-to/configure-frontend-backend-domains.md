@@ -190,7 +190,8 @@ Authentication failures and invalid quote data fail closed. Non-finite or
 non-positive prices are not spoken as valid quotes.
 
 The Generic Talker has a code-owned standing response policy independent of
-editable persona and persistent instructions. It requests the shortest complete
+editable persona and persistent instructions. Its guidance applies to direct
+answers and speech after completed tool results. It requests the shortest complete
 answer in 1 sentence, normally 10–20 words and at most 35. Broad “tell me about”
 questions stay brief. Capability questions use 3 or 4 concrete examples in
 1 sentence of at most 25 words. Explicit detail, steps, lists, comparisons, or
@@ -264,10 +265,10 @@ registry order and ignores names outside the registry allowlist.
 
 Generic frontend persona edits keep the trusted `generic_talker` native-call
 examples, regardless of the edited prompt key. These examples demonstrate
-asynchronous clock lookup and architecture display using native tool-call messages.
-They do not grant access to a disabled tool. The clock example uses a service
-error instead of a fictional successful clock reading. Custom prompts for
-other domains do not inherit these Generic examples.
+asynchronous weather lookup and architecture display using native tool-call
+messages. They do not grant access to a disabled tool or include a clock-result
+demonstration. Custom prompts for other domains do not inherit these Generic
+examples.
 
 The Talker's runtime context supplies the browser's local date and timezone,
 without a current clock reading. The planner refreshes its local timestamp
@@ -407,6 +408,16 @@ The generic domain applies the following controls:
   The native model reconsiders the actual request; retry count and model-owned
   function selection remain unchanged. Literal user-requested echoes remain
   allowed; native calls and active real-result handling remain unchanged.
+- Generic withholds numeric assertions of current or local time without an
+  active finished result. Literal user-requested repetition remains allowed.
+  The existing single retry uses a clock-specific correction and constrains
+  native selection to `call_backend`. The model still authors all arguments;
+  normal first-attempt tool choice remains `auto`. Final-result handling
+  remains separate. This narrow output check does not
+  validate arbitrary facts or dispatch tools itself.
+- Generic withholds model speech accompanying native calls while preserving
+  those calls. Code-authored progress and completed-result speech remain
+  separate.
 - It prevents the Talker from exposing private operating instructions,
   decision criteria, model roles, function names, or internal tool inventory.
   Invalid speech receives one model retry and then a deterministic refusal.

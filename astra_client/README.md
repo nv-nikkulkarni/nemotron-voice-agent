@@ -91,7 +91,8 @@ disabled during an active session and while catalog defaults load. Opening
 the overlay to return. Unedited sessions use the displayed catalog
 prompt, preserving its native examples. Generic Frontend/Backend Agent also
 retains trusted native tool-call examples when you edit its persona, including
-clock lookup and architecture presentation. Generic keeps a brief-answer
+weather lookup and architecture presentation. Current-time requests still
+require a fresh clock tool result. Generic keeps a brief-answer
 baseline when you edit its persona: 1 sentence, normally 10–20 words and at
 most 35. Ask explicitly for detail, steps, lists, comparisons, or multiple
 facts to expand. Required results and safety information stay intact.

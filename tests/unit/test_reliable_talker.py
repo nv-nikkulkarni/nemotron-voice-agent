@@ -24,6 +24,7 @@ from examples.frontend_backend_agent.src.reliable_talker import (
     INTERNAL_MECHANICS_FALLBACK,
     REPEAT_SUBJECT_CORRECTION,
     TOOL_RESULT_CORRECTION,
+    UNVERIFIED_CLOCK_CORRECTION,
     WEATHER_GROUNDING_CORRECTION,
     ReliableNvidiaLLMService,
     _latest_finished_tool_result,
@@ -165,6 +166,75 @@ class ReliableTalkerTests(unittest.IsolatedAsyncioTestCase):
         chunks = await _collect(literal, LLMContext(examples + [{"role": "user", "content": "Please say " + answer}]))
         self.assertEqual(len(chunks), 1)
         self.assertEqual(len(literal.contexts), 1)
+
+    async def test_generic_native_calls_suppress_accompanying_speech_without_mutating_chunks(self) -> None:
+        native = _tool_chunk("What time is it?")
+        original = [_chunk(content="It's 10:45 AM."), native, _chunk(content="</tool_call> More private prose.")]
+        talker = _ScriptedTalker([original])
+        talker.conversation_start_index = 0
+        chunks = await _collect(talker, LLMContext([{"role": "user", "content": "What time is it?"}]))
+        self.assertTrue(chunks[1].choices[0].delta.tool_calls)
+        self.assertTrue(all(not chunk.choices[0].delta.content for chunk in chunks))
+        self.assertEqual(original[0].choices[0].delta.content, "It's 10:45 AM.")
+        self.assertEqual(len(talker.contexts), 1)
+        other_domain = _ScriptedTalker([original])
+        other_chunks = await _collect(other_domain, LLMContext([{"role": "user", "content": "A domain request"}]))
+        self.assertEqual(other_chunks[0].choices[0].delta.content, "It's 10:45 AM.")
+
+    async def test_unverified_live_clock_claim_requires_one_native_retry(self) -> None:
+        for remembered in (False, True):
+            for answer in ("The current time in Asia/Calcutta is 10:45 AM.", "It's 10:45 AM."):
+                with self.subTest(remembered=remembered, answer=answer):
+                    talker = _ScriptedTalker([[_chunk(content=answer)], [_tool_chunk("What time is it right now?")]])
+                    talker.conversation_start_index = 0
+                    if remembered:
+                        talker.remember_backend_response("A previous stock quote.")
+                    context = LLMContext(
+                        [{"role": "user", "content": "What time is it right now?"}], tool_choice="auto"
+                    )
+                    chunks = await _collect(talker, context)
+                    self.assertTrue(chunks[0].choices[0].delta.tool_calls)
+                    self.assertEqual(talker.contexts[1].get_messages()[-1]["content"], UNVERIFIED_CLOCK_CORRECTION)
+                    self.assertEqual(
+                        talker.contexts[1].tool_choice, {"type": "function", "function": {"name": "call_backend"}}
+                    )
+                    self.assertEqual(context.tool_choice, "auto")
+                    self.assertEqual(talker.fallbacks, [])
+
+    async def test_unverified_clock_retry_is_bounded_and_does_not_speak_the_guess(self) -> None:
+        talker = _ScriptedTalker(
+            [[_chunk(content="The current time is 10:45 AM.")], [_chunk(content="It's 10:46 AM.")]]
+        )
+        talker.conversation_start_index = 0
+        chunks = await _collect(talker, LLMContext([{"role": "user", "content": "What time is it?"}]))
+        self.assertEqual(chunks, [])
+        self.assertEqual(len(talker.contexts), 2)
+        self.assertEqual(talker.fallbacks, [EMPTY_RESPONSE_FALLBACK])
+
+    async def test_clock_guard_allows_literal_repetition_stable_facts_and_real_results(self) -> None:
+        for request, answer in (
+            ("Say The current time is 10:45 AM.", "The current time is 10:45 AM."),
+            ("Explain clock notation.", "12:30 PM means half past noon."),
+        ):
+            with self.subTest(request=request):
+                talker = _ScriptedTalker([[_chunk(content=answer)]])
+                talker.conversation_start_index = 0
+                chunks = await _collect(talker, LLMContext([{"role": "user", "content": request}]))
+                self.assertEqual(chunks[0].choices[0].delta.content, answer)
+                self.assertEqual(len(talker.contexts), 1)
+        answer = "The current time in Asia/Kolkata is 3:45 PM."
+        result = {"type": "tool_result", "tool": "get_current_time", "status": "success", "response_text": answer}
+        context = LLMContext(
+            [
+                {"role": "user", "content": "What time is it?"},
+                async_tool_messages.build_final_result_message("clock", json.dumps(result)),
+            ]
+        )
+        talker = _ScriptedTalker([[_chunk(content=answer)]])
+        talker.conversation_start_index = 0
+        chunks = await _collect(talker, context)
+        self.assertEqual(chunks[0].choices[0].delta.content, answer)
+        self.assertEqual(len(talker.contexts), 1)
 
     async def test_visible_response_does_not_retry(self) -> None:
         talker = _ScriptedTalker([[_chunk(content="Hello there.")]])
