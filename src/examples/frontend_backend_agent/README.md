@@ -55,7 +55,11 @@ check does not infer intent, select capabilities, or construct function calls.
 Generic also rejects a standalone reply that exactly matches a normalized
 demonstration assistant result following a tool or developer message. It uses
 the same single native retry and honest fallback, allowing literal user-requested
-echoes. Native calls and active real-result handling remain unchanged.
+echoes. Before and after the first actual backend result, the targeted correction
+explains that demonstrations do not establish capability availability and asks
+the native model to reconsider the actual request. Retry count and model-owned
+function selection remain unchanged. Native calls and active real-result
+handling remain unchanged.
 
 When direct tool speech is enabled, the structured function result is the single retained copy of the deterministic backend response; the separately emitted TTS frame is not appended again as an assistant message. The Talker remembers a bounded normalized signature outside the prompt context. If a later completion substantially replays that cached result without a native tool call, the runtime withholds it and retries once with an internal contract correction. It never selects a domain tool or constructs a function call. A second invalid replay fails closed with deterministic speech.
 

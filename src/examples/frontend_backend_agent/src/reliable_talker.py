@@ -662,6 +662,8 @@ def _internal_mechanics_exposed(text: str) -> bool:
 
 
 def _direct_correction(reason: str) -> str:
+    if reason == "demonstration_replay":
+        return DEMONSTRATION_RESPONSE_CORRECTION
     if reason == "progress_only":
         return PROGRESS_ONLY_CORRECTION
     return INTERNAL_MECHANICS_CORRECTION if reason == "internal_mechanics" else EMPTY_RESPONSE_CORRECTION

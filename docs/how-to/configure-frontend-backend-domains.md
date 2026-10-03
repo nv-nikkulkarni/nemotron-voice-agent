@@ -402,8 +402,11 @@ The generic domain applies the following controls:
   shape without selecting intent or constructing calls.
 - Generic rejects standalone replies that exactly match normalized protocol
   demonstration results, using the same single native retry and honest
-  fallback. Literal user-requested echoes remain allowed; native calls and
-  active real-result handling remain unchanged.
+  fallback. The targeted correction applies before and after the first actual
+  backend result: demonstrations do not establish capability availability.
+  The native model reconsiders the actual request; retry count and model-owned
+  function selection remain unchanged. Literal user-requested echoes remain
+  allowed; native calls and active real-result handling remain unchanged.
 - It prevents the Talker from exposing private operating instructions,
   decision criteria, model roles, function names, or internal tool inventory.
   Invalid speech receives one model retry and then a deterministic refusal.

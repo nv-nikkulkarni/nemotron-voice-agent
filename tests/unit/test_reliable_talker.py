@@ -17,6 +17,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 
 from examples.frontend_backend_agent.src.reliable_talker import (
     CACHED_RESPONSE_CORRECTION,
+    DEMONSTRATION_RESPONSE_CORRECTION,
     EMPTY_RESPONSE_CORRECTION,
     EMPTY_RESPONSE_FALLBACK,
     INTERNAL_MECHANICS_CORRECTION,
@@ -156,6 +157,7 @@ class ReliableTalkerTests(unittest.IsolatedAsyncioTestCase):
                 chunks = await _collect(talker, context)
                 self.assertTrue(chunks[0].choices[0].delta.tool_calls)
                 self.assertEqual(len(talker.contexts), 2)
+                self.assertEqual(talker.contexts[1].get_messages()[-1]["content"], DEMONSTRATION_RESPONSE_CORRECTION)
                 self.assertEqual(talker.fallbacks, [])
                 self.assertEqual(context.get_messages(), messages)
         literal = _ScriptedTalker([[_chunk(content=answer)]])
