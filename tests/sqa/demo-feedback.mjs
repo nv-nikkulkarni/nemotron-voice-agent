@@ -21,7 +21,7 @@ page.on("request", (request) => {
     pipeline: config.pipeline_mode, timezone: config.client_timezone,
     frontendEdited: Boolean(config.prompt_content), backendEdited: Boolean(config.thinker_prompt_content),
     persistent: config.persistent_prompt === "Use calm, friendly language for this demo.",
-    sampleBytes: config.tts_voice_sample?.length ?? 0,
+    sampleBytes: config.tts_voice_sample?.length ?? 0, voiceId: config.tts_voice_id,
   });
 });
 const turns = [
@@ -35,13 +35,11 @@ const turns = [
 ];
 async function voicePreview() {
   const studio = page.locator(".ex-config .voice-studio");
-  await page.locator(".ex-config summary").click();
-  const selects = studio.locator("select").filter({ has: page.locator('option[value]') });
-  const voice = selects.last();
-  const voices = await voice.locator("option").evaluateAll((options) => options.map((o) => o.value).filter(Boolean));
+  await studio.locator('input[name="tts-voice"]').first().waitFor();
+  const voices = await studio.locator('input[name="tts-voice"]').evaluateAll((inputs) => inputs.map((input) => input.value));
   assert(voices.length >= 2, "voice catalog must offer multiple voices");
   for (const id of (voices.filter((v) => /\.(Aria|Diego)$/.test(v)).length >= 2 ? voices.filter((v) => /\.(Aria|Diego)$/.test(v)) : voices).slice(0, 2)) {
-    await voice.selectOption(id);
+    await studio.locator(`input[name="tts-voice"][value="${id}"]`).check();
     const response = page.waitForResponse((r) => r.url().endsWith("/api/tts/preview") && r.request().method() === "POST");
     await studio.getByRole("button", { name: "Preview voice", exact: true }).click();
     const preview = await response;
@@ -125,25 +123,25 @@ try {
   assert((await editor.nth(1).inputValue()).endsWith("Keep all tool plans strict JSON."));
   assert.equal(await editor.nth(2).inputValue(), "Use calm, friendly language for this demo.");
   await H.shot(page, `${H.OUT}/prompts.png`);
-  await page.getByRole("button", { name: "Back to conversation" }).click();
+  await page.getByRole("button", { name: "Back to setup" }).click();
   await H.selectExample(page, { consent: true });
   await voicePreview();
+  await page.locator('input[name="tts-voice"][value="Magpie-Multilingual.EN-US.Aria"]').check();
   const generic = { key: "generic", turns: [] }; result.conversations.push(generic);
   assert((await H.startConversation(page)).connected);
   assert.deepEqual(result.sessionConfigs.at(-1), { pipeline: "generic-frontend-backend-agent",
-    timezone: "Asia/Calcutta", frontendEdited: true, backendEdited: true, persistent: true, sampleBytes: 0 });
+    timezone: "Asia/Calcutta", frontendEdited: true, backendEdited: true, persistent: true, sampleBytes: 0, voiceId: "Magpie-Multilingual.EN-US.Aria" });
   assert(await H.waitForSettledWelcome(page));
-  assert(await page.getByRole("button", { name: "Prompts", exact: true }).isDisabled());
+  assert.equal(await page.getByRole("button", { name: "Prompts", exact: true }).count(), 0);
   for (let index = 0; index < turns.length; index++) {
     await runTurn(generic, turns[index], index + 1);
     if (index === 4) {
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       const settings = page.getByRole("dialog", { name: "Settings", exact: true });
-      const voice = settings.locator(".voice-studio select").last();
-      assert(await voice.isEnabled(), "preset voice changes must be available in a ready session");
-      await voice.selectOption("Magpie-Multilingual.EN-US.Aria");
-      generic.liveVoiceSelected = await voice.inputValue();
-      for (const engine of await settings.getByRole("radio").all()) assert(await engine.isDisabled());
+      assert.equal(await settings.getByRole("combobox").count(), 2, "Settings must expose only audio device controls");
+      assert.equal(await settings.locator(".voice-studio").count(), 0);
+      assert.equal(await settings.getByRole("radio").count(), 0);
+      assert.equal(await settings.getByRole("checkbox").count(), 0);
       await settings.getByRole("button", { name: "Close settings", exact: true }).click();
     }
   }
@@ -198,7 +196,7 @@ try {
   await page.getByRole("button", { name: "Restore frontend default", exact: true }).click();
   await page.getByRole("button", { name: "Restore backend default", exact: true }).click();
   assert.equal(await editor.nth(2).inputValue(), "Use calm, friendly language for this demo.");
-  await page.getByRole("button", { name: "Back to conversation" }).click();
+  await page.getByRole("button", { name: "Back to setup" }).click();
   await H.selectExample(page, { example: "omni", model: null, consent: true });
   const omni = { key: "omni", turns: [] }; result.conversations.push(omni);
   assert((await H.startConversation(page)).connected); assert(await H.waitForSettledWelcome(page));
@@ -207,11 +205,10 @@ try {
   await finish(omni);
   if (process.env.SQA_VOICE_SAMPLE) {
     await H.selectExample(page, { consent: true, tts: "zeroshot" });
-    await page.locator(".ex-config summary").click();
     const studio = page.locator(".ex-config .voice-studio");
     await studio.locator('input[type="file"]').setInputFiles(process.env.SQA_VOICE_SAMPLE);
     await studio.getByLabel("Use sample for zero-shot voice").check();
-    assert(await studio.locator("select").last().isDisabled());
+    for (const voice of await studio.locator('input[name="tts-voice"]').all()) assert(await voice.isDisabled());
     const clone = { key: "clone", turns: [] }; result.conversations.push(clone);
     assert((await H.startConversation(page)).connected);
     const config = result.sessionConfigs.at(-1);

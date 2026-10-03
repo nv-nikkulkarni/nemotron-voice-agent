@@ -34,7 +34,8 @@ const EMPTY_ICE_SERVERS: RTCIceServer[] = [];
 const DEFAULT_AUDIO_INPUT_SAMPLE_RATE = 16000;
 const DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE = 22050;
 type ProviderClient = ComponentProps<typeof PipecatClientProvider>["client"];
-type View = "main" | "settings" | "pipeline" | "prompts";
+type View = "main" | "prompts";
+type Overlay = "settings" | "pipeline" | null;
 type Tour = "introduction" | null;
 
 function AppInner() {
@@ -45,12 +46,14 @@ function AppInner() {
   const recorderSampleRate = deployment?.audio?.input_sample_rate ?? DEFAULT_AUDIO_INPUT_SAMPLE_RATE;
   const playerSampleRate = deployment?.audio?.output_sample_rate ?? DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE;
   const [view, setView] = useState<View>(() => location.pathname === "/prompts" ? "prompts" : "main");
+  const [overlay, setOverlay] = useState<Overlay>(null);
   const navigate = useCallback((next: View) => {
     history.pushState({}, "", next === "prompts" ? "/prompts" : "/");
+    setOverlay(null);
     setView(next);
   }, []);
   useEffect(() => {
-    const sync = () => setView(location.pathname === "/prompts" ? "prompts" : "main");
+    const sync = () => { setOverlay(null); setView(location.pathname === "/prompts" ? "prompts" : "main"); };
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
@@ -127,17 +130,16 @@ function AppInner() {
         <div className="clean-app">
           <TopBar
             onHome={() => navigate("main")}
-            onPrompts={() => navigate("prompts")}
-            onSettings={() => setView("settings")}
-            onPipeline={() => setView("pipeline")}
+            onSettings={() => setOverlay("settings")}
+            onPipeline={() => setOverlay("pipeline")}
             onTour={() => {
-              setView("main");
+              navigate("main");
               setTour("introduction");
             }}
           />
           <main className="clean-main">
             {view === "prompts" ? <PromptPage onClose={() => navigate("main")} /> : (
-              <><ConversationStage onLiveChange={handleLiveChange} /><ArchitecturePresentation /></>
+              <><ConversationStage onLiveChange={handleLiveChange} onPrompts={() => navigate("prompts")} /><ArchitecturePresentation /></>
             )}
           </main>
           {view !== "prompts" && <SessionControls />}
@@ -145,8 +147,8 @@ function AppInner() {
           <SessionCaptureReporter />
         </div>
         <StoppingOverlayHost />
-        {view === "settings" && <SettingsPage onClose={() => setView("main")} onPrompts={() => navigate("prompts")} />}
-        {view === "pipeline" && <PipelineInfo onClose={() => setView("main")} />}
+        {overlay === "settings" && <SettingsPage onClose={() => setOverlay(null)} />}
+        {overlay === "pipeline" && <PipelineInfo onClose={() => setOverlay(null)} />}
         {tour === "introduction" && <IntroductionTour onClose={() => setTour(null)} />}
       </SessionLifecycleProvider>
     </PipecatClientProvider>

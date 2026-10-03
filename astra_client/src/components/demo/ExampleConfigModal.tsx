@@ -1,17 +1,17 @@
-import { VoiceStudio } from "./VoiceStudio";
 // SPDX-FileCopyrightText: Copyright (c) 2024–2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: BSD-2-Clause
 
-// Configuration popup shown when a user clicks an example card. It surfaces the
+// Configuration popup opened from the launch bar below the example cards. It surfaces the
 // per-session choices that used to be buried in Settings:
 //   • Generic Frontend/Backend → fixed Lightning Talker + reasoning Super Thinker,
 //     TTS (Magpie / Chatterbox), and a grounded-tools multi-select.
 //   • Omni → TTS only (no LLM, no tools — the Omni model is fixed and toolless).
 // Everything is applied to the app store as the user interacts, so the Start button
-// just launches. Prompt / audio / advanced settings stay in the ⚙ Settings page
-// (noted at the bottom of the popup).
+// just launches. Prompts open on their own pre-session page; Settings contains
+// only the microphone and speaker controls.
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { VoiceStudio } from "./VoiceStudio";
 import { useApp } from "../../context/useApp";
 import type { DeploymentOption, LLMService } from "../../api";
 import { ToolSelector } from "./ToolSelector";
@@ -38,13 +38,14 @@ function llmCatalogReasoningDefault(svc: LLMService | undefined): boolean {
 
 
 export function ExampleConfigModal({
-  option, connecting, connectionError, onStart, onClose,
+  option, connecting, connectionError, onStart, onClose, onPrompts,
 }: Readonly<{
   option: DeploymentOption;
   connecting: boolean;
   connectionError: string;
   onStart: () => void;
   onClose: () => void;
+  onPrompts: () => void;
 }>) {
   const {
     llms, llmsLoading, selectedLLMId,
@@ -55,6 +56,15 @@ export function ExampleConfigModal({
     recordSession, setRecordSession, storeConsent, setStoreConsent,
     reasoning, setReasoning,
   } = useApp();
+
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const panel = useRef<HTMLDivElement>(null);
+  const close = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    close.current?.focus();
+    return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
+  }, []);
 
   const isGeneric = option.domainProfile === "generic" || option.key === "generic-frontend-backend-agent";
   // Omni pays a much steeper reasoning cost than the cascaded pipeline: its
@@ -88,11 +98,18 @@ export function ExampleConfigModal({
   }, [selectedLLMId, selectedReasoningDefault, setReasoning]);
 
   return (
-    <div className="ex-config__backdrop" role="dialog" aria-modal="true" aria-label={`Configure ${meta}`} onClick={onClose}>
-      <div className="ex-config" onClick={(e) => e.stopPropagation()}>
+    <div className="ex-config__backdrop" role="dialog" aria-modal="true" aria-label={`Configure ${meta}`} onClick={() => { if (!connecting && !voiceBusy) onClose(); }} onKeyDown={(event) => {
+      if (event.key === "Escape" && !connecting && !voiceBusy) { event.stopPropagation(); onClose(); }
+      if (event.key !== "Tab") return;
+      const items = [...(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), audio[controls]') ?? [])];
+      const first = items[0], last = items.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }}>
+      <div ref={panel} className="ex-config" onClick={(e) => e.stopPropagation()}>
         <div className="ex-config__head">
           <h2 className="ex-config__title">{meta}</h2>
-          <button type="button" className="ex-config__close" aria-label="Close" onClick={onClose}>×</button>
+          <button ref={close} type="button" disabled={connecting || voiceBusy} className="ex-config__close" aria-label="Close" onClick={onClose}>×</button>
         </div>
         <p className="ex-config__lead">Choose how this assistant runs, then start talking.</p>
 
@@ -112,17 +129,22 @@ export function ExampleConfigModal({
 
         {ttsChoices.length > 0 && (
           <section className="ex-config__section">
-            <h3 className="ex-config__label">Voice (text-to-speech)</h3>
+            <h3 className="ex-config__label">Speech engine</h3>
             <div className="ex-config__opts">
               {ttsChoices.map((o) => (
                 <label key={o.key} className={`ex-opt ${selectedTTSId === o.svc.id ? "on" : ""}`}>
-                  <input type="radio" name="tts" checked={selectedTTSId === o.svc.id} onChange={() => selectTTS(o.svc.id)} />
+                  <input type="radio" name="tts" disabled={connecting || voiceBusy} checked={selectedTTSId === o.svc.id} onChange={() => selectTTS(o.svc.id)} />
                   <span className="ex-opt__body"><span className="ex-opt__name">{o.label}</span><span className="ex-opt__sub">{o.sub}</span></span>
                 </label>
               ))}
             </div>
           </section>
         )}
+
+        <section className="ex-config__section">
+          <h3 className="ex-config__label">Speaking voice</h3>
+          <VoiceStudio key={selectedTTSId} onBusyChange={setVoiceBusy} />
+        </section>
 
         {isGeneric && (
           <section className="ex-config__section">
@@ -165,23 +187,20 @@ export function ExampleConfigModal({
           </label>
         </div>
 
-        <p className="ex-config__note">
-          <span className="ex-config__gear" aria-hidden>⚙</span>
-          {isGeneric
-            ? "Edit frontend and backend prompts on the Prompts page before starting. Choose a voice in Settings; model roles stay configured for this pipeline."
-            : "To modify the prompt, audio and other settings, click the settings icon — then restart the example pipeline after your changes take effect."}
-        </p>
+        <div className="ex-config__prompts">
+          <div><h3 className="ex-config__label">Prompts</h3><p className="set-hint">Prepare system prompts and persistent instructions before starting.</p></div>
+          <button type="button" className="btn-secondary" disabled={connecting || voiceBusy} onClick={onPrompts}>Edit prompts</button>
+        </div>
 
-        {connectionError && <p className="ex-config__error">{connectionError}</p>}
+        {connectionError && <p role="alert" className="ex-config__error">{connectionError}</p>}
 
-        <details><summary>Voice selection, preview, and custom sample</summary><VoiceStudio /></details>
         <div className="ex-config__actions">
-          <button type="button" className="btn-secondary" onClick={onClose} disabled={connecting}>Cancel</button>
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={connecting || voiceBusy}>Cancel</button>
           <button
             type="button"
             className="btn-primary btn-bubbly"
             onClick={onStart}
-            disabled={connecting || configurationLoading}
+            disabled={connecting || configurationLoading || voiceBusy}
           >
             {connecting ? "Connecting…" : configurationLoading ? "Preparing…" : "Start conversation"}
           </button>

@@ -132,7 +132,7 @@ For first-chunk and inter-chunk latency and throughput (RTFX) across GPUs, refer
 
 ### Voices & Emotions
 
-The active voice is the `voice_id` in the catalog entry. The client UI includes a voice selector that discovers the connected service's available voices and languages, so you can switch mid-session. Voice IDs follow each model's naming. For example, use `Magpie-Multilingual.EN-US.Aria`, `Magpie-ZeroShot-Multilingual.Female`, or `Chatterbox-Multilingual.en-US.Male`. Available voices and emotions depend on the deployed NIM and can be discovered at runtime over gRPC or HTTP. Refer to [available voices and emotions](https://docs.nvidia.com/nim/speech/latest/tts/voices.html).
+The active voice is the `voice_id` in the catalog entry. The upstream client includes a voice selector that discovers available voices and languages for mid-session switching. The Astra demo uses pre-session voice cards under **Configure**. Voice IDs follow each model's naming. For example, use `Magpie-Multilingual.EN-US.Aria`, `Magpie-ZeroShot-Multilingual.Female`, or `Chatterbox-Multilingual.en-US.Male`. Available voices and emotions depend on the deployed NIM and can be discovered at runtime over gRPC or HTTP. Refer to [available voices and emotions](https://docs.nvidia.com/nim/speech/latest/tts/voices.html).
 
 - **Magpie Multilingual**: multiple voices and emotional styles per locale.
 - **Magpie Zeroshot**: languages listed in [Supported languages](#supported-languages); built-in voices across locales are `Magpie-ZeroShot-Multilingual.Female` (default) and `Magpie-ZeroShot-Multilingual.Male` ([model card](https://build.nvidia.com/nvidia/magpie-tts-zeroshot/modelcard)).
@@ -322,23 +322,27 @@ tts = NvidiaTTSService(
 
 ### Preview and Upload Voices in the Astra Client
 
-Before starting a session, open **Settings** or the example's **Configure**
-popup. Choose a catalog engine and voice, enter up to 200 characters, and select
-**Preview voice**. Preview uses `POST /api/tts/preview`, returns WAV audio, and
-is disabled while a session is starting or live. After the session is ready,
-a preset voice change uses `set-voice` within the current engine. The preset
-selector remains disabled while connecting or waiting for readiness, or while
-an enabled reference sample supplies the voice. Engine and language controls
-remain locked during the session; changing engines requires a new session. The configuration popup lists available engines from the deployment
-catalog, including the optional Magpie Zeroshot service when enabled.
+Before starting a session, select **Configure** in the launch bar below the
+example cards. Choose a catalog **Speech engine**, then a **Speaking voice**
+card. The scrollable gallery shows voice names and language details without a
+dropdown or collapsed section. Larger catalogs offer **Find a voice** search
+by name or expression and show a matching count. Enter up to 200 characters
+and select **Preview voice**.
+Preview uses `POST /api/tts/preview` and returns WAV audio. Engines, voices,
+languages, and samples are pre-session choices; end the session before
+changing them. **Settings** contains only microphone and speaker selectors.
+The configuration popup lists available deployment engines, including
+Magpie Zeroshot when enabled.
 
 For the Frontend/Backend Agent or Omni Subagents, select Magpie Zeroshot
-to use a reference voice. Upload 3–10 seconds of clear speech, then
-enable **Use sample for zero-shot voice**. The browser converts the clip to
+to use a reference voice. Under **Create a character voice**, upload
+3–10 seconds of clear speech, then enable **Use sample for zero-shot voice**. The browser converts the clip to
 22.05 kHz, 16-bit mono PCM WAV and stores it in IndexedDB for that browser
 profile and origin. The input file is limited to 10 MB. **Remove sample**
 deletes the saved clip. The use checkbox is explicit; uploading alone does not
-activate the sample. Preview uses the sample when this checkbox is enabled.
+activate the sample. The saved clip persists across reloads, but the checkbox
+resets off; enable it again to use the sample. Preview uses the sample when
+this checkbox is enabled.
 Preset voice selection is disabled while the sample supplies the voice. The
 service sets Riva's required `voice_name` to `Magpie-ZeroShot-Multilingual`
 for validated reference audio, rather than a built-in Female or Male preset.

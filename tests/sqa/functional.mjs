@@ -77,6 +77,7 @@ async function landingChecks(browser) {
     await page.locator(".startview__launch").getByRole("button", { name: /^configure$/i }).click();
     rec("select/config-modal-visible", await popup.isVisible().catch(() => false));
     const start = popup.getByRole("button", { name: /start conversation/i });
+    await page.waitForFunction(() => !document.querySelector(".ex-config__actions .btn-primary")?.disabled);
     rec("select/start-enabled-after-pick", await start.isEnabled(), "generic configured");
     const roles = await popup.locator(".ex-config__section").filter({ hasText: /agent model roles/i }).innerText().catch(() => "");
     rec("select/fixed-model-roles", /lightning/i.test(roles) && /super/i.test(roles), roles.replace(/\n/g, " "));

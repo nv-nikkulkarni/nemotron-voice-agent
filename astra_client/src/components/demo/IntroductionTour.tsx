@@ -39,8 +39,14 @@ const INTRODUCTION_STEPS: TourStep[] = [
     body: "Choose the voice, recording preferences, and—on the Generic agent—the exact tools available to your session.",
   },
   {
-    target: '[data-tour="start"]',
+    target: '[data-tour="prompts"]',
     eyebrow: "Step 3",
+    title: "Prepare your prompts",
+    body: "Edit system prompts and persistent instructions before starting. Your edits are saved in this browser.",
+  },
+  {
+    target: '[data-tour="start"]',
+    eyebrow: "Step 4",
     title: "Start talking",
     body: "Launch the selected example directly. You can interrupt speech naturally and end the session from the header.",
   },
@@ -53,8 +59,8 @@ const INTRODUCTION_STEPS: TourStep[] = [
   {
     target: '[data-tour="settings"]',
     eyebrow: "Fine tune",
-    title: "Adjust session settings",
-    body: "Review audio devices, the deployment-managed model, prompts, voices, and Generic tool selection.",
+    title: "Choose your audio devices",
+    body: "Settings contains your microphone and speaker choices. Prepare voices, tools, and prompts from the launch bar before starting.",
   },
 ];
 

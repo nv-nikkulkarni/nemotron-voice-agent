@@ -388,10 +388,13 @@ current clock reading. The planner refreshes its local timestamp for each plan
 using `client_timezone`; spoken clock answers require a new `get_current_time`
 result.
 
-Before starting an Astra session, use **Prompts** to edit both roles and save
-persistent appended instructions. Refer to [Astra voice preview and sample
+Before starting an Astra session, use **Prompts** beside **Configure** in the
+launch bar to edit both roles and save persistent appended instructions.
+**Configure** also provides **Edit prompts** and visible speaking-voice cards.
+Prepare agent options before **Start conversation**; **Settings** contains
+only microphone and speaker selectors. Refer to [Astra voice preview and sample
 upload](../../../docs/how-to/configure-tts.md#preview-and-upload-voices-in-the-astra-client)
-for preview, same-engine voice switching, and compatible reference samples.
+for pre-session voice selection, preview, and compatible reference samples.
 The demo speech wrapper adjusts only aligned “Nemotron” timing; refer to the
 [pronunciation boundary](../../../docs/how-to/configure-tts.md#pronunciation-ipa).
 

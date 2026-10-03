@@ -15,13 +15,11 @@ export function TopBar({
   onHome,
   onSettings,
   onPipeline,
-  onPrompts,
   onTour,
 }: Readonly<{
   onHome: () => void;
   onSettings: () => void;
   onPipeline: () => void;
-  onPrompts: () => void;
   onTour: () => void;
 }>) {
   const { phase, endSession } = useSessionLifecycle();
@@ -65,7 +63,6 @@ export function TopBar({
             ?
           </button>
         )}
-        <button className="btn-secondary" onClick={onPrompts} disabled={active}>Prompts</button>
         <button className="icon-btn" data-tour="pipeline" onClick={onPipeline} title="Pipeline info" aria-label="Pipeline info">ⓘ</button>
         <button className="icon-btn icon-btn--settings" data-tour="settings" onClick={onSettings} title="Settings" aria-label="Settings">⚙</button>
         {active && (

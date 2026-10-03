@@ -23,6 +23,7 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 |---|---|
 | `functional.mjs` | Exhaustive DOM: landing, cards, model toggle, Beta badge, consent/record toggles, settings, session lifecycle (start→end→thanks→restart), **upload validation**, visual diff. |
 | `demo-feedback.mjs` | Focused prompt persistence, voice preview, Generic follow-ups and speech, Generic/Omni architecture, optional zero-shot sample, and capture acknowledgement checks. |
+| `pre-session-configuration.mjs` | Launch controls, prompt persistence, voice-card previews, device-only Settings, mobile layout, optional zero-shot sample, and one spoken exchange with capture acknowledgement. |
 | `converse.mjs` | Real multi-turn **spoken** conversations (generic + omni); verifies each turn via ASR + DOM, tools, latency, dialogue context. |
 | `concurrent.mjs` | N isolated sessions at once; distinct session IDs, all connect + hear greeting, 0 errors. |
 | `comprehensive.mjs` | Full Generic tool, Omni media/webcam, UI lifecycle, and mixed eight-session qualification. |
@@ -39,8 +40,8 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 
 The Generic Frontend/Backend example owns its seven-tool maximum allowlist on
 the server. `GET /api/tools` exposes the allowed ToolSpecs to the configuration
-popup and **Settings**, which share the same checkboxes. The client sends the
-selected subset for the next session; the server never accepts a tool outside
+popup under **Configure**. **Settings** contains only microphone and speaker
+selectors. The client sends the selected subset for the next session; the server never accepts a tool outside
 the registry allowlist. Release suites assert the exact Generic catalog
 (`get_weather`, `get_stock_price`, `get_current_time`, `show_architecture`,
 `web_search`, `calculate_bmi`, and `generate_random_number`) before exercising native tool calls. The harness also
@@ -54,6 +55,7 @@ export SQA_BASE=http://localhost:7862 # default
 ./sqa.sh functional
 ./sqa.sh converse both     # or: generic | omni
 ./sqa.sh demo-feedback
+./sqa.sh pre-session-configuration
 ./sqa.sh captured-sessions
 ./sqa.sh repeated-expect-tool
 ./sqa.sh corner
@@ -72,6 +74,33 @@ a stable external identifier. A later phase or rerun does not overwrite earlier
 evidence.
 Versioned qualification summaries live in `reports/`; older completed runs live in
 `reports/archive/`.
+
+## Pre-Session Configuration Checks
+
+From the repository root, set `SQA_BASE` to the target UI and use the existing
+inference-gateway credential in `SQA_KEY`, then run:
+
+```bash
+bash tests/sqa/sqa.sh pre-session-configuration
+```
+
+The focused suite checks **Configure**, **Prompts**, and **Start conversation**
+in the launch bar, prompt edits across reloads, and **Edit prompts** in the
+configuration popup, keeping the editor open behind audio Settings. It
+verifies voice search and native radio-keyboard selection reaches the preview
+payload, 2 audible preset previews, and mobile layout without overflow
+with **Configure** and **Prompts** side by side. Before and during a session,
+**Settings** must contain only microphone and speaker selectors.
+
+Set `SQA_VOICE_SAMPLE` to a host reference file to include saved zero-shot
+sample preview, removal, and reload checks. It verifies the saved file
+persists while its use checkbox resets off, then explicitly enables it again.
+The launcher uses the sample mount described below; the deployment must offer Magpie Zeroshot. The suite
+also checks selected Aria and edited role prompts in actual session
+configuration, 1 real spoken exchange with capture acknowledgement, and Omni
+configuration. It writes `pre-session-configuration-report.json`, screenshots,
+and audio under `SQA_OUT`. This focused suite does not replace release suites
+or human listening acceptance.
 
 ## Demo Feedback Checks
 
@@ -135,9 +164,11 @@ and enabled sample. It records a Halloween greeting and a cloned-voice
 Preview checks inspect the WAV Blob used by the browser audio player and
 require playback to start. They prefer Aria and Diego when both are available,
 otherwise the first 2 catalog voices. A missing Chromium DevTools response
-body does not invalidate a valid player Blob. During the ready Generic session,
-the suite changes the preset to Aria, checks that engine radio controls stay
-locked, and continues with the next spoken turn.
+body does not invalidate a valid player Blob. The suite selects the Aria voice
+card before starting and verifies its session configuration. During the ready
+Generic session, it checks that **Settings** contains exactly 2 audio-device
+selectors and no voice, engine, or tool controls. Agent options stay in the
+pre-session setup flow.
 
 If a check fails while session-end controls remain available, the suite
 attempts graceful ending and records the failed session's teardown state before

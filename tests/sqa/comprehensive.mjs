@@ -12,7 +12,7 @@
 //      "how well Nemotron Lightning calls tools").
 //   B. OMNI, >=15 turns — voice turns + image upload (attachment) + webcam-frame
 //      simulation; asserts the model describes the fed image.
-//   C. UI FEATURES (single stream) — end→switch example, ⚙ Settings prompt edit +
+//   C. UI FEATURES (single stream) — end→switch example, pre-session Prompts edit +
 //      restart, pipeline-info overlay, NGC session-capture status; every wait is
 //      timeout-guarded and any timeout is recorded as a HANG failure.
 //   D. CONCURRENCY — 8 simultaneous streams (mix of generic + omni), each a short
@@ -321,10 +321,12 @@ async function phaseC() {
     await guard("C2.end", 20000, () => H.endConversation(page));
     await guard("C2.dismiss2", 8000, () => H.dismissFeedback(page));
 
-    // C3. Open ⚙ Settings, override the prompt with a distinctive instruction, close.
-    const opened = await guard("C3.openSettings", 10000, () => H.openOverlay(page, "settings"));
-    add("settings overlay opens", !!opened);
-    // Pre-select generic so the textarea shows the generic base prompt, then append the marker.
+    // C3. Choose Generic before editing its per-example prompt on the launch page.
+    await guard("C3.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie" }));
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await guard("C3.openPrompts", 10000, () => page.locator(".startview__launch").getByRole("button", { name: "Prompts", exact: true }).click());
+    await page.locator(".prompt-studio textarea").first().waitFor();
+    add("pre-session prompts page opens", new URL(page.url()).pathname === "/prompts");
     const ta = page.locator(".set-textarea");
     let promptEdited = false;
     if (await ta.count()) {
@@ -334,7 +336,7 @@ async function phaseC() {
       promptEdited = (await ta.first().inputValue().catch(() => "")).includes(PROMPT_MARKER);
     }
     add("prompt textarea editable", promptEdited);
-    await guard("C3.closeSettings", 8000, () => H.closeOverlay(page));
+    await guard("C3.closePrompts", 8000, () => page.getByRole("button", { name: "Back to setup" }).click());
 
     // C4. Restart the pipeline (generic) → the prompt override should take effect.
     await guard("C4.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie" }));

@@ -11,7 +11,7 @@ export function PromptPage({ onClose }: Readonly<{ onClose: () => void }>) {
   return (
     <section className="prompt-studio" aria-label="Prompt configuration">
       <div className="page-panel__head"><h2>Prompts · {app.selectedExample?.label ?? "Voice agent"}</h2>
-        <button className="btn-secondary" onClick={onClose}>Back to conversation</button></div>
+        <button className="btn-secondary" onClick={onClose}>Back to setup</button></div>
       <p className="set-hint">Prepare your next demo here. Edits are saved in this browser and applied when a new session starts.</p>
       {app.promptsLoading && <p role="status" className="set-hint">Loading system prompt defaults…</p>}
       <label className="set-field"><span className="set-field__label">Frontend system prompt · spoken responses</span>

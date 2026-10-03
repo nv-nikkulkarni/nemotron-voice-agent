@@ -1,14 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2024–2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: BSD-2-Clause
 
-// Settings page (opened from the gear on the main page): deployment model,
-// per-example tools, audio devices, and prompt.
+// Settings contains only microphone and speaker selection.
+// Agent configuration belongs to the pre-session launch flow.
 
 import { usePipecatClientMediaDevices } from "@pipecat-ai/client-react";
-import { useConnectionState } from "../../hooks/useConnectionState";
-import { useApp } from "../../context/useApp";
-import { VoiceStudio } from "./VoiceStudio";
-import { ToolSelector } from "./ToolSelector";
 
 function DeviceSelect({
   label, devices, selectedId, onChange,
@@ -35,20 +31,11 @@ function Section({ icon, title, children }: Readonly<{ icon: string; title: stri
   );
 }
 
-export function SettingsPage({ onClose, onPrompts }: Readonly<{ onClose: () => void; onPrompts: () => void }>) {
-  const { isConnected, isConnecting } = useConnectionState();
-  const sessionActive = isConnected || isConnecting;
-  const {
-    selectedExample, selectedLLM,
-    ttsServices, selectedTTSId, selectTTS,
-    tools, toolsLoading, selectedTools, toggleTool,
-  } = useApp();
+export function SettingsPage({ onClose }: Readonly<{ onClose: () => void }>) {
   const { availableMics, selectedMic, updateMic, availableSpeakers, selectedSpeaker, updateSpeaker } = usePipecatClientMediaDevices();
 
   const micId = "deviceId" in selectedMic ? selectedMic.deviceId : undefined;
   const spkId = "deviceId" in selectedSpeaker ? selectedSpeaker.deviceId : undefined;
-  const isGeneric = selectedExample?.domainProfile === "generic"
-    || selectedExample?.key === "generic-frontend-backend-agent";
 
   return (
     <div className="page-overlay" role="dialog" aria-modal="true" aria-label="Settings">
@@ -59,60 +46,13 @@ export function SettingsPage({ onClose, onPrompts }: Readonly<{ onClose: () => v
         </div>
 
         <div className="page-panel__body">
-          <Section icon="🧠" title="Model">
-            <label className="set-field">
-              <span className="set-field__label">Language model</span>
-              <span className="set-value">{selectedLLM?.name ?? "Default"}</span>
-            </label>
-            <p className="set-hint">The endpoint is managed by this deployment and cannot be overridden from the browser.</p>
-          </Section>
-
-          {isGeneric && (
-            <Section icon="🛠️" title="Tools">
-              <p className="set-hint">Choose which grounded capabilities are available in your next session.</p>
-              <ToolSelector
-                tools={tools}
-                selectedTools={selectedTools}
-                loading={toolsLoading}
-                onToggle={toggleTool}
-              />
-            </Section>
-          )}
-
-          {ttsServices.length > 1 && (
-            <Section icon="🔊" title="Voice (text-to-speech)">
-              <p className="set-hint">Which engine speaks the agent's replies. Applies to your next session.</p>
-              <div className="set-tts-options" role="radiogroup" aria-label="Text-to-speech engine">
-                {ttsServices.map((svc) => {
-                  const on = selectedTTSId === svc.id;
-                  return (
-                    <button
-                      key={svc.id}
-                      type="button"
-                      disabled={sessionActive}
-                      role="radio"
-                      aria-checked={on}
-                      className={`set-tts-btn ${on ? "on" : ""}`}
-                      onClick={() => selectTTS(svc.id)}
-                    >
-                      {svc.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </Section>
-          )}
-
-          <Section icon="🔊" title="Voice preview and samples"><VoiceStudio /></Section>
+          <p className="set-hint">Choose the microphone you speak into and the speaker you hear the assistant through.</p>
           <Section icon="🎧" title="Audio">
             <DeviceSelect label="Input device (microphone)" devices={availableMics} selectedId={micId} onChange={updateMic} />
             <DeviceSelect label="Output device (speaker)" devices={availableSpeakers} selectedId={spkId} onChange={updateSpeaker} />
           </Section>
 
-          <Section icon="🎭" title="Prompt">
-            <p className="set-hint">Edit frontend and backend prompts and your persistent instructions before a session.</p>
-            <button className="btn-secondary" disabled={sessionActive} onClick={onPrompts}>Open Prompts</button>
-          </Section>
+
         </div>
 
         <div className="page-panel__foot">

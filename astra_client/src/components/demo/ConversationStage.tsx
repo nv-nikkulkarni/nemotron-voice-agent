@@ -104,7 +104,7 @@ function ExampleCard({
   );
 }
 
-function StartView({ connecting }: Readonly<{ connecting: boolean }>) {
+function StartView({ connecting, onPrompts }: Readonly<{ connecting: boolean; onPrompts: () => void }>) {
   const {
     deploymentOptions,
     selectedExample,
@@ -149,24 +149,27 @@ function StartView({ connecting }: Readonly<{ connecting: boolean }>) {
             <span className="startview__selection-label">Selected example</span>
             <strong>{selectedExample.label}</strong>
           </div>
-          <button
-            type="button"
-            className="btn-secondary"
-            data-tour="configure"
-            onClick={() => openConfig(selectedExample.key)}
-            disabled={connecting}
-          >
-            Configure
-          </button>
-          <button
-            type="button"
-            className="btn-primary btn-bubbly"
-            data-tour="start"
-            onClick={() => void beginSession()}
-            disabled={connecting || configurationLoading}
-          >
-            {connecting ? "Connecting…" : configurationLoading ? "Preparing…" : "Start conversation"}
-          </button>
+          <div className="startview__actions">
+            <button
+              type="button"
+              className="btn-secondary"
+              data-tour="configure"
+              onClick={() => openConfig(selectedExample.key)}
+              disabled={connecting}
+            >
+              Configure
+            </button>
+            <button type="button" className="btn-secondary" data-tour="prompts" onClick={onPrompts} disabled={connecting}>Prompts</button>
+            <button
+              type="button"
+              className="btn-primary btn-bubbly"
+              data-tour="start"
+              onClick={() => void beginSession()}
+              disabled={connecting || configurationLoading}
+            >
+              {connecting ? "Connecting…" : configurationLoading ? "Preparing…" : "Start conversation"}
+            </button>
+          </div>
         </section>
       )}
 
@@ -179,6 +182,7 @@ function StartView({ connecting }: Readonly<{ connecting: boolean }>) {
           connectionError={connectionError}
           onStart={() => void beginSession()}
           onClose={() => setConfigOpen(false)}
+          onPrompts={() => { setConfigOpen(false); onPrompts(); }}
         />
       )}
     </div>
@@ -216,7 +220,7 @@ function ConversationLive() {
   );
 }
 
-export function ConversationStage({ onLiveChange }: Readonly<{ onLiveChange?: (live: boolean) => void }>) {
+export function ConversationStage({ onLiveChange, onPrompts }: Readonly<{ onLiveChange?: (live: boolean) => void; onPrompts: () => void }>) {
   const { isConnected, isConnecting } = useConnectionState();
   const { phase } = useSessionLifecycle();
   const live = isConnected && phase === "live";
@@ -227,5 +231,5 @@ export function ConversationStage({ onLiveChange }: Readonly<{ onLiveChange?: (l
   // Keep the live view mounted through teardown so it doesn't flash back to the
   // landing between disconnect and the thank-you/stopping overlay.
   if (isConnected || phase === "stopping") return <ConversationLive />;
-  return <StartView connecting={isConnecting || phase === "starting"} />;
+  return <StartView connecting={isConnecting || phase === "starting"} onPrompts={onPrompts} />;
 }

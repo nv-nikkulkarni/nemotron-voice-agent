@@ -23,32 +23,31 @@ backend. The upstream client in `client/` has a separate build.
 - **Guided introduction**: a brief **Click ? for a tour** hint points to the
   landing-page `?` button. The tour starts only when you select the button.
 - **Streamlined example selection**: select an example through its full card,
-  then use the launch bar to configure or start it.
+  then use the launch bar to configure it, edit prompts, or start it.
 - **Ten-minute session timer**: a compact square **TIME LEFT** countdown stays
   fixed below the top-right session-ID chip and gracefully ends a live session
   at zero. With the Omni webcam rail active, it shifts left so it cannot cover
   the **Chunk** selector.
 - **Per-example tools**: enable or disable tools for the Generic
-  Frontend/Backend Agent from its configuration popup or from **Settings**.
+  Frontend/Backend Agent from **Configure** before starting a session.
 
 ## Use the Curated Experience
 
 A brief, nonblocking **Click ? for a tour** hint appears for 5 seconds when the
 landing page loads. No tour invitation or spotlight opens automatically.
-Select **Guided introduction** (`?`) to start the six-step animated landing
-tour. It highlights the example cards, configuration and start controls,
-pipeline information, and settings. Use **Back** and **Next** to move through
+Select **Guided introduction** (`?`) to start the seven-step animated landing
+tour. It highlights the example cards, configuration, prompts and start controls,
+pipeline information, and audio settings. Use **Back** and **Next** to move through
 the steps, or select **Skip tour** from any step. The `?` button is not
 available while a session is starting, live, or stopping. There is no separate
 live-session tour.
 
 To prepare a session, select anywhere on an example card. The cards do not
 contain separate **Select example** or **Configure** actions. After selection,
-the launch bar below the cards is the landing page's only visible place to
-select **Configure** or **Start conversation**. Configure the example when you
-want to choose a text-to-speech engine, change capture preferences, or adjust
-other supported options. Start the conversation directly when the defaults are
-suitable.
+the launch bar below the cards offers **Configure**, **Prompts**, and
+**Start conversation**. Use **Configure** to choose the speech engine, voice,
+tools, and capture preferences before starting. Use **Prompts** to prepare
+frontend and backend instructions. Start directly when the defaults are suitable.
 
 A live session starts with a compact square `10:00` **TIME LEFT** countdown
 below the session-ID chip at the top right. It uses an absolute deadline and
@@ -63,12 +62,14 @@ The default and checked-in Astra runtime values set the limit to 600 seconds.
 Deployments can override the limit with `DEMO_SESSION_SECONDS`.
 
 The Generic Frontend/Backend Agent configuration includes its available tools.
-You can also change the same selection under **Settings**. The settings list
-and configuration popup share one checkbox state, so a change in either place
-appears in the other and applies to the next session. The server accepts only a
-subset of the tools allowed by the selected example; browser selection cannot
-add a tool that the deployment did not register. Examples that do not register
-tools do not show tool controls.
+Choose the subset under **Configure** before starting. The server accepts only
+tools allowed by the selected example; browser selection cannot add a tool
+that the deployment did not register. Examples without registered tools do
+not show tool controls.
+
+**Settings** contains only the microphone and speaker device selectors. Agent
+options, including voices, tools, capture preferences, and prompts, belong to
+the pre-session launch flow.
 
 Model endpoints come from the deployment's service catalog. **Settings** does
 not expose a local model URL override, which prevents a browser-only endpoint
@@ -81,30 +82,33 @@ frontend instructions and, for Frontend/Backend Agent or Omni Subagents, the
 backend Thinker instructions. The editor saves each pipeline's overrides in
 browser localStorage. **Persistent instructions** apply across pipelines and
 append to both roles. Restoring either default preserves these instructions.
-Changes apply to the next session. **Settings > Open Prompts** opens the same
-editor; its fields and restore buttons are disabled during an active session
-and while catalog defaults load. Unedited sessions use the displayed catalog
+Changes apply to the next session. Open the editor with **Prompts** beside
+**Configure** in the launch bar, or **Edit prompts** inside the configuration
+popup. Select **Back to setup** to return. Its fields and restore buttons are
+disabled during an active session and while catalog defaults load. Opening
+**Settings** or **Pipeline info** keeps the prompt editor underneath; close
+the overlay to return. Unedited sessions use the displayed catalog
 prompt, preserving its native examples. Generic Frontend/Backend Agent also
 retains trusted native tool-call examples when you edit its persona, including
 clock lookup and architecture presentation.
 Refer to
 [Configure Prompts](../docs/how-to/configure-prompts.md) for API limits.
 
-Open **Settings** or **Configure** to select a catalog engine and voice.
-The configuration popup lists the engines returned by the deployment catalog,
-including Magpie Zeroshot when enabled. Enter
-up to 200 characters and select **Preview voice** before connecting. During a
-ready session, a preset voice change uses `set-voice` within the current
-engine. Preset selection is disabled while connecting or waiting for readiness.
-Engine and language controls remain locked during the session; choose another
-engine after ending it.
+Open **Configure** before connecting. **Speech engine** lists catalog engines,
+including Magpie Zeroshot when enabled. **Speaking voice** shows visible voice
+cards with names and language details in a scrollable gallery. Larger catalogs
+provide **Find a voice** search by name or expression, with a matching count.
+Select a card, enter up to 200 characters, and choose **Preview voice**. Voice choices and sample controls are pre-session
+options; end the session before changing them. The cards and sample upload
+are visible without expanding a section or opening a voice dropdown.
 
-For Magpie Zeroshot, upload 3–10 seconds of clear speech and
-explicitly enable **Use sample for zero-shot voice**. The browser converts the
+Under **Create a character voice**, upload 3–10 seconds of clear speech and
+select Magpie Zeroshot before enabling **Use sample for zero-shot voice**. The browser converts the
 clip to 22.05 kHz, 16-bit mono PCM WAV and saves it in IndexedDB. The sample is
 carried in session configuration, so replicas do not require shared files.
-Select **Remove sample** to delete the saved clip. Preview uses the enabled
-sample. Preset voice selection is disabled while the enabled sample supplies
+The saved clip survives a reload, but its use checkbox resets off. Enable it
+again before previewing or starting with the sample. Select **Remove sample**
+to delete the saved clip. Preview uses the enabled sample. Preset voice selection is disabled while the enabled sample supplies
 the voice. Refer to [voice sample limits](../docs/how-to/configure-tts.md#preview-and-upload-voices-in-the-astra-client).
 
 Prompt and sample storage is specific to the browser profile and origin.

@@ -4,13 +4,16 @@ You can customize your voice agent's personality, behavior, and response format 
 
 ## Switching / Adding Prompts via the UI
 
-The client UI includes a prompt selector dropdown. In the Astra client, choose a prompt before starting a session. The selector is locked during a session; end the session before applying a different prompt.
+Choose or edit prompts before starting a session. End the current session before applying different instructions.
 
 The upstream client includes a **Prompts** tab for custom presets. The Astra
 client provides the separate pre-session editor described below.
 
-In the Astra client, select **Prompts** before starting a session to open
-`/prompts`, or select **Settings > Open Prompts**. Editing and restoring
+In the Astra client, select **Prompts** beside **Configure** in the launch bar
+below the example cards to open `/prompts`. **Edit prompts** inside the
+configuration popup opens the same editor. Select **Back to setup** to return.
+**Settings** and **Pipeline info** open over the editor; closing them returns
+to the same prompt page. Editing and restoring
 defaults are disabled while a session is starting or live, and while prompt
 defaults load. Wait for **Loading system prompt defaults…** to clear before
 editing. Edit **Frontend system prompt** for spoken responses and, when
