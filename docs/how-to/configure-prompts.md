@@ -28,8 +28,9 @@ content, and persistent instructions append as described below.
 
 The editor saves frontend and backend overrides separately for each pipeline
 in browser localStorage. **Persistent instructions** are shared across pipelines
-and appended to both roles when supported. Restoring a frontend or backend
-default preserves these instructions; clear their field to remove them.
+and appended to both roles when supported, whether you use defaults or edit
+either role. They survive reloads and restoring either default; clear their
+field to remove them.
 Changes apply when you start a new session. Storage is specific to the browser
 profile and origin.
 
@@ -42,7 +43,7 @@ The Frontend/Backend Agent and Omni Subagents accept these text fields in
 | --- | --- |
 | `prompt_content` | Replace the selected frontend prompt for the new session. |
 | `thinker_prompt_content` | Replace the Thinker prompt content for the new session. Role and domain selection remain server-owned. |
-| `persistent_prompt` | Append the same instructions after both selected prompts. Omit it to keep their original contents. |
+| `persistent_prompt` | Append the same editable instructions after both selected role prompts, including overrides. Omit it to add no user-authored persistent instructions. |
 
 Each field accepts at most 32,000 characters. The API configures the new
 session without updating `prompts.yaml`. The Astra editor provides the browser
@@ -91,6 +92,29 @@ Preserve the Thinker's structured plan format and the Talker's delegation and
 spoken-output rules when replacing prompts. Prompt changes do not add tools:
 Python still restricts execution to the registry-owned allowlist and the
 session's selected subset.
+
+### Generic Standing Response Policy
+
+Generic keeps a code-owned spoken-response baseline separately from editable
+**Persistent instructions**. It requests the shortest complete answer in
+1 sentence, normally 10–20 words and at most 35. Capability replies use at most
+25 words. Broad requests such as “Tell me about Sales Cloud” still receive
+brief answers; explicitly ask for detail, steps, a list, a comparison, or
+multiple facts to request expansion.
+
+The policy retains persona tone, required exact responses, grounded values,
+units, subjects, success/failure status, and critical safety information.
+Necessary results and explicit detail requests can require longer answers.
+These limits are model guidance, not deterministic truncation or a guaranteed
+word cap. Direct tool formatters keep their separate result contracts.
+
+The policy follows the edited persona, persistent instructions, and native
+protocol examples as the final pinned initial system message. History trimming
+preserves it, and temporary per-turn guidance repeats it without changing
+saved native messages. Editing or restoring role prompts does not remove this
+baseline or your saved editable persistent instructions. Refer to the
+[Generic response policy](../../src/examples/frontend_backend_agent/src/response_policy.py)
+for the maintained guidance. Other domains retain their policies.
 
 ## Available Prompt Presets
 

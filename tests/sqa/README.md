@@ -22,7 +22,7 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 | file | what it does |
 |---|---|
 | `functional.mjs` | Exhaustive DOM: landing, cards, model toggle, Beta badge, consent/record toggles, settings, session lifecycle (start→end→thanks→restart), **upload validation**, visual diff. |
-| `demo-feedback.mjs` | Focused prompt persistence, voice preview, Generic follow-ups and speech, Generic/Omni architecture, optional zero-shot sample, and capture acknowledgement checks. |
+| `demo-feedback.mjs` | Focused prompt persistence, voice preview, Generic follow-ups and brief speech, Generic/Omni architecture, optional zero-shot sample, and capture acknowledgement checks. |
 | `pre-session-configuration.mjs` | Launch controls, prompt persistence, voice-card previews, device-only Settings, mobile layout, optional zero-shot sample, and one spoken exchange with capture acknowledgement. |
 | `converse.mjs` | Real multi-turn **spoken** conversations (generic + omni); verifies each turn via ASR + DOM, tools, latency, dialogue context. |
 | `concurrent.mjs` | N isolated sessions at once; distinct session IDs, all connect + hear greeting, 0 errors. |
@@ -141,9 +141,12 @@ The Generic and optional cloned-voice product turns require the exact reply
 “Nemotron 3 Diarization,” ignoring case and allowing only an optional final
 period or exclamation mark. “Three” or “Diorization” in the reply fails this
 text gate. It does not establish human pronunciation acceptance.
-The suite also checks “Codex and spinner,” concise speech without Markdown
-markers, and a reproducible
-1.7 s pause inside an unfinished Tokyo weather request. The fixture trims
+The suite also checks “Codex and spinner” and concise speech without Markdown
+markers. The capability reply must contain at most 25 words. Sales Cloud,
+speaker diarization, and small-talk replies must each contain at most 35 words.
+These fixture assertions do not establish a guaranteed runtime word limit.
+
+A separate turn checks a reproducible 1.7 s pause inside an unfinished Tokyo weather request. The fixture trims
 only detected edge silence and requires measured interior silence from
 1.65 to 1.8 s at a -35 dB threshold. `pauseTiming` records the target,
 inserted, and measured durations. Assistant audio onset must follow the full

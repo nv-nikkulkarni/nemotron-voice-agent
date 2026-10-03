@@ -81,7 +81,8 @@ Select **Prompts** before starting a session to open `/prompts`. Edit the
 frontend instructions and, for Frontend/Backend Agent or Omni Subagents, the
 backend Thinker instructions. The editor saves each pipeline's overrides in
 browser localStorage. **Persistent instructions** apply across pipelines and
-append to both roles. Restoring either default preserves these instructions.
+append to both roles, including your edited prompts. Reloads and restoring
+either default preserve these instructions; clear their field to remove them.
 Changes apply to the next session. Open the editor with **Prompts** beside
 **Configure** in the launch bar, or **Edit prompts** inside the configuration
 popup. Select **Back to setup** to return. Its fields and restore buttons are
@@ -90,7 +91,11 @@ disabled during an active session and while catalog defaults load. Opening
 the overlay to return. Unedited sessions use the displayed catalog
 prompt, preserving its native examples. Generic Frontend/Backend Agent also
 retains trusted native tool-call examples when you edit its persona, including
-clock lookup and architecture presentation.
+clock lookup and architecture presentation. Generic keeps a brief-answer
+baseline when you edit its persona: 1 sentence, normally 10–20 words and at
+most 35. Ask explicitly for detail, steps, lists, comparisons, or multiple
+facts to expand. Required results and safety information stay intact.
+These are model instructions rather than a guaranteed word cap.
 Refer to
 [Configure Prompts](../docs/how-to/configure-prompts.md) for API limits.
 

@@ -100,3 +100,59 @@ def test_generic_persona_edits_retain_native_clock_and_architecture_examples() -
     assert messages == pipeline._load_prompt_few_shots(
         "generic_talker", custom_prompt=False, protocol_prompt_key="generic_talker"
     )
+
+
+@pytest.mark.parametrize("system_prompt", ["", "Platform identity"])
+def test_edited_persona_keeps_standing_policy_after_native_demonstrations(system_prompt: str) -> None:
+    from examples.frontend_backend_agent.src.response_policy import GENERIC_SESSION_BOUNDARY
+
+    demonstrations = pipeline._load_prompt_few_shots(
+        "generic_edited", custom_prompt=True, protocol_prompt_key="generic_talker"
+    )
+    persona = "Speak as a Halloween concierge.\n\nPersistent instructions: greet me as trailblazer."
+    messages = pipeline._build_context_messages(
+        persona,
+        system_prompt,
+        runtime_context="\nEnabled capabilities: clock, stock.",
+        few_shots=demonstrations,
+        session_policy=GENERIC_SESSION_BOUNDARY,
+    )
+    persona_index = 1 if system_prompt else 0
+    assert messages[persona_index]["content"].startswith(persona)
+    assert messages[-1] == {"role": "system", "content": GENERIC_SESSION_BOUNDARY}
+    assert messages[persona_index + 1 : -1] == demonstrations
+    messages[persona_index + 2]["tool_calls"][0]["function"]["arguments"] = "changed"
+    assert demonstrations[1]["tool_calls"][0]["function"]["arguments"] != "changed"
+
+
+def test_history_window_preserves_persona_persistent_instructions_and_response_policy() -> None:
+    from pipecat.processors.aggregators.llm_context import LLMContext
+
+    from examples.frontend_backend_agent.src.response_policy import GENERIC_SESSION_BOUNDARY
+
+    prefix = pipeline._build_context_messages(
+        "Edited persona.\n\nPersistent instructions: greet me as trailblazer.",
+        runtime_context="",
+        few_shots=pipeline._load_prompt_few_shots("generic_talker", custom_prompt=False),
+        session_policy=GENERIC_SESSION_BOUNDARY,
+    )
+    dialogue = [
+        {"role": "user", "content": "Tell me about Sales Cloud."},
+        {"role": "assistant", "content": "Sales Cloud helps sales teams track leads and opportunities."},
+        {"role": "user", "content": "What can you do?"},
+        {"role": "assistant", "content": "I can check weather, current time and stock prices."},
+        {"role": "user", "content": "What time is it?"},
+    ]
+    context = LLMContext(prefix + dialogue)
+    pipeline._apply_chat_history_sliding_window(context, len(prefix), 2)
+    assert context.get_messages() == prefix + dialogue[2:]
+    assert context.get_messages()[len(prefix) - 1]["content"] == GENERIC_SESSION_BOUNDARY
+
+
+def test_other_domains_keep_their_original_context_roles() -> None:
+    assert pipeline._build_context_messages(
+        "Airline persona", "Platform identity", runtime_context="\nFlight data"
+    ) == [
+        {"role": "system", "content": "Platform identity"},
+        {"role": "user", "content": "Airline persona\nFlight data"},
+    ]

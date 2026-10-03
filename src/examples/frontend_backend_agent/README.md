@@ -290,11 +290,16 @@ Real-Time Voice Interaction (RTVI) metrics expose the later planning rounds as
 `backend_thinker_step2_llm` and `backend_thinker_step3_llm`. Each processor
 stays correlated with the same backend call and user turn.
 
-The default Generic Talker prompt requests one short sentence of at most
-35 words unless the user asks for detail. Capability questions such as “What
-can you do?” use native guidance for 3 or 4 concrete examples in 1 sentence
-under 25 words. Identity introductions, extra offers, and closing questions are
-omitted unless requested. Explicit detail requests still permit expansion.
+The Generic Talker uses a code-owned [standing response policy](src/response_policy.py)
+independent of editable persona and persistent instructions. It requests the
+shortest complete answer in 1 sentence, normally 10–20 words and at most 35.
+Broad “tell me about” questions stay brief. Capability questions use 3 or 4
+examples in 1 sentence of at most 25 words. Explicit detail, steps, lists,
+comparisons, or multiple facts permit longer replies. Required exact responses,
+grounded values, units, subjects, status, and critical safety information
+remain intact. Persona tone stays in place; unrequested introductions, offers,
+and closing questions are omitted. These are model instructions, not
+deterministic truncation or a guaranteed word cap.
 The web-search model prompt requests
 1 or 2 factual spoken sentences, at most 35 words by default, including direct
 tool speech. Explicit detail requests permit expansion within its retained
@@ -363,7 +368,9 @@ validated tool result. Neither capability needs a provider key.
 
 Session configuration can replace Talker content with `prompt_content` and
 Thinker content with `thinker_prompt_content`. `persistent_prompt` appends the
-same instructions to both. Each field is limited to 32,000 characters and does
+same editable instructions to both roles, including overrides. Browser storage
+retains them across edits, default restores, and reloads. Each field is limited
+to 32,000 characters and does
 not change the trusted backend domain or tool allowlist. Refer to
 [Frontend/Backend Session Prompts](../../../docs/how-to/configure-prompts.md#frontendbackend-session-prompts).
 
@@ -376,7 +383,11 @@ execution guidance resolves subjects from real user dialogue, excludes example
 cities, companies, and values, and requests clarification when a required
 location or subject is missing. Native examples demonstrate protocol; subject
 selection remains model-driven. A system boundary marks the end of
-protocol demonstrations before real session dialogue begins. Requests to
+protocol demonstrations before real session dialogue begins. The standing
+response policy follows persona, editable persistent instructions, and native
+examples as the final pinned initial system message. History trimming preserves
+it; temporary per-turn guidance repeats it without changing native history.
+Requests to
 repeat public terms, including “Nemotron 3 Diarization,” receive explicit
 verbatim-repeat guidance and native DIRECT examples. For this known product,
 the prompt requests the canonical label “Nemotron 3 Diarization” even when

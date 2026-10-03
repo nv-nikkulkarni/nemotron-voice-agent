@@ -31,7 +31,10 @@ const turns = [
   { text: "Show me your architecture.", heard: /show\s+me\s+your\s+architecture/i, expect: /architecture|diagram|design/i, architecture: "generic" },
   { text: "Please say Nemotron 3 Diarization.", heard: /nemotron|diarization/i, expect: /^Nemotron 3 Diarization[.!]?$/i },
   { text: "Please repeat these two words: Codex and spinner.", heard: /codex.*spinner/i, expect: /codex.*spinner/i },
-  { text: "What can you do?", heard: /what|can|do/i, expect: /help|weather|stock|question|time/i, short: true },
+  { text: "What can you do?", heard: /what|can|do/i, expect: /help|weather|stock|question|time/i, wordLimit: 25 },
+  { text: "Tell me about Sales Cloud.", heard: /sales.*cloud/i, expect: /sales|leads|customer|CRM/i, wordLimit: 35 },
+  { text: "Tell me about speaker diarization.", heard: /speaker|diarization/i, expect: /speaker|who.*sp|voice/i, wordLimit: 35 },
+  { text: "How are you?", heard: /how.*you/i, expect: /well|good|ready|help|Nemotron/i, wordLimit: 35 },
 ];
 async function voicePreview() {
   const studio = page.locator(".ex-config .voice-studio");
@@ -85,7 +88,10 @@ async function runTurn(rep, turn, index, inputWav) {
     assert([minutes(started), minutes(Date.now())].some((actual) => Math.abs(actual - spoken) <= 1),
       "spoken clock must match fresh browser-local time");
   }
-  if (turn.short) assert(response.domBot.split(/\s+/).length <= 40, "default answer exceeds the spoken word budget");
+  if (turn.wordLimit) {
+    const words = response.domBot.trim().split(/\s+/).filter(Boolean).length;
+    assert(words > 0 && words <= turn.wordLimit, `default answer exceeds the spoken word budget: ${words}/${turn.wordLimit}`);
+  }
   if (turn.architecture) {
     const image = page.locator(".architecture-presentation img");
     await image.waitFor({ state: "visible", timeout: 5000 });

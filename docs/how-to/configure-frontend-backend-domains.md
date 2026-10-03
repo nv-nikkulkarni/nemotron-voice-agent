@@ -189,11 +189,17 @@ Finnhub requests use a 2.5-second network timeout and retry once after a
 Authentication failures and invalid quote data fail closed. Non-finite or
 non-positive prices are not spoken as valid quotes.
 
-The default Generic Talker prompt requests one short sentence of at most
-35 words unless you ask for detail. For capability questions such as “What can
-you do?”, native guidance requests 3 or 4 concrete examples in 1 sentence under
-25 words. It omits identity introductions, extra offers, and closing questions
-unless requested. Explicit requests for detail still permit longer responses.
+The Generic Talker has a code-owned standing response policy independent of
+editable persona and persistent instructions. It requests the shortest complete
+answer in 1 sentence, normally 10–20 words and at most 35. Broad “tell me about”
+questions stay brief. Capability questions use 3 or 4 concrete examples in
+1 sentence of at most 25 words. Explicit detail, steps, lists, comparisons, or
+multiple facts permit expansion. Required exact responses, grounded values,
+units, subjects, result status, and critical safety information stay intact.
+The policy retains persona tone and omits unrequested introductions, offers,
+and closing questions. It is model guidance rather than deterministic
+truncation or a guaranteed word cap. The final initial system message and
+per-turn guidance preserve it across prompt edits and history trimming.
 Weather defaults to temperature and
 conditions; request humidity, wind, or feels-like temperature for an expanded
 provider-grounded response. The web-search model prompt requests 1 or 2 factual

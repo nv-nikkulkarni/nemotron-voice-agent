@@ -29,6 +29,7 @@ import examples_registry
 from examples.frontend_backend_agent.src.barge_in import BargeInState, BargeInTracker
 from examples.frontend_backend_agent.src.domain import DomainBuildContext, resolve_domain_spec
 from examples.frontend_backend_agent.src.reliable_talker import ReliableNvidiaLLMService
+from examples.frontend_backend_agent.src.response_policy import GENERIC_SESSION_BOUNDARY
 from examples.frontend_backend_agent.src.stage_metrics import StageMetricsCoordinator
 from examples.frontend_backend_agent.src.tool_handlers import build_handlers
 from examples.shared.audio_recorder import create_audio_recorder
@@ -73,15 +74,22 @@ def _build_context_messages(
     system_prompt: str = "",
     *,
     runtime_context: str,
+    few_shots: list[dict] | None = None,
+    session_policy: str = "",
 ) -> list[dict]:
     """Build initial Talker context messages."""
     base_prompt = f"{base_prompt}{runtime_context}"
     if system_prompt:
-        return [
+        messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": base_prompt},
         ]
-    return [{"role": "system", "content": base_prompt}]
+    else:
+        messages = [{"role": "system", "content": base_prompt}]
+    messages.extend(copy.deepcopy(few_shots or []))
+    if session_policy:
+        messages.append({"role": "system", "content": session_policy})
+    return messages
 
 
 def _load_prompt_few_shots(prompt_key: str, *, custom_prompt: bool, protocol_prompt_key: str = "") -> list[dict]:
@@ -411,17 +419,11 @@ async def bot(runner_args: RunnerArguments) -> None:
             if domain.session_runtime_context is not None
             else domain.runtime_context()
         ),
+        few_shots=talker_few_shots,
+        session_policy=GENERIC_SESSION_BOUNDARY if domain.key == "generic" else "",
     )
-    messages.extend(talker_few_shots)
     logger.info(f"Talker native few-shot messages: {len(talker_few_shots)}")
     if domain.key == "generic":
-        messages.append(
-            {
-                "role": "system",
-                "content": "End of protocol demonstrations. The actual session dialogue begins after this boundary. "
-                "Demonstration subjects and values are not facts or requests from the current user.",
-            }
-        )
         talker_llm.conversation_start_index = len(messages)
         thinker.conversation_start_index = len(messages)
     context = LLMContext(messages, tools=domain.talker_tools_schema, tool_choice="auto")

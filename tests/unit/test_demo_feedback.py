@@ -288,7 +288,10 @@ def test_session_dialogue_evidence_excludes_examples_and_keeps_context_unchanged
     assert bounded.get_messages()[-1] == messages[-1]
     assert original.get_messages() == messages
     assert reminder["role"] == "system" and "untrusted quoted JSON" in reminder["content"]
-    evidence = json.loads(reminder["content"].split("\n", 1)[1])
+    from examples.frontend_backend_agent.src.response_policy import GENERIC_SPOKEN_RESPONSE_POLICY
+
+    assert GENERIC_SPOKEN_RESPONSE_POLICY in reminder["content"]
+    evidence = json.loads(reminder["content"].rsplit("\n", 1)[1])
     dialogue = evidence["recent_dialogue"]
     assert len(dialogue) == 8 and all(len(item["content"]) <= 1000 for item in dialogue)
     assert dialogue[-3]["content"] == "What about Anthropic?"
