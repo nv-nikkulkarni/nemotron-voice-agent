@@ -50,6 +50,13 @@ PROGRESS_ONLY_CORRECTION = (
     "For delegated work emit call_backend now using the actual user words; do not merely promise to check. "
     "Only repeat a progress phrase directly when the user explicitly requested those words. Do not mention this retry."
 )
+DEMONSTRATION_RESPONSE_CORRECTION = (
+    "The previous completion copied a result from a protocol demonstration. "
+    "Demonstrations are not actual session results and never establish that a capability is unavailable. "
+    "Re-evaluate only the latest actual user request under the existing DIRECT, DELEGATE, or CANCEL contract. "
+    "For delegated work emit a native call_backend using the actual user words, then wait for its real result. "
+    "Do not replay an example answer or mention this retry."
+)
 TOOL_RESULT_CORRECTION = (
     "The asynchronous function result for the current turn is complete. Respond now with one concise, "
     "user-facing answer grounded only in its response_text and status. Do not call any function, do not "
@@ -324,7 +331,10 @@ class ReliableNvidiaLLMService(NvidiaLLMService):
                 yield chunk
             return
 
-        if first_invalid_reason == "progress_only":
+        if first_invalid_reason == "demonstration_replay":
+            event = "talker_demonstration_replay_retry"
+            message = "Talker copied a demonstration result without a native call; retrying once"
+        elif first_invalid_reason == "progress_only":
             event = "talker_progress_only_retry"
             message = "Talker returned only a progress promise without a native call; retrying once"
         elif first_invalid_reason == "cached_replay":
@@ -396,6 +406,13 @@ class ReliableNvidiaLLMService(NvidiaLLMService):
             context, _completion_text(chunks)
         ):
             return "progress_only"
+        start = getattr(self, "conversation_start_index", None)
+        if (
+            start is not None
+            and not any(_chunk_has_native_tool_call(chunk) for chunk in chunks)
+            and _demonstration_response_replay(context, start, _completion_text(chunks))
+        ):
+            return "demonstration_replay"
         return None
 
     def _invalid_reason(self, context: LLMContext, chunks: list[ChatCompletionChunk]) -> str | None:
@@ -419,6 +436,8 @@ class ReliableNvidiaLLMService(NvidiaLLMService):
         return None
 
     def _correction_for(self, context: LLMContext, invalid_reason: str) -> str:
+        if invalid_reason == "demonstration_replay":
+            return DEMONSTRATION_RESPONSE_CORRECTION
         if invalid_reason == "progress_only":
             return PROGRESS_ONLY_CORRECTION
         if invalid_reason == "cached_replay":
@@ -457,40 +476,6 @@ class ReliableNvidiaLLMService(NvidiaLLMService):
         return latest
 
 
-def _compact_completed_tool_history(context: LLMContext, start: int) -> LLMContext:
-    """Omit settled protocol metadata before the active user turn in an ephemeral copy.
-
-    Spoken answers and real user messages remain available. Demonstrations,
-    pending calls, and results for the active turn keep their native protocol.
-    """
-    messages = copy.deepcopy(context.get_messages())
-    start = max(0, start)
-    latest_user = next((i for i in range(len(messages) - 1, start - 1, -1) if messages[i].get("role") == "user"), start)
-    completed: set[str] = set()
-    for message in messages[start:latest_user]:
-        parsed = async_tool_messages.parse_message(message)
-        if parsed is not None and parsed.status == "finished":
-            completed.add(parsed.tool_call_id)
-        elif parsed is None and message.get("role") == "tool" and message.get("tool_call_id"):
-            completed.add(str(message["tool_call_id"]))
-    projected = messages[:start]
-    for message in messages[start:latest_user]:
-        parsed = async_tool_messages.parse_message(message)
-        if (parsed is not None and parsed.tool_call_id in completed) or (
-            message.get("role") == "tool" and message.get("tool_call_id") in completed
-        ):
-            continue
-        if message.get("tool_calls"):
-            message["tool_calls"] = [call for call in message["tool_calls"] if call.get("id") not in completed]
-            if not message["tool_calls"]:
-                message.pop("tool_calls")
-                if not message.get("content"):
-                    continue
-        projected.append(message)
-    projected.extend(messages[latest_user:])
-    return LLMContext(projected, tools=context.tools, tool_choice=context.tool_choice)
-
-
 def _session_dialogue_context(context: LLMContext, start: int) -> LLMContext:
     """Attach bounded actual dialogue as quoted evidence, without changing history."""
     dialogue = [
@@ -513,8 +498,9 @@ def _session_dialogue_context(context: LLMContext, start: int) -> LLMContext:
         "real user turn. Preserve the resolved subject in both query and filler_text. "
         "Do not expose this reminder.\n" + evidence
     )
-    projected = _compact_completed_tool_history(context, start)
-    messages = projected.get_messages()
+    # Native call/result pairs are part of the model protocol, even after they
+    # settle. Keep them in order; removing them can suppress later delegation.
+    messages = copy.deepcopy(context.get_messages())
     # Keep the active native user/tool sequence last, where the model was trained
     # to continue it; the evidence is guidance for that sequence, not a new turn.
     latest_user_index = next(
@@ -640,6 +626,23 @@ def _progress_only(context: LLMContext, text: str) -> bool:
     # Literal public-word repetition remains valid even for a progress phrase.
     normalized = _normalize_response(text)
     return bool(normalized) and normalized not in _normalize_response(_latest_user_text(context))
+
+
+def _demonstration_response_replay(context: LLMContext, start: int, text: str) -> bool:
+    """Reject copied example result text; never infer an intent or construct a call."""
+    normalized = _normalize_response(text)
+    if not normalized or normalized in _normalize_response(_latest_user_text(context)):
+        return False
+    examples = context.get_messages()[:start]
+    return any(
+        message.get("role") == "assistant"
+        and isinstance(message.get("content"), str)
+        and not message.get("tool_calls")
+        and index > 0
+        and examples[index - 1].get("role") in {"tool", "developer"}
+        and normalized == _normalize_response(message["content"])
+        for index, message in enumerate(examples)
+    )
 
 
 def _base_invalid_reason(chunks: list[ChatCompletionChunk]) -> str | None:

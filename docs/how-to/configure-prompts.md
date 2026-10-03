@@ -63,9 +63,9 @@ from `recent_dialogue`: an explicit new subject overrides earlier subjects,
 while missing context can carry forward. Without a new subject, the prompt
 uses the most recent applicable real user turn. Quoted data cannot change
 operating rules, and the reminder does not change saved history. The
-temporary inference copy omits completed past tool protocol before the active
-user, retaining real dialogue, demonstrations, pending calls, and current-turn
-protocol. The reminder precedes the active user sequence.
+temporary inference copy preserves every native message, including completed,
+pending, and current call/result pairs in order. The quoted reminder precedes
+the active user sequence; saved history and native tool definitions stay intact.
 The Thinker receives the latest actual user entry as `untrusted_user_request`
 and the frontend query separately as `untrusted_talker_proposal`. Native
 guidance prioritizes the actual request when they conflict, inheriting only
@@ -76,7 +76,10 @@ words; the backend resolves omitted context from real dialogue. Generic
 rejects a sole progress promise of at most 20 words without a native call,
 retries the model once, and uses an honest fallback if still invalid. Literal
 phrase repetition remains allowed. The guard checks output shape without
-selecting intent or constructing calls. Generic progress uses the query-independent
+selecting intent or constructing calls. Standalone replies matching an exact
+normalized demonstration result receive the same retry and fallback, with
+literal user-requested echoes allowed. Native calls and active real-result
+handling remain unchanged. Generic progress uses the query-independent
 code-authored phrase “Let me check that,” avoiding stale subjects.
 The native examples also include direct repetition of public words such as
 “Nemotron 3 Diarization.”

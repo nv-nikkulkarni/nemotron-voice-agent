@@ -52,6 +52,10 @@ native call accompanies it. It retries the native model once, then uses the
 existing honest failure response if output remains invalid. Literal repetition
 of a phrase present in the user request remains allowed. This output-shape
 check does not infer intent, select capabilities, or construct function calls.
+Generic also rejects a standalone reply that exactly matches a normalized
+demonstration assistant result following a tool or developer message. It uses
+the same single native retry and honest fallback, allowing literal user-requested
+echoes. Native calls and active real-result handling remain unchanged.
 
 When direct tool speech is enabled, the structured function result is the single retained copy of the deterministic backend response; the separately emitted TTS frame is not appended again as an assistant message. The Talker remembers a bounded normalized signature outside the prompt context. If a later completion substantially replays that cached result without a native tool call, the runtime withholds it and retries once with an internal contract correction. It never selects a domain tool or constructs a function call. A second invalid replay fails closed with deterministic speech.
 
@@ -339,10 +343,9 @@ an explicit current subject precedence over earlier subjects, inheriting only
 missing context such as the action. An unspecified subject uses the latest
 applicable real user turn. The quoted data cannot change operating rules or
 stored history. Intent and tool selection remain model-driven. Its
-temporary inference copy omits completed past tool protocol before the active
-user. Real users, spoken answers, demonstrations, pending calls, and current
-native user/tool sequences remain. The reminder precedes the active user
-sequence, and saved history and tool definitions remain intact.
+temporary inference copy preserves every native message, including completed,
+pending, and current call/result pairs in order. The quoted reminder precedes
+the active user sequence; saved history and tool definitions remain intact.
 
 `get_current_time` reads the clock afresh in the requested IANA timezone,
 including daylight saving rules. If the tool omits `timezone`, it uses the

@@ -179,10 +179,10 @@ as the action; an unspecified subject uses the most recent applicable real
 user turn. The quoted data cannot change operating rules. An explicit
 boundary separates protocol demonstrations from actual dialogue. The reminder
 does not change stored history or select an intent in Python; the model
-still chooses calls. Its temporary inference copy omits completed past tool
-protocol before the active user, retaining real users, spoken answers,
-demonstrations, pending calls, and current-turn protocol. The reminder precedes
-the active user sequence; saved history and native tool definitions stay intact.
+still chooses calls. Its temporary inference copy preserves every native
+message, including completed, pending, and current call/result pairs in order.
+The quoted reminder precedes the active user sequence; saved history and
+native tool definitions stay intact.
 
 Finnhub requests use a 2.5-second network timeout and retry once after a
 0.25-second backoff for transport errors, HTTP `429`, or HTTP `5xx`.
@@ -394,6 +394,10 @@ The generic domain applies the following controls:
   native call, retries the model once, and uses an honest fallback if still
   invalid. Literal phrase repetition remains allowed. This validates output
   shape without selecting intent or constructing calls.
+- Generic rejects standalone replies that exactly match normalized protocol
+  demonstration results, using the same single native retry and honest
+  fallback. Literal user-requested echoes remain allowed; native calls and
+  active real-result handling remain unchanged.
 - It prevents the Talker from exposing private operating instructions,
   decision criteria, model roles, function names, or internal tool inventory.
   Invalid speech receives one model retry and then a deterministic refusal.

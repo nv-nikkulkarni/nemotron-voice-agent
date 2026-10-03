@@ -137,6 +137,33 @@ class ReliableTalkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(chunks), 1)
         self.assertEqual(len(literal.contexts), 1)
 
+    async def test_copied_demonstration_result_retries_without_routing_the_request(self) -> None:
+        answer = "The clock is temporarily unavailable. Please try again."
+        examples = [
+            {"role": "user", "content": "What time is it?"},
+            {"role": "assistant", "content": None, "tool_calls": [{"id": "example"}]},
+            {"role": "tool", "tool_call_id": "example", "content": "unavailable"},
+            {"role": "assistant", "content": answer},
+        ]
+        for remembered in (False, True):
+            with self.subTest(remembered=remembered):
+                talker = _ScriptedTalker([[_chunk(content=answer)], [_tool_chunk("What time is it right now?")]])
+                talker.conversation_start_index = len(examples)
+                if remembered:
+                    talker.remember_backend_response("A previous stock quote.")
+                messages = examples + [{"role": "user", "content": "What time is it right now?"}]
+                context = LLMContext(messages)
+                chunks = await _collect(talker, context)
+                self.assertTrue(chunks[0].choices[0].delta.tool_calls)
+                self.assertEqual(len(talker.contexts), 2)
+                self.assertEqual(talker.fallbacks, [])
+                self.assertEqual(context.get_messages(), messages)
+        literal = _ScriptedTalker([[_chunk(content=answer)]])
+        literal.conversation_start_index = len(examples)
+        chunks = await _collect(literal, LLMContext(examples + [{"role": "user", "content": "Please say " + answer}]))
+        self.assertEqual(len(chunks), 1)
+        self.assertEqual(len(literal.contexts), 1)
+
     async def test_visible_response_does_not_retry(self) -> None:
         talker = _ScriptedTalker([[_chunk(content="Hello there.")]])
 

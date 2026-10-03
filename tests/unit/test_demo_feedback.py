@@ -298,7 +298,7 @@ def test_session_dialogue_evidence_excludes_examples_and_keeps_context_unchanged
 
 
 @pytest.mark.parametrize("async_result", [False, True])
-def test_followup_context_compacts_only_completed_past_calls(async_result):
+def test_followup_evidence_preserves_all_native_protocol_history(async_result):
     from examples.frontend_backend_agent.src.reliable_talker import _session_dialogue_context
 
     prefix = [
@@ -337,13 +337,16 @@ def test_followup_context_compacts_only_completed_past_calls(async_result):
         {"role": "tool", "tool_call_id": "current", "content": result},
     ]
     context = LLMContext(messages, tools=[], tool_choice="auto")
-    projected = _session_dialogue_context(context, len(prefix)).get_messages()
+    projection = _session_dialogue_context(context, len(prefix))
+    projected = projection.get_messages()
     assert context.get_messages() == messages
     assert projected[: len(prefix)] == prefix
-    assert "completed" not in json.dumps(projected[len(prefix) :])
-    assert projected[len(prefix) : len(prefix) + 2] == [messages[2], {"role": "assistant", "content": "NVIDIA news."}]
-    assert any(message.get("tool_call_id") == "pending" for message in projected)
+    reminders = [message for message in projected if message not in messages]
+    assert len(reminders) == 1 and reminders[0]["role"] == "system"
+    assert [message for message in projected if message is not reminders[0]] == messages
     assert projected[-3:] == messages[-3:]
+    assert projected[-4] is reminders[0]
+    assert projection.tools == context.tools and projection.tool_choice == context.tool_choice
 
 
 def test_empty_planner_completion_retries_once_before_execution():
