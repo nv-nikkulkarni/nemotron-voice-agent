@@ -159,6 +159,13 @@ references such as "there," "that company," and "again." Dialogue is not
 factual evidence; changing weather, stock, web, and clock results require a
 new tool call.
 
+The Generic Talker also receives an ephemeral reminder containing up to 8
+actual user or assistant entries, capped at 1,000 characters each. It quotes
+these as untrusted JSON to resolve the latest applicable subject without
+following embedded instructions. An explicit boundary separates native
+protocol demonstrations from actual dialogue. The reminder does not change
+stored history or select an intent in Python; the model still chooses calls.
+
 Finnhub requests use a 2.5-second network timeout and retry once after a
 0.25-second backoff for transport errors, HTTP `429`, or HTTP `5xx`.
 Authentication failures and invalid quote data fail closed. Non-finite or
@@ -185,9 +192,12 @@ The appended Generic execution guidance resolves follow-ups from real user
 dialogue and excludes demonstration locations, companies, and result values.
 If a required location or subject is missing, it requests a brief clarification.
 Native examples demonstrate protocol; these semantic rules remain model guidance.
+For a request to say or repeat public words such as “Nemotron 3 Diarization,”
+the Generic prompt asks for those words verbatim, without an added refusal.
 
 Sentence boundaries preserve abbreviations such as `U.S.`, `Inc.`, and `Sept.`,
-and decimal values.
+decimal values, and sentence endings followed by straight or curly quotes
+or closing brackets.
 
 Refer to [Frontend/Backend Session Prompts](configure-prompts.md#frontendbackend-session-prompts)
 for Talker and Thinker content overrides and instructions appended to both roles.
@@ -341,9 +351,13 @@ The generic domain applies the following controls:
   trusted results accumulated so far, and completed results survive a later
   planning timeout or failure.
 - It bounds the outer function callback, backend, planner, and web tool at 45,
-  40, 6 per planning round, and 20 seconds by default. The 3-round ceiling
+  40, 6 per planner attempt, and 20 seconds by default. The 3-round ceiling
   keeps dependent work inside the backend deadline and leaves time for a
   grounded response before the outer callback expires.
+- A typed empty-plan error can retry once after 0.2 seconds. Each attempt
+  keeps its 6-second limit inside the same 40-second backend deadline.
+  Generic Super server and cloud catalogs use `max_tokens: 2048`, temperature
+  `0.0`, and a 256-token reasoning budget.
 - With the default web-tool deadline, web search can make at most 2 attempts.
   Each attempt has a 9-second ceiling, and the single retry waits 0.5 seconds.
   This 18.5-second retry budget fits inside the 20-second tool deadline.

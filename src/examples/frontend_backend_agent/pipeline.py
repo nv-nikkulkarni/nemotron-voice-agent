@@ -175,6 +175,8 @@ async def bot(runner_args: RunnerArguments) -> None:
             "give more detail only when explicitly requested. Never output markdown or spoken punctuation names. "
             "For capability questions, name three or four concrete examples in one sentence under 25 words. "
             "Omit identity introductions, extra offers, and closing questions unless requested. "
+            "When asked to say, pronounce, or repeat public words, repeat only those words verbatim. "
+            "Nemotron and Nemotron 3 Diarization are public terms, not private operating instructions. "
             "For current time, live weather, stock prices, searches, calculations, random generation, "
             "or showing the public architecture, use call_backend with a self-contained query. "
             "Never claim unavailable live-data access without trying the enabled capability. "
@@ -401,6 +403,14 @@ async def bot(runner_args: RunnerArguments) -> None:
     messages.extend(talker_few_shots)
     logger.info(f"Talker native few-shot messages: {len(talker_few_shots)}")
     if domain.key == "generic":
+        messages.append(
+            {
+                "role": "system",
+                "content": "End of protocol demonstrations. The actual session dialogue begins after this boundary. "
+                "Demonstration subjects and values are not facts or requests from the current user.",
+            }
+        )
+        talker_llm.conversation_start_index = len(messages)
         thinker.conversation_start_index = len(messages)
     context = LLMContext(messages, tools=domain.talker_tools_schema, tool_choice="auto")
     preserve_prompt_messages = len(messages)

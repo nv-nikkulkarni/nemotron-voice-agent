@@ -290,7 +290,8 @@ characters. `details` defaults to `false`; the Thinker selects it for explicit
 detail, multiple-headline, or expanded-comparison requests. The formatter
 applies this model-selected flag and preserves returned structured data.
 Sentence splitting protects abbreviations such as `U.S.`, `Inc.`, and `Sept.`,
-and decimal values.
+decimal values, and endings followed by straight or curly quotes or closing
+brackets.
 
 Weather speech defaults to returned
 temperature and conditions. With `details: true`, it also includes available
@@ -313,7 +314,11 @@ response.
 
 The Generic Thinker receives up to 8 recent user or assistant messages, each
 bounded to 1,000 characters. This dialogue resolves follow-up references and
-corrections; it does not replace new tool calls for changing facts.
+corrections; it does not replace new tool calls for changing facts. The Generic
+Talker receives a separate ephemeral quoted-JSON reminder with the same
+8-entry, 1,000-character limits, excluding protocol demonstrations. It grounds
+an unspecified subject in the latest applicable actual user turn without
+changing stored history. Intent and tool selection remain model-driven.
 
 `get_current_time` reads the clock afresh in the requested IANA timezone,
 including daylight saving rules. If the tool omits `timezone`, it uses the
@@ -343,7 +348,10 @@ these examples. The runtime still validates calls against the enabled tools. App
 execution guidance resolves subjects from real user dialogue, excludes example
 cities, companies, and values, and requests clarification when a required
 location or subject is missing. Native examples demonstrate protocol; subject
-selection remains model-driven.
+selection remains model-driven. A system boundary marks the end of
+protocol demonstrations before real session dialogue begins. Requests to
+repeat public terms, including “Nemotron 3 Diarization,” receive explicit
+verbatim-repeat guidance and a native DIRECT example.
 
 The Generic Talker receives the session's local date and timezone, without a
 current clock reading. The planner refreshes its local timestamp for each plan
@@ -361,9 +369,10 @@ For model and catalog settings, refer to [Configure LLM](../../../docs/how-to/co
 
 The built-in generic profile keeps Nemotron 3 Super reasoning enabled for the
 Thinker at temperature `0.0`. Its server and cloud catalog entries bound each
-plan to 768 output tokens and a 256-token reasoning budget. These limits reduce
-synchronized planner saturation while preserving model-based planning and
-Python plan validation.
+plan with `max_tokens: 2048` and a 256-token reasoning budget. These bounds
+preserve reasoning, model-based planning, and Python plan validation.
+A typed empty-plan error can retry once after 0.2 seconds, with a 6-second
+limit per planner attempt inside the 40-second backend deadline.
 
 ## Domain Contract
 

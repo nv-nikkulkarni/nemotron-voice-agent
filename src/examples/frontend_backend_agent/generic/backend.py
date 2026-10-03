@@ -18,7 +18,7 @@ from examples.frontend_backend_agent.generic.dispatcher import (
     combine_accumulated_results,
     dispatch_plan,
 )
-from examples.frontend_backend_agent.generic.planner import GenericPlanner
+from examples.frontend_backend_agent.generic.planner import EmptyPlanError, GenericPlanner
 from examples.frontend_backend_agent.generic.result_formatters import planner_failure, timeout_failure
 from examples.frontend_backend_agent.generic.state import GenericThinkerSessionState
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent
@@ -29,7 +29,14 @@ if TYPE_CHECKING:
 
 _PLANNER_MAX_ATTEMPTS = 2
 _PLANNER_RETRY_BACKOFF_SECONDS = 0.2
-_RETRIABLE_PLANNER_EXCEPTIONS = (TimeoutError, APIConnectionError, APITimeoutError, InternalServerError, RateLimitError)
+_RETRIABLE_PLANNER_EXCEPTIONS = (
+    TimeoutError,
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    RateLimitError,
+    EmptyPlanError,
+)
 _MAX_PLANNING_ROUNDS = 3
 
 

@@ -109,11 +109,12 @@ request “Show me your architecture.” The suite separately checks a spoken
 diagram description and a rendered Generic or Omni image. A correct image or
 answer alone does not establish input transcription acceptance.
 It also checks “Nemotron 3 Diarization,”
-“Codex and spinner,” concise speech without Markdown markers, and an inserted
-0.65 s gap inside an unfinished Tokyo weather request. The actual WAV pause
-also includes TTS trailing and leading padding. The suite records the largest
-interior silence at a -35 dB threshold in `pauseTiming` and requires the full
-request to remain 1 user turn. This gate uses distinct `frontend_tool_selection`
+“Codex and spinner,” concise speech without Markdown markers, and a reproducible
+1.7 s pause inside an unfinished Tokyo weather request. The fixture trims
+only detected edge silence and requires measured interior silence from
+1.65 to 1.8 s at a -35 dB threshold. `pauseTiming` records the target,
+inserted, and measured durations. Assistant audio onset must follow the full
+input WAV duration, and the request must remain 1 user turn. This gate uses distinct `frontend_tool_selection`
 turn IDs from parsed RTVI stage-correlation metadata, surfaced through the
 browser's `nva:frontend-selection` event. It requires exactly 1 recorded `get_weather`
 tool event, and rejects example-city filler such as Pune, Nairobi, or Reykjavik.

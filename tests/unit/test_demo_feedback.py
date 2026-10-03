@@ -5,6 +5,7 @@
 import asyncio
 import base64
 import io
+import json
 import wave
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -249,3 +250,64 @@ def test_search_default_is_one_complete_sentence_and_detail_is_explicit():
     assert brief["response_text"] == first
     assert detailed["response_text"] == first + " " + second
     assert brief["data"]["result"] == data
+
+
+@pytest.mark.parametrize("quote", ['"', "”", "’"])
+def test_search_default_ends_after_a_quoted_headline(quote):
+    first = f"NVIDIA announced “An update in the U.S.{quote}"
+    data = {"status": "success", "answer": first + " Another headline follows."}
+    result = format_tool_result(TOOLS["web_search"], {"query": "one headline"}, data)
+    # A closing quote followed by a new capitalized sentence ends even U.S.
+    assert result["response_text"] == first
+    first = f"NVIDIA announced “A launch today.{quote}"
+    data["answer"] = first + " Another headline follows."
+    result = format_tool_result(TOOLS["web_search"], {"query": "one headline"}, data)
+    assert result["response_text"] == first
+
+
+def test_session_dialogue_evidence_excludes_examples_and_keeps_context_unchanged():
+    from examples.frontend_backend_agent.src.reliable_talker import _session_dialogue_context
+
+    messages = [{"role": "user", "content": "Example NVIDIA headline"}]
+    messages += [{"role": "user", "content": "x" * 1500} for _ in range(10)]
+    messages += [
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "one"}]},
+        {"role": "tool", "content": "private raw tool data"},
+        {"role": "user", "content": "What about Anthropic?"},
+        {"role": "assistant", "content": "An Anthropic update."},
+        {"role": "user", "content": "Another headline about that same company?"},
+    ]
+    original = LLMContext(messages, tools=[], tool_choice="auto")
+    bounded = _session_dialogue_context(original, 1)
+    assert bounded.get_messages()[:-1] == messages
+    assert original.get_messages() == messages
+    reminder = bounded.get_messages()[-1]
+    assert reminder["role"] == "system" and "untrusted quoted JSON" in reminder["content"]
+    evidence = json.loads(reminder["content"].split("\n", 1)[1])
+    assert len(evidence) == 8 and all(len(item["content"]) <= 1000 for item in evidence)
+    assert evidence[-3]["content"] == "What about Anthropic?"
+    assert "Example NVIDIA" not in str(evidence) and "private raw tool data" not in str(evidence)
+    assert bounded.tools == original.tools and bounded.tool_choice == original.tool_choice
+
+
+def test_empty_planner_completion_retries_once_before_execution():
+    from examples.frontend_backend_agent.generic.planner import EmptyPlanError
+
+    async def scenario():
+        planner = SimpleNamespace(
+            plan=AsyncMock(
+                side_effect=[
+                    EmptyPlanError("No visible plan"),
+                    {"tool": "get_stock_price", "params": {"company_name": "NVIDIA"}},
+                ]
+            )
+        )
+        quote = AsyncMock(return_value={"status": "success", "company": "NVIDIA", "symbol": "NVDA", "price": 100})
+        tools = {"get_stock_price": replace(TOOLS["get_stock_price"], run=quote)}
+        backend = GenericThinkerBackend(planner=planner, enabled_tools=("get_stock_price",), tools=tools)
+        result = await backend.call("Check NVIDIA price")
+        assert result["status"] == "success" and quote.call_count == 1
+        assert planner.plan.call_count == 2
+        assert [call.kwargs["state"]["planner_attempt"] for call in planner.plan.call_args_list] == [1, 2]
+
+    asyncio.run(scenario())

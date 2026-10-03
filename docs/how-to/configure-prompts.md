@@ -55,7 +55,12 @@ do not inherit catalog examples for custom prompt content. Generic execution
 guidance uses real user dialogue to resolve subjects and requests clarification
 when a required location or subject is absent. Demonstration cities, companies,
 and results are protocol examples rather than current-user facts. These rules
-are model guidance; enabled-tool validation remains in Python.
+are model guidance; enabled-tool validation remains in Python. A system
+boundary ends the demonstrations before actual session dialogue. The Generic
+Talker's temporary quoted-JSON reminder uses only actual dialogue, with up to
+8 entries and 1,000 characters per entry; it does not change saved history.
+The native examples also include direct repetition of public words such as
+“Nemotron 3 Diarization.”
 
 Preserve the Thinker's structured plan format and the Talker's delegation and
 spoken-output rules when replacing prompts. Prompt changes do not add tools:

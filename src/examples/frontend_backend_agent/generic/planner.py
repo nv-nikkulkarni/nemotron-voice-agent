@@ -19,6 +19,10 @@ from examples.frontend_backend_agent.src.stage_metrics import StageMetricsCoordi
 from examples.frontend_backend_agent.src.tools import ToolSpec, render_tool_block
 
 
+class EmptyPlanError(RuntimeError):
+    """A completion finished without a visible execution plan."""
+
+
 class GenericPlanner(Protocol):
     """Planner boundary consumed by the generic backend."""
 
@@ -82,5 +86,5 @@ class NvidiaGenericPlanner:
             )
         raw = await run_streamed_inference(self._llm, context, span, max_tokens=self._max_tokens)
         if not raw:
-            raise RuntimeError("Generic Thinker returned an empty plan")
+            raise EmptyPlanError("Generic Thinker returned an empty plan")
         return parse_plan_json(raw)

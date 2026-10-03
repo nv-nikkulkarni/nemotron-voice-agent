@@ -14,7 +14,7 @@ from examples.frontend_backend_agent.src.tools import ToolSpec
 
 _UNSPEAKABLE_RE = re.compile(r"(?:</?(?:think|tool_call|function|parameter)[^>]*>|```|[*#]{2,})", re.IGNORECASE)
 _SPACE_RE = re.compile(r"\s+")
-_SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+")
+_SENTENCE_BOUNDARY_RE = re.compile(r"[.!?][\"'”’)\]]*\s+")
 _MAX_SPOKEN_RESULT_CHARS = 450
 _SENTENCE_ABBREVIATIONS = frozenset(
     {
@@ -54,10 +54,15 @@ def _sentences(text: str) -> list[str]:
     sentences = []
     start = 0
     for boundary in _SENTENCE_BOUNDARY_RE.finditer(text):
-        token = text[: boundary.start()].rsplit(None, 1)[-1].strip("\"'()[]")
-        if token.casefold().rstrip(".") in _SENTENCE_ABBREVIATIONS or re.fullmatch(r"(?:[A-Za-z]\.){2,}", token):
+        stop = boundary.start() + len(boundary.group().rstrip())
+        token = text[:stop].rsplit(None, 1)[-1].strip("\"'“”‘’()[]")
+        abbreviated = token.casefold().rstrip(".") in _SENTENCE_ABBREVIATIONS or re.fullmatch(
+            r"(?:[A-Za-z]\.){2,}", token
+        )
+        quoted_end = text[stop - 1] in "\"'”’)]" and text[boundary.end() :][:1].isupper()
+        if abbreviated and not quoted_end:
             continue
-        sentences.append(text[start : boundary.start()])
+        sentences.append(text[start:stop])
         start = boundary.end()
     if text[start:]:
         sentences.append(text[start:])

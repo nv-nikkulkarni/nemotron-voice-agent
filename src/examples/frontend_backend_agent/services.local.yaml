@@ -29,7 +29,7 @@ server:
       name: "Nemotron 3 Super Reasoning Thinker"
       model_id: "nvidia/nemotron-3-super-120b-a12b"
       base_url: "http://nemotron-3-super:8000/v1"
-      max_tokens: 768
+      max_tokens: 2048
       temperature: 0.0
       extra_params: '{"extra_body":{"chat_template_kwargs":{"enable_thinking":true},"reasoning_budget":256,"repetition_penalty":1.05}}'
   booking-server:
