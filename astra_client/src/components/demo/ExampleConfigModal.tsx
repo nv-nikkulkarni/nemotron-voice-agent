@@ -108,7 +108,7 @@ export function ExampleConfigModal({
     }}>
       <div ref={panel} className="ex-config" onClick={(e) => e.stopPropagation()}>
         <div className="ex-config__head">
-          <h2 className="ex-config__title">{meta}</h2>
+          <div><p className="studio-eyebrow">SESSION SETUP</p><h2 className="ex-config__title">{meta}</h2></div>
           <button ref={close} type="button" disabled={connecting || voiceBusy} className="ex-config__close" aria-label="Close" onClick={onClose}>×</button>
         </div>
         <p className="ex-config__lead">Choose how this assistant runs, then start talking.</p>

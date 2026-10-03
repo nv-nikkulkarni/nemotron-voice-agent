@@ -10,25 +10,40 @@ export function PromptPage({ onClose }: Readonly<{ onClose: () => void }>) {
   const backend = app.prompts.find((prompt) => prompt.role === "backend")?.content ?? "";
   return (
     <section className="prompt-studio" aria-label="Prompt configuration">
-      <div className="page-panel__head"><h2>Prompts · {app.selectedExample?.label ?? "Voice agent"}</h2>
-        <button className="btn-secondary" onClick={onClose}>Back to setup</button></div>
-      <p className="set-hint">Prepare your next demo here. Edits are saved in this browser and applied when a new session starts.</p>
+      <div className="prompt-studio__head">
+        <div><p className="studio-eyebrow">AGENT INSTRUCTIONS</p><h2>Make the conversation yours.</h2>
+          <p className="prompt-studio__example">{app.selectedExample?.label ?? "Voice agent"}</p></div>
+        <button className="btn-secondary" onClick={onClose}>Back to setup</button>
+      </div>
+      <p className="prompt-studio__lead">Prepare your next demo here. Edits are saved in this browser and applied when a new session starts.</p>
       {app.promptsLoading && <p role="status" className="set-hint">Loading system prompt defaults…</p>}
-      <label className="set-field"><span className="set-field__label">Frontend system prompt · spoken responses</span>
-        <textarea disabled={active} className="set-textarea" rows={12} maxLength={32000} value={app.promptOverride || frontend}
-          onChange={(event) => app.setPromptOverride(event.target.value === frontend ? "" : event.target.value)} />
-      </label>
-      <button disabled={active} className="btn-ghost" onClick={() => app.setPromptOverride("")}>Restore frontend default</button>
-      {backend && <><label className="set-field"><span className="set-field__label">Backend system prompt · planning and tools</span>
-        <textarea disabled={active} className="set-textarea" rows={12} maxLength={32000} value={app.backendPromptOverride || backend}
-          onChange={(event) => app.setBackendPromptOverride(event.target.value === backend ? "" : event.target.value)} />
-        </label><button disabled={active} className="btn-ghost" onClick={() => app.setBackendPromptOverride("")}>Restore backend default</button></>}
-      <label className="set-field"><span className="set-field__label">Persistent instructions · appended to both prompts</span>
-        <textarea disabled={active} className="set-textarea" rows={5} maxLength={32000} value={app.persistentPrompt}
-          placeholder="Your demo persona, tone, or standing preferences"
-          onChange={(event) => app.setPersistentPrompt(event.target.value)} />
-      </label>
-      <p className="set-hint">Persistent instructions remain when you restore a default prompt. Tool permissions and model roles are configured separately.</p>
+      <div className="prompt-studio__grid">
+        <section className="prompt-studio-card" aria-label="Frontend instructions">
+          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">01</span><div><h3>The conversational voice</h3><p>Set the tone, personality, and spoken responses.</p></div></div>
+          <label className="set-field"><span id="frontend-prompt-label" className="set-field__label">Frontend system prompt · spoken responses</span>
+            <textarea disabled={active} className="set-textarea" rows={12} maxLength={32000} aria-labelledby="frontend-prompt-label" value={app.promptOverride || frontend}
+              onChange={(event) => app.setPromptOverride(event.target.value === frontend ? "" : event.target.value)} />
+          </label>
+          <button disabled={active} className="btn-ghost" onClick={() => app.setPromptOverride("")}>Restore frontend default</button>
+        </section>
+        {backend && <section className="prompt-studio-card" aria-label="Backend instructions">
+          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">02</span><div><h3>The planning brain</h3><p>Guide reasoning, decisions, and tool use.</p></div></div>
+          <label className="set-field"><span id="backend-prompt-label" className="set-field__label">Backend system prompt · planning and tools</span>
+            <textarea disabled={active} className="set-textarea" rows={12} maxLength={32000} aria-labelledby="backend-prompt-label" value={app.backendPromptOverride || backend}
+              onChange={(event) => app.setBackendPromptOverride(event.target.value === backend ? "" : event.target.value)} />
+          </label>
+          <button disabled={active} className="btn-ghost" onClick={() => app.setBackendPromptOverride("")}>Restore backend default</button>
+        </section>}
+        <section className="prompt-studio-card prompt-studio-card--persistent" aria-label="Persistent instructions">
+          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">+</span><div><h3>Your standing instructions</h3><p>Keep your preferences across prompt edits and demos.</p></div><span className="prompt-studio-card__badge">Always appended</span></div>
+          <label className="set-field"><span id="persistent-prompt-label" className="set-field__label">Persistent instructions · appended to both prompts</span>
+            <textarea disabled={active} className="set-textarea" rows={5} maxLength={32000} aria-labelledby="persistent-prompt-label" value={app.persistentPrompt}
+              placeholder="Your demo persona, tone, or standing preferences"
+              onChange={(event) => app.setPersistentPrompt(event.target.value)} />
+          </label>
+          <p className="set-hint">Persistent instructions remain when you restore a default prompt. Tool permissions and model roles are configured separately.</p>
+        </section>
+      </div>
     </section>
   );
 }

@@ -72,7 +72,12 @@ function ExampleCard({
       aria-pressed={selected}
       aria-label={`${selected ? "Selected" : "Select"} ${option.label}`}
     >
-      {meta.beta && <span className="example-card__beta">Beta</span>}
+      <div className="example-card__topline">
+        <span className="example-card__category">{option.key.startsWith("omni") ? "Multimodal conversation" : "Conversation + live tools"}{meta.beta && <span className="example-card__beta">Beta</span>}</span>
+        <span className={`example-card__state ${selected ? "is-selected" : ""}`} aria-hidden="true">
+          {selected ? "Selected ✓" : "Select assistant"}
+        </span>
+      </div>
       <div className="example-card__header">
         <img className="example-card__logo" src="/nvidia-nim-icon.png" alt="NVIDIA NIM" />
         <h3 className="example-card__title">
@@ -130,6 +135,11 @@ function StartView({ connecting, onPrompts }: Readonly<{ connecting: boolean; on
         <p className="startview__eyebrow">NVIDIA</p>
         <h1 className="startview__title"><span className="wm-green">Nemotron</span> <span className="wm-flow">Voice Agent</span></h1>
         <p className="startview__subtitle">Pick an assistant, choose how it runs, and start a live voice conversation.</p>
+        <ol className="startview__steps" aria-label="Session setup">
+          <li><span>01</span> Choose an assistant</li>
+          <li><span>02</span> Make it yours</li>
+          <li><span>03</span> Start talking</li>
+        </ol>
       </div>
 
       <div className="example-grid" data-tour="examples">

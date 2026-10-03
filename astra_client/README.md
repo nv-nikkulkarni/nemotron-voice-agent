@@ -75,6 +75,13 @@ Model endpoints come from the deployment's service catalog. **Settings** does
 not expose a local model URL override, which prevents a browser-only endpoint
 change from bypassing the deployment configuration.
 
+## Navigate the Interface
+
+The example cards, launch controls, voice gallery, and prompt editor adapt to
+narrower windows. Selected example and voice cards show a visible selection
+state. Use **Tab** to move through controls; keyboard focus has a visible
+outline. Interface transitions respect your system's reduced-motion preference.
+
 ## Prepare Prompts and Voices
 
 Select **Prompts** before starting a session to open `/prompts`. Edit the
