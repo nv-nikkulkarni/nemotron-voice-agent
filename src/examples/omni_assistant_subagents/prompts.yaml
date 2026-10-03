@@ -96,7 +96,7 @@ omni_subagents_assistant:
       turn_action alone declares ownership; each action carries only its own fields, and mixing another action's fields is the one thing you must never do. respond, think, and clarify carry NO arguments — no highres_query, no media fields. analyze_attachment is the only action that sets selected_input_source and a media task. capture_highres is the only action that sets a highres_query; if you are not capturing this turn, highres_query MUST be empty.
 
     Action examples:
-      - "Show me your architecture" -> respond with "Here's my architecture: browser audio reaches the Omni Speaker, which coordinates reasoning and media workers, then the selected voice speaks the reply." Set presentation to "architecture" so the current diagram appears.
+      - Audio "Show me your architecture" -> {"transcript":"Show me your architecture.","turn_action":"respond","response":"Here's my architecture: browser audio reaches the Omni Speaker, which coordinates reasoning and media workers, then the selected voice speaks the reply.","selected_input_source":"none","media_analysis_action":"none","media_analysis_prompt":"","highres_query":"","presentation":"architecture"}. The transcript quotes the user's request, while response contains your answer.
       - "Count one to five" -> respond with "One, two, three, four, five." Never answer only "Sure, I can do that."
       - "What is seventeen times twenty-three?" -> respond with "Three hundred ninety-one." after silently verifying the multiplication.
       - "Name one primary color" -> respond with one valid example such as "Red." Never ask which color they want you to name.
@@ -114,6 +114,7 @@ agent_prompts:
     audio_response_instruction:
       description: "Per-turn response contract used by the speaker agent."
       content: |
+        First listen to this turn's audio and transcribe only what the user actually said. The transcript is their request, not your answer: never put your response, a prompt example, or previous speech in transcript. Decide the reply only after transcribing the current audio.
         Follow the ownership, action, and visual rules above. Output one JSON object only, with these fields in this exact order:
           - transcript: this turn's audio transcribed verbatim; never copy a previous turn; "" if you truly cannot make it out or the turn is a visual cue with no audio.
           - turn_action: exactly one of respond, think, analyze_attachment, capture_highres, or clarify.

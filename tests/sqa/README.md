@@ -104,8 +104,11 @@ edited Generic role prompts. The spoken clock response must include
 `HH:MM AM/PM` and match fresh browser-local time within 1 minute of either
 turn start or completion. It requires a spoken zone label and rejects “slash”
 or an IANA separator in the clock response.
-It also checks spoken architecture descriptions and rendered Generic and Omni
-images, “Nemotron 3 Diarization,”
+For both architecture turns, the input transcript must match the spoken
+request “Show me your architecture.” The suite separately checks a spoken
+diagram description and a rendered Generic or Omni image. A correct image or
+answer alone does not establish input transcription acceptance.
+It also checks “Nemotron 3 Diarization,”
 “Codex and spinner,” concise speech without Markdown markers, and an inserted
 0.65 s gap inside an unfinished Tokyo weather request. The actual WAV pause
 also includes TTS trailing and leading padding. The suite records the largest

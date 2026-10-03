@@ -28,7 +28,7 @@ const turns = [
   { text: "What is the current NVIDIA stock price?", heard: /nvidia/i, expect: /price|dollar|USD|\d/i },
   { text: "Check that same company again please.", heard: /company|again/i, expect: /nvidia|NVDA/i },
   { text: "What time is it right now?", heard: /time/i, expect: /\d{1,2}:\d{2}\s*(AM|PM)/i, clock: true },
-  { text: "Show me your architecture.", heard: /architecture/i, expect: /architecture|diagram|design/i, architecture: "generic" },
+  { text: "Show me your architecture.", heard: /show\s+me\s+your\s+architecture/i, expect: /architecture|diagram|design/i, architecture: "generic" },
   { text: "Please say Nemotron 3 Diarization.", heard: /nemotron|diarization/i, expect: /nemotron|diarization/i },
   { text: "Please repeat these two words: Codex and spinner.", heard: /codex.*spinner/i, expect: /codex.*spinner/i },
   { text: "What can you do?", heard: /what|can|do/i, expect: /help|weather|stock|question|time/i, short: true },
@@ -173,7 +173,7 @@ try {
   await H.selectExample(page, { example: "omni", model: null, consent: true });
   const omni = { key: "omni", turns: [] }; result.conversations.push(omni);
   assert((await H.startConversation(page)).connected); assert(await H.waitForSettledWelcome(page));
-  await runTurn(omni, { text: "Show me your architecture.", heard: /architecture/i, expect: /architecture|diagram|design/i,
+  await runTurn(omni, { text: "Show me your architecture.", heard: /show\s+me\s+your\s+architecture/i, expect: /architecture|diagram|design/i,
     architecture: "omni" }, 1);
   await finish(omni);
   if (process.env.SQA_VOICE_SAMPLE) {

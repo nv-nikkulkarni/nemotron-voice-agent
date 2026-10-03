@@ -113,6 +113,11 @@ NVIDIA TTS voice speaks the reply. This presentation action does not require
 a media upload or a provider key. Other media requests keep their analyzer
 routing.
 
+The Speaker's per-turn prompt requires transcription of the current user audio
+before choosing a reply. Its native architecture example keeps the request in
+`transcript` and the diagram explanation in `response`. Qualification checks
+the actual spoken input, the displayed image, and the spoken response.
+
 ## Tips & best practices
 
 - **Keep the voice loop responsive.** Media, webcam, and reasoning analysis run as separate worker agents so the transport and speaker agents never block on vision or reasoning work. Preserve that split when adding new capabilities.
