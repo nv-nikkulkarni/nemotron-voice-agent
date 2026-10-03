@@ -83,9 +83,11 @@ For ASR latency and throughput across GPUs and WER for different models, see the
   ```
 
 The Frontend/Backend Agent adds `Codex`, `codex`, `spinner`, and `Nemotron`
-to the boosted vocabulary when the selected ASR model name contains
-`nemotron` or `rnnt`. Its boost score is `1.0`. This request setting helps domain-word
-recognition; verify the resulting transcript with real audio.
+when the selected ASR model name contains `nemotron` or `rnnt`. Its Generic
+domain also adds `NVIDIA`, `Nvidia`, `NVDA`, `Anthropic`, and `Claude`.
+All these hints use boost score `1.0`. They help recognize company names and
+demo terms; verify the resulting transcript with real audio. Other domains
+and example pipelines retain their existing vocabulary settings.
 
 - **Endpointing (end-of-utterance)**: Riva/NIM ASR decides when the user has stopped speaking from trailing silence, via the endpoint parameters `start_history` / `start_threshold`, `stop_history` / `stop_threshold`. Silence windows are in ms, a multiple of 80, and `-1` keeps the model defaults. For models that do not honor `force_eou`, shorter `stop_history` finalizes faster (lower latency, but can clip trailing words). Generic and Multilingual construct `NvidiaForceEouSTTService` with `stop_history=400`. The Frontend/Backend Agent uses `stop_history=-1`, retaining native Nemotron Speech model endpointing defaults. To customize this fallback value, pass your chosen value in the example pipeline:
 

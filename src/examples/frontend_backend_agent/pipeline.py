@@ -235,6 +235,8 @@ async def bot(runner_args: RunnerArguments) -> None:
         asr_settings.language = asr_language_code
     if "nemotron" in asr_model.lower() or "rnnt" in asr_model.lower():
         asr_settings.boosted_lm_words = ["Codex", "codex", "spinner", "Nemotron"]
+        if domain.key == "generic":
+            asr_settings.boosted_lm_words.extend(["NVIDIA", "Nvidia", "NVDA", "Anthropic", "Claude"])
         asr_settings.boosted_lm_score = 1.0
     asr_kwargs["settings"] = asr_settings
     stt = NvidiaForceEouSTTService(**asr_kwargs, stop_history=-1)

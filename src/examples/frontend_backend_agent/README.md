@@ -251,6 +251,12 @@ start thresholds stay separate. Native ASR uses `stop_history=-1` to retain
 Nemotron Speech model defaults; a native final transcript can arrive before
 the local VAD stop. Local turn detection still decides semantic completion.
 
+For ASR model names containing `nemotron` or `rnnt`, the pipeline boosts
+`Codex`, `codex`, `spinner`, and `Nemotron` with score `1.0`. The Generic
+domain also boosts `NVIDIA`, `Nvidia`, `NVDA`, `Anthropic`, and `Claude`
+at the same score. Validate recognition with spoken audio; vocabulary hints
+do not guarantee an exact transcript.
+
 The Generic Talker supplies `filler_text` in the same native `call_backend`
 selection. The runtime validates that candidate as 3 to 12 words, at most 96
 characters, query-grounded, and free of result claims or internal names. It
