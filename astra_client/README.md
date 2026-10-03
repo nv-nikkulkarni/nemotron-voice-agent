@@ -77,10 +77,12 @@ change from bypassing the deployment configuration.
 
 ## Navigate the Interface
 
-The example cards, launch controls, voice gallery, and prompt editor adapt to
-narrower windows. Selected example and voice cards show a visible selection
-state. Use **Tab** to move through controls; keyboard focus has a visible
-outline. Interface transitions respect your system's reduced-motion preference.
+The landing page uses a centered gradient wordmark, moving aurora background,
+and translucent cards. The example cards, launch controls, voice gallery, and
+prompt editor adapt to narrower windows. Selected example and voice cards show
+a visible selection state. Use **Tab** to move through controls; keyboard focus
+has a visible outline. Decorative animations and interface transitions respect
+your system's reduced-motion preference.
 
 ## Prepare Prompts and Voices
 
