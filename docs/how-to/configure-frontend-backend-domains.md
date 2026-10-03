@@ -17,7 +17,7 @@ The shared Pipecat pipeline separates low-latency conversation from slower task 
 
 The Talker sees only 2 functions. Internal functions, credentials, backend state, and tool results remain behind the domain boundary. The Thinker produces a bounded plan; the implementation does not use a ReAct observe-and-replan loop.
 
-The shared Frontend/Backend Agent pipeline waits `1.6` seconds of
+The shared Frontend/Backend Agent pipeline waits `2.0` seconds of
 voice-activity-detector silence before the local VAD stop event finalizes any
 remaining ASR audio. Native ASR final frames can arrive earlier. Smart Turn
 still decides semantic completion, with a `2.0`-second silence fallback.
@@ -181,6 +181,11 @@ default, up to 2 when the Thinker sets `details: true`, and at most
 450 characters. The Thinker selects this optional Boolean flag for explicit
 detail, multiple-headline, or expanded-comparison requests. The formatter
 applies the selected flag and preserves the returned structured tool data.
+The appended Generic execution guidance resolves follow-ups from real user
+dialogue and excludes demonstration locations, companies, and result values.
+If a required location or subject is missing, it requests a brief clarification.
+Native examples demonstrate protocol; these semantic rules remain model guidance.
+
 Sentence boundaries preserve abbreviations such as `U.S.`, `Inc.`, and `Sept.`,
 and decimal values.
 

@@ -160,10 +160,25 @@ try {
     .filter((gap) => gap.end - gap.duration > 0.05 && gap.end < duration - 0.05);
   generic.pauseTiming = { insertedSeconds: 0.65, measuredSeconds: Math.max(...interiorSilences.map((gap) => gap.duration)), thresholdDb: -35 };
   assert(generic.pauseTiming.measuredSeconds >= 0.64, "fixture must contain the requested pause");
+  await H.installToolWatch(page);
+  // Record public stage IDs; UI bubbles alone can hide separate backend turns.
+  await page.evaluate(() => {
+    window.__frontendSelections = [];
+    window.addEventListener("nva:frontend-selection", (event) => {
+      window.__frontendSelections.push(event.detail);
+    });
+  });
+  const toolMark = await H.toolWatchMark(page);
   await runTurn(generic, { text: "Could you check the weather [pause] in Tokyo right now?", heard: /weather.*tokyo/i,
     expect: /tokyo|degree|celsius/i }, 8, joined);
   assert.equal(generic.turns.at(-1).domUserMessages.length, 1, "mid-sentence pause split the user turn");
-  console.log("Pause timing", JSON.stringify(generic.pauseTiming), "one user turn");
+  const pause = generic.turns.at(-1);
+  assert(!/pune|nairobi|reykjavik/i.test(pause.domBot + pause.botAsr), "example city leaked into the current weather turn");
+  generic.pauseTools = await H.toolWatchSince(page, toolMark);
+  assert.deepEqual(generic.pauseTools, ["get_weather"], "pause must produce exactly one actual weather execution");
+  generic.pauseFrontendTurns = await page.evaluate(() => [...new Set(window.__frontendSelections.map((metric) => metric.turnId))]);
+  assert.equal(generic.pauseFrontendTurns.length, 1, "pause must produce exactly one correlated frontend request; missing metrics fail");
+  console.log("Pause timing", JSON.stringify(generic.pauseTiming), "one correlated frontend turn and weather execution");
   await finish(generic);
   await page.getByRole("button", { name: "Prompts", exact: true }).click();
   await page.getByRole("button", { name: "Restore frontend default", exact: true }).click();

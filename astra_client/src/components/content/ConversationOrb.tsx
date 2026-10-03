@@ -125,6 +125,15 @@ export function ConversationOrb() {
     useCallback((metrics: unknown) => {
       const updates = parseAgentStageMetrics(metrics);
       if (updates.length > 0) {
+        // Mirror only public correlation metadata for spoken regression checks.
+        // UI bubbles can merge separate backend turns and hide premature EOU.
+        for (const row of updates) {
+          if (row.kind === "frontend") {
+            window.dispatchEvent(new CustomEvent("nva:frontend-selection", {
+              detail: { turnId: row.turnId, invocationId: row.invocationId },
+            }));
+          }
+        }
         const observedOffset = turnOriginRef.current == null ? 0 : performance.now() - turnOriginRef.current;
         setAgentMetricOffsets((current) => {
           const next = { ...current };

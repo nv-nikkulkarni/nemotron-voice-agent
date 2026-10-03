@@ -12,7 +12,7 @@ This section covers pipeline configurations for optimizing the performance and u
 
 By default the cascaded pipeline uses Pipecat's ML-based [**Smart Turn**](https://docs.pipecat.ai/api-reference/server/utilities/turn-detection/smart-turn-overview) detection to decide when the user has finished speaking, so the agent replies promptly without cutting the user off. [Silero VAD](https://docs.pipecat.ai/server/utilities/audio/silero-vad-analyzer) (`stop_secs=0.2`) detects the pause, and the Smart Turn model then judges whether the turn is actually complete. If the model still has not finalized after the Smart Turn silence fallback (default **1.0 s**, `SMART_TURN_STOP_SECS`), the turn completes anyway (fallback).
 
-The Frontend/Backend Agent overrides the initial VAD pause to `1.6 s` and the
+The Frontend/Backend Agent overrides the initial VAD pause to `2.0 s` and the
 Smart Turn fallback to `2.0 s` to allow trailing words and follow-ups to arrive.
 Its overrides are `FRONTEND_BACKEND_VAD_STOP_SECS` and
 `FRONTEND_BACKEND_SMART_TURN_STOP_SECS`; the latter has a minimum of `0.8 s`.

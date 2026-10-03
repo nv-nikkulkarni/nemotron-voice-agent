@@ -51,7 +51,11 @@ when you edit the frontend persona or choose another prompt key. These examples
 teach asynchronous delegation, fresh-clock lookup, and architecture
 presentation independently of editable text. The clock example contains an
 unavailable result rather than a fictional time. Other Frontend/Backend domains
-do not inherit catalog examples for custom prompt content.
+do not inherit catalog examples for custom prompt content. Generic execution
+guidance uses real user dialogue to resolve subjects and requests clarification
+when a required location or subject is absent. Demonstration cities, companies,
+and results are protocol examples rather than current-user facts. These rules
+are model guidance; enabled-tool validation remains in Python.
 
 Preserve the Thinker's structured plan format and the Talker's delegation and
 spoken-output rules when replacing prompts. Prompt changes do not add tools:

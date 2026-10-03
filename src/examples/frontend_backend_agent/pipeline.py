@@ -65,7 +65,7 @@ THINKER_TOOL_DELAY_MIN_SECONDS = 0.1
 THINKER_TOOL_DELAY_MAX_SECONDS = 0.5
 THINKER_FILLER_THRESHOLD_SECONDS = parse_env_float("THINKER_FILLER_THRESHOLD_SECONDS", 0.3, min_value=0.0)
 THINKER_TOOL_TIMEOUT_SECONDS = parse_env_float("THINKER_TOOL_TIMEOUT_SECONDS", 45.0, min_value=1.0)
-FRONTEND_BACKEND_VAD_STOP_SECS = parse_env_float("FRONTEND_BACKEND_VAD_STOP_SECS", 1.6, min_value=0.0)
+FRONTEND_BACKEND_VAD_STOP_SECS = parse_env_float("FRONTEND_BACKEND_VAD_STOP_SECS", 2.0, min_value=0.0)
 
 
 def _build_context_messages(
@@ -178,7 +178,10 @@ async def bot(runner_args: RunnerArguments) -> None:
             "For current time, live weather, stock prices, searches, calculations, random generation, "
             "or showing the public architecture, use call_backend with a self-contained query. "
             "Never claim unavailable live-data access without trying the enabled capability. "
-            "Use conversation history to resolve follow-ups, but fetch changing facts afresh. "
+            "Resolve follow-ups only from real user dialogue, never the demonstration messages. "
+            "Never copy example locations, companies, or results into the current request. "
+            "If a required location or subject is absent from real dialogue, ask one brief clarification. "
+            "Fetch changing facts afresh. "
             "For delegated work emit only the native function call, with no normal assistant content. "
             "If the requested capability is disabled, explain briefly. cancel_backend cancels pending work."
         )

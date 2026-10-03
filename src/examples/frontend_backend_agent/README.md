@@ -229,7 +229,7 @@ The following environment variables bound shared and domain-specific orchestrati
 | Environment Variable | Default | Purpose |
 | --- | --- | --- |
 | `CHAT_HISTORY_RECENT_TURNS` | `20` | Retains this many user turns with their associated messages and tool results; initial prompts stay pinned. |
-| `FRONTEND_BACKEND_VAD_STOP_SECS` | `1.6` | Local VAD pause in seconds; accommodates pauses and trailing words at the cost of end-of-turn latency. Native ASR can finalize earlier; Smart Turn decides completion. |
+| `FRONTEND_BACKEND_VAD_STOP_SECS` | `2.0` | Local VAD pause in seconds; accommodates pauses and trailing words at the cost of end-of-turn latency. Native ASR can finalize earlier; Smart Turn decides completion. |
 | `FRONTEND_BACKEND_SMART_TURN_STOP_SECS` | `2.0` | Semantic turn silence fallback in seconds; minimum `0.8`. |
 | `FRONTEND_BACKEND_TALKER_FILLER_MODE` | `emit` | Uses `off`, `observe`, or `emit` to suppress, validate-only, or speak an accepted Talker filler |
 | `FRONTEND_BACKEND_TOOL_RESULT_MODE` | Domain default: Generic `direct`; Airline `talker`; NVCF chart `direct` | An explicit `direct`, `hybrid`, or `talker` value overrides the backend default. Generic `hybrid` uses the Talker only for successful weather results. |
@@ -244,7 +244,7 @@ The following environment variables bound shared and domain-specific orchestrati
 
 The single-GPU profile uses a dedicated Model Runner V1 service, separate from the V2 service used by the generic and multilingual profiles. The Thinker sets `thinking_token_budget=1024` and `max_tokens=4096`, while the single-GPU Compose profile gives backend tool calls 90 seconds to complete. The numeric thinking budget requires Model Runner V1 in vLLM 0.27.1.
 
-The `1.6`-second local VAD pause allows unfinished requests to continue across
+The `2.0`-second local VAD pause allows unfinished requests to continue across
 longer pauses. It adds end-of-turn latency compared with shorter thresholds.
 The Smart Turn silence fallback remains `2.0` seconds, and bot-aware barge-in
 start thresholds stay separate. Native ASR uses `stop_history=-1` to retain
@@ -339,7 +339,11 @@ For the Generic domain, editing the frontend persona or prompt key retains
 the `generic_talker` native protocol examples. These include fresh-clock and
 architecture delegation; the clock example contains a service error rather
 than an example time to repeat. Custom prompts in other domains do not inherit
-these examples. The runtime still validates calls against the enabled tools.
+these examples. The runtime still validates calls against the enabled tools. Appended Generic
+execution guidance resolves subjects from real user dialogue, excludes example
+cities, companies, and values, and requests clarification when a required
+location or subject is missing. Native examples demonstrate protocol; subject
+selection remains model-driven.
 
 The Generic Talker receives the session's local date and timezone, without a
 current clock reading. The planner refreshes its local timestamp for each plan

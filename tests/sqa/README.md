@@ -113,7 +113,13 @@ It also checks “Nemotron 3 Diarization,”
 0.65 s gap inside an unfinished Tokyo weather request. The actual WAV pause
 also includes TTS trailing and leading padding. The suite records the largest
 interior silence at a -35 dB threshold in `pauseTiming` and requires the full
-request to remain 1 user turn. Every completed session
+request to remain 1 user turn. This gate uses distinct `frontend_tool_selection`
+turn IDs from parsed RTVI stage-correlation metadata, surfaced through the
+browser's `nva:frontend-selection` event. It requires exactly 1 recorded `get_weather`
+tool event, and rejects example-city filler such as Pune, Nairobi, or Reykjavik.
+The correlation check works across transports and mirrors no raw audio or
+prompt contents. Missing correlation metadata fails the gate. A single visible transcript bubble
+alone does not establish that the request remained 1 real turn. Every completed session
 requires capture teardown acknowledgement. After the Generic conversation,
 the suite restores both default prompts and checks that persistent instructions
 remain. The optional sample branch checks upload, explicit sample activation,
