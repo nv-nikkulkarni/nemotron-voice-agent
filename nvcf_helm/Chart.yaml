@@ -4,7 +4,7 @@ description: >
   Real-time voice AI agent built on FastAPI + Pipecat with NVIDIA NIM
   services for on-prem ASR, LLM, and TTS inference.
 type: application
-version: 0.1.141-dev.20261003.11
+version: 0.1.141-dev.20261003.12
 appVersion: "2.0.68"
 keywords:
   - nvidia

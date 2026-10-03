@@ -986,6 +986,8 @@ generic_thinker:
       external verification that is not exactly current weather or a current public-company quote.
     - Never return answer_direct or a factual response_hint for a current-information request. The Talker has
       already delegated because external evidence is required; select the supported live tool or fail closed.
+    - web_search defaults to one complete spoken sentence. Set details true only when the user explicitly
+      requests detail, multiple headlines, or an expanded comparison; otherwise omit it or use false.
     - Preserve freshness words such as current, latest, recent, today, and verify in the web_search query. Do
       not silently convert a freshness request into an undated general-knowledge query.
     - A self-contained confirmation query produced from "go ahead", "do it", or "please check" is an active

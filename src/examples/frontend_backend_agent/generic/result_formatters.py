@@ -16,6 +16,52 @@ _UNSPEAKABLE_RE = re.compile(r"(?:</?(?:think|tool_call|function|parameter)[^>]*
 _SPACE_RE = re.compile(r"\s+")
 _SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+")
 _MAX_SPOKEN_RESULT_CHARS = 450
+_SENTENCE_ABBREVIATIONS = frozenset(
+    {
+        "mr",
+        "mrs",
+        "ms",
+        "dr",
+        "prof",
+        "sr",
+        "jr",
+        "vs",
+        "etc",
+        "inc",
+        "ltd",
+        "corp",
+        "co",
+        "e.g",
+        "i.e",
+        "jan",
+        "feb",
+        "mar",
+        "apr",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "sept",
+        "oct",
+        "nov",
+        "dec",
+    }
+)
+
+
+def _sentences(text: str) -> list[str]:
+    """Split complete sentences without breaking initials, companies, or dates."""
+    sentences = []
+    start = 0
+    for boundary in _SENTENCE_BOUNDARY_RE.finditer(text):
+        token = text[: boundary.start()].rsplit(None, 1)[-1].strip("\"'()[]")
+        if token.casefold().rstrip(".") in _SENTENCE_ABBREVIATIONS or re.fullmatch(r"(?:[A-Za-z]\.){2,}", token):
+            continue
+        sentences.append(text[start : boundary.start()])
+        start = boundary.end()
+    if text[start:]:
+        sentences.append(text[start:])
+    return sentences
 
 
 def _speech_text(value: object, *, max_length: int = 1200) -> str:
@@ -27,7 +73,7 @@ def _bounded_speech(value: object, *, max_sentences: int) -> str:
     text = _speech_text(value, max_length=5000)
     if not text:
         return ""
-    sentences = [sentence for sentence in _SENTENCE_BOUNDARY_RE.split(text) if sentence]
+    sentences = _sentences(text)
     bounded = " ".join(sentences[:max_sentences])
     if len(bounded) <= _MAX_SPOKEN_RESULT_CHARS:
         return bounded
@@ -125,7 +171,7 @@ def format_tool_result(spec: ToolSpec, arguments: dict[str, Any], data: dict[str
     else:
         text = spec.speak(arguments, data)
     if spec.name == "web_search":
-        text = _bounded_speech(text, max_sentences=2)
+        text = _bounded_speech(text, max_sentences=2 if arguments.get("details") else 1)
     return tool_result(
         tool=spec.name,
         status=status,

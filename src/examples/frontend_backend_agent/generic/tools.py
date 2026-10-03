@@ -148,10 +148,11 @@ TOOLS: dict[str, ToolSpec] = {
         ),
         ToolSpec(
             name="web_search",
-            contract="current, recent, forecast, changing, externally verifiable, or uncertain information",
+            contract="current or externally verifiable information; details=true only for explicitly requested detail",
             capability="search the live web",
             params={
                 "query": ParamSpec(str, label="what you would like me to look up", max_len=1000),
+                "details": ParamSpec(bool, required=False, default=False),
             },
             run=_stateless(services.web_search),
             speak=speech.search,

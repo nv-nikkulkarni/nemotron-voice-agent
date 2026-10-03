@@ -118,7 +118,7 @@ The built-in generic registry entry enables these internal tools:
 | `get_stock_price` | Current public-company quote | `FINNHUB_API_KEY` | Does not provide predictions, crypto, commodities, or historical prices |
 | `get_current_time` | Fresh current time and date in an IANA timezone | None | Reads the clock for each call and applies daylight saving rules. An omitted `timezone` uses the session's browser IANA timezone, or `UTC` without a session zone; an unknown zone returns a clarification. |
 | `show_architecture` | Repository-owned Generic pipeline image reference | None | Returns `/api/architecture/generic.svg` and a brief spoken description; the Astra client displays the validated image reference. |
-| `web_search` | Current or externally verifiable information | `PERPLEXITY_API_KEY` | Requests concise spoken text without URLs and strips numeric citation markers |
+| `web_search` | Current or externally verifiable information | `PERPLEXITY_API_KEY` | Optional Boolean `details` defaults to `false`: 1 spoken sentence, or up to 2 with `true`, within 450 characters. Requests prose without URLs and strips numeric citation markers. |
 | `calculate_bmi` | Metric adult BMI screening calculation | None | Requires explicit weight in kilograms and height in meters |
 | `generate_random_number` | Inclusive random integer | None | Accepts a bounded minimum and maximum |
 
@@ -175,6 +175,14 @@ provider-grounded response. The web-search model prompt requests 1 or 2 factual
 spoken sentences, at most 35 words by default, even when results are spoken
 directly. Explicit requests for detail permit expansion within its 400-token
 output budget; the word limit is prompt guidance.
+
+The search formatter applies a deterministic speech limit: 1 sentence by
+default, up to 2 when the Thinker sets `details: true`, and at most
+450 characters. The Thinker selects this optional Boolean flag for explicit
+detail, multiple-headline, or expanded-comparison requests. The formatter
+applies the selected flag and preserves the returned structured tool data.
+Sentence boundaries preserve abbreviations such as `U.S.`, `Inc.`, and `Sept.`,
+and decimal values.
 
 Refer to [Frontend/Backend Session Prompts](configure-prompts.md#frontendbackend-session-prompts)
 for Talker and Thinker content overrides and instructions appended to both roles.

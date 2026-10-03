@@ -17,6 +17,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 
 from examples.frontend_backend_agent.generic import services, speech
 from examples.frontend_backend_agent.generic.backend import GenericThinkerBackend
+from examples.frontend_backend_agent.generic.result_formatters import format_tool_result
 from examples.frontend_backend_agent.generic.tools import TOOLS
 from examples.frontend_backend_agent.pipeline import _apply_chat_history_sliding_window
 from examples.shared.demo_speech import apply_approved_timing, validate_voice_sample
@@ -237,3 +238,14 @@ def test_generic_runtime_context_uses_browser_zone_and_requires_fresh_clock():
     context = _runtime_context("Asia/Calcutta")
     assert "local timezone is Asia/Calcutta" in context
     assert "Always obtain it through call_backend" in context
+
+
+def test_search_default_is_one_complete_sentence_and_detail_is_explicit():
+    first = "NVIDIA announced U.S. availability at 233.95 dollars on Sept. 28."
+    second = "Another company also announced an update."
+    data = {"status": "success", "answer": first + " " + second + " A third update follows."}
+    brief = format_tool_result(TOOLS["web_search"], {"query": "one NVIDIA headline"}, data)
+    detailed = format_tool_result(TOOLS["web_search"], {"query": "NVIDIA details", "details": True}, data)
+    assert brief["response_text"] == first
+    assert detailed["response_text"] == first + " " + second
+    assert brief["data"]["result"] == data

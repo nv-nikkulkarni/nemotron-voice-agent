@@ -284,6 +284,14 @@ The web-search model prompt requests
 tool speech. Explicit detail requests permit expansion within its retained
 400-token output budget. These word limits are prompt guidance.
 
+Search result speech is deterministically bounded to 1 sentence by default,
+or up to 2 with the optional Boolean `details: true`, and at most 450
+characters. `details` defaults to `false`; the Thinker selects it for explicit
+detail, multiple-headline, or expanded-comparison requests. The formatter
+applies this model-selected flag and preserves returned structured data.
+Sentence splitting protects abbreviations such as `U.S.`, `Inc.`, and `Sept.`,
+and decimal values.
+
 Weather speech defaults to returned
 temperature and conditions. With `details: true`, it also includes available
 feels-like temperature, humidity, and wind speed. Deterministic weather speech
