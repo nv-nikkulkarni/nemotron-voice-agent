@@ -55,11 +55,6 @@ def _build_backend(context: DomainBuildContext) -> GenericThinkerBackend:
     )
 
 
-def _neutral_progress(query: str) -> str:
-    del query
-    return "Let me check that."
-
-
 def create_domain_spec() -> DomainSpec:
     """Return the generic domain's prompts, tools, backend, and speech policy."""
     return DomainSpec(
@@ -69,8 +64,7 @@ def create_domain_spec() -> DomainSpec:
         talker_tools_schema=TOOLS_SCHEMA,
         build_backend=_build_backend,
         runtime_context=_runtime_context,
-        filler_policy="code_authored",
-        filler_selector=_neutral_progress,
+        filler_policy="talker_authored",
         tool_registry=TOOLS,
         max_query_chars=2000,
         talker_protocol_prompt_key="generic_talker",

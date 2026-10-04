@@ -93,8 +93,12 @@ phrase repetition remains allowed. The guard checks output shape without
 selecting intent or constructing calls. Standalone replies matching an exact
 normalized demonstration result receive the same retry and fallback, with
 literal user-requested echoes allowed. Native calls and active real-result
-handling remain unchanged. Generic progress uses the query-independent
-code-authored phrase “Let me check that,” avoiding stale subjects.
+handling remain unchanged. Generic uses the Talker's optional, query-grounded
+`call_backend.filler_text` for delayed progress. Keep it to 3–12 words and at
+most 96 characters. Blank, ungrounded generic, private/internal, or result-claiming
+candidates produce silence without a fixed replacement.
+`FRONTEND_BACKEND_TALKER_FILLER_MODE=off` or `observe` suppresses speech; `emit`
+permits validated progress. Airline's policy is unchanged.
 The native examples also include direct repetition of public words such as
 “Nemotron 3 Diarization.”
 

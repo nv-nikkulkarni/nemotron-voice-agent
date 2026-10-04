@@ -42,12 +42,15 @@ change does not alter this Helm behavior. The legacy
 `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` switch can force `direct` only when
 the explicit mode is absent.
 
-Generic uses the `code_authored` progress policy and the neutral phrase
-“Let me check that.” Its selector ignores the Talker query, avoiding a stale
-company or location in progress speech. Progress plays at most once after the
-threshold or an intermediate result. `FRONTEND_BACKEND_TALKER_FILLER_MODE=off`
-or `observe` suppresses speech; `emit` permits it. Progress is not retained as
-dialogue and does not block backend work. Other domains retain their policies.
+Generic uses the `talker_authored` policy for optional, query-grounded
+`call_backend.filler_text`. The phrase must contain 3–12 words and at most
+96 characters. Validation suppresses blank, ungrounded generic, private/internal,
+or result-claiming text without substituting a fixed phrase.
+
+Accepted progress plays at most once after the default 0.3-second threshold
+or an intermediate result. `FRONTEND_BACKEND_TALKER_FILLER_MODE=off` or `observe`
+suppresses speech; `emit` permits validated progress. Rejection does not block
+backend work. Progress stays outside dialogue; Airline retains its policy.
 
 ## Choose a Built-In Domain
 
@@ -428,8 +431,9 @@ The generic domain applies the following controls:
 - It creates final spoken text from validated arguments and returned service data.
 - It cancels and replaces an unfinished request when the same session sends newer delegated work.
 - It invalidates the active call identifier before cancellation, which suppresses late stale results.
-- It uses query-independent code-authored progress, “Let me check that,”
-  emits it at most once, and excludes it from conversation context.
+- It validates optional, query-grounded Talker progress, emits accepted text at
+  most once, and excludes it from conversation context. Rejected candidates
+  produce silence without a fixed replacement.
 - Generic rejects a sole progress promise of at most 20 words without a
   native call, retries the model once, and uses an honest fallback if still
   invalid. Literal phrase repetition remains allowed. This validates output
@@ -449,8 +453,7 @@ The generic domain applies the following controls:
   remains separate. This narrow output check does not
   validate arbitrary facts or dispatch tools itself.
 - Generic withholds model speech accompanying native calls while preserving
-  those calls. Code-authored progress and completed-result speech remain
-  separate.
+  those calls. Validated progress and completed-result speech remain separate.
 - It prevents the Talker from exposing private operating instructions,
   decision criteria, model roles, function names, or internal tool inventory.
   Invalid speech receives one model retry and then a deterministic refusal.

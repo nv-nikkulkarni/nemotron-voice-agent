@@ -69,7 +69,7 @@ Normal first-attempt tool choice remains `auto`. Final-result handling remains
 separate. This narrow output check does not
 validate arbitrary facts or dispatch a tool itself. When a Generic completion
 contains native calls, the runtime withholds accompanying model speech while
-preserving the calls. Code-authored progress and completed-result speech remain
+preserving the calls. Validated progress and completed-result speech remain
 separate.
 
 When direct tool speech is enabled, the structured function result is the single retained copy of the deterministic backend response; the separately emitted TTS frame is not appended again as an assistant message. The Talker remembers a bounded normalized signature outside the prompt context. If a later completion substantially replays that cached result without a native tool call, the runtime withholds it and retries once with an internal contract correction. It never selects a domain tool or constructs a function call. A second invalid replay fails closed with deterministic speech.
@@ -257,7 +257,7 @@ The following environment variables bound shared and domain-specific orchestrati
 | `BACKEND_HISTORY_TURN_LIMIT` | `8` | Generic Thinker dialogue window: `1`–`20` recent user turns, including the current request and associated assistant text; sessions can override it. |
 | `FRONTEND_BACKEND_VAD_STOP_SECS` | `2.0` | Local VAD pause in seconds; accommodates pauses and trailing words at the cost of end-of-turn latency. Native ASR can finalize earlier; Smart Turn decides completion. |
 | `FRONTEND_BACKEND_SMART_TURN_STOP_SECS` | `2.0` | Semantic turn silence fallback in seconds; minimum `0.8`. |
-| `FRONTEND_BACKEND_TALKER_FILLER_MODE` | `emit` | Uses `off` or `observe` to suppress progress speech, or `emit` to permit it; Generic uses code-authored progress |
+| `FRONTEND_BACKEND_TALKER_FILLER_MODE` | `emit` | Uses `off` or `observe` to suppress progress speech, or `emit` to permit validated, query-grounded Generic progress |
 | `FRONTEND_BACKEND_TOOL_RESULT_MODE` | Domain default: Generic `direct`; Airline `talker`; NVCF chart `direct` | An explicit `direct`, `hybrid`, or `talker` value overrides the backend default. Generic `hybrid` uses the Talker only for successful weather results. |
 | `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` | Disabled | Legacy switch that forces direct mode only when the explicit result-mode variable is absent |
 | `THINKER_FILLER_THRESHOLD_SECONDS` | `0.3` | Delays progress speech until delegated work remains active past the threshold |
@@ -283,12 +283,18 @@ domain also boosts `NVIDIA`, `Nvidia`, `NVDA`, `Anthropic`, and `Claude`
 at the same score. Validate recognition with spoken audio; vocabulary hints
 do not guarantee an exact transcript.
 
-Generic uses the `code_authored` progress policy with the neutral phrase
-“Let me check that.” The selector ignores the Talker query, avoiding stale
-company or location names. Progress plays at most once after the threshold
-or an intermediate result, stays outside conversation history, and never
-blocks backend work. `FRONTEND_BACKEND_TALKER_FILLER_MODE=off` or `observe`
-suppresses speech; `emit` permits it. Other domains retain their progress policies.
+Generic uses the `talker_authored` progress policy. The frontend large language
+model (LLM) can supply optional `call_backend.filler_text`: a query-grounded
+progress phrase of 3–12 words and at most 96 characters. Runtime validation
+suppresses blank, ungrounded generic, private/internal, or result-claiming
+candidates. Rejection produces silence without a fixed replacement; the backend
+request continues.
+
+Accepted progress plays at most once after the default 0.3-second threshold
+or an intermediate result. It stays outside conversation history and does not
+block backend work. `FRONTEND_BACKEND_TALKER_FILLER_MODE=off` or `observe`
+suppresses speech; `emit` permits validated progress. The Airline domain retains
+its existing planner-authored policy.
 
 The `generic-frontend-backend-agent` registry entry enables all 7 built-in generic tools. To expose a subset, create or edit a trusted registry entry. Client session data and Talker prompt metadata do not widen that set.
 
@@ -590,9 +596,9 @@ The pipeline enforces the following boundaries:
 - In generic `hybrid` mode, only successful weather results receive a guarded
   Talker rephrasing. The response must preserve the trusted city, temperature,
   and unit, while all failures retain deterministic speech.
-- The generic domain uses the query-independent code-authored phrase
-  “Let me check that.” The airline domain retains planner-authored progress
-  for backward compatibility.
+- Generic validates the Talker's optional query-grounded progress candidate.
+  Unsafe or ungrounded candidates produce silence without a fixed fallback.
+  Airline retains planner-authored progress for backward compatibility.
 
 After a prompt or domain change, test direct Talker replies, delegation, cancellation, parameter clarification, disabled tools, unavailable credentials, parallel calls, session isolation, and repeated tool-calling behavior.
 

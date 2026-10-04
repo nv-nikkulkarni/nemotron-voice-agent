@@ -430,8 +430,8 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
         self.assertEqual(set(generic_parameters["properties"]), {"query", "filler_text"})
         self.assertEqual(generic_parameters["required"], ["query"])
         self.assertEqual(generic_parameters["properties"]["filler_text"]["maxLength"], 96)
-        self.assertEqual(generic.filler_policy, "code_authored")
-        self.assertEqual(generic.filler_selector("NVIDIA news"), "Let me check that.")
+        self.assertEqual(generic.filler_policy, "talker_authored")
+        self.assertIsNone(generic.filler_selector)
 
     def test_generic_domain_does_not_load_booking_service(self) -> None:
         loaded: list[tuple[str, str]] = []
@@ -1002,9 +1002,11 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(filler_frame.append_to_context)
 
     async def test_generic_filler_is_talker_authored_grounded_and_ephemeral(self) -> None:
+        domain = resolve_domain_spec("generic")
         handler = build_handlers(
             _DelayedThinker(),
-            filler_policy="talker_authored",
+            filler_policy=domain.filler_policy,
+            filler_selector=domain.filler_selector,
             filler_threshold_seconds=0.001,
             max_query_chars=2000,
         )["call_backend"]
@@ -1039,6 +1041,7 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
         )
         rejected = (
             "",
+            "Let me check that.",
             "Let me inspect London's traffic.",
             "The result is available.",
             "The backend tool will check weather.",
@@ -1049,6 +1052,18 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
         )
         for candidate in rejected:
             with self.subTest(candidate=candidate):
+                self.assertEqual(_validated_talker_filler(query, candidate), "")
+
+    def test_progress_verbs_do_not_ground_generic_filler(self) -> None:
+        for query, candidate in (
+            ("Check current weather in London.", "Let me check that."),
+            ("Keep checking NVIDIA stock.", "I am checking that."),
+            ("Look up the Tokyo forecast.", "Let me look that up."),
+            ("Keep looking up the Tokyo forecast.", "I am looking that up."),
+            ("Verify the time in Tokyo.", "Let me verify that."),
+            ("Keep verifying the time in Tokyo.", "I am verifying that."),
+        ):
+            with self.subTest(query=query, candidate=candidate):
                 self.assertEqual(_validated_talker_filler(query, candidate), "")
 
     async def test_rejected_or_observed_filler_never_blocks_backend_or_adds_static_text(self) -> None:
