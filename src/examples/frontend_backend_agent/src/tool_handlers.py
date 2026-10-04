@@ -18,6 +18,10 @@ from loguru import logger
 from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame, LLMTextFrame
 from pipecat.services.llm_service import FunctionCallResultProperties
 
+from examples.frontend_backend_agent.src.conversation_history import (
+    DEFAULT_BACKEND_HISTORY_TURN_LIMIT,
+    bounded_conversation_history,
+)
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent, is_speakable_payload, response_hint
 from examples.frontend_backend_agent.src.runtime_context import runtime_today
 
@@ -162,15 +166,9 @@ def build_handlers(
             slots = {key: value for key, value in arguments.items() if key not in {"query", "intent", "filler_text"}}
             if getattr(thinker, "accepts_conversation_context", False):
                 messages = params.context.get_messages()[getattr(thinker, "conversation_start_index", 0) :]
-                dialogue = [
-                    {"role": message["role"], "content": message["content"][:1000]}
-                    for message in messages
-                    if message.get("role") in {"user", "assistant"}
-                    and isinstance(message.get("content"), str)
-                    and message.get("content")
-                    and not message.get("tool_calls")
-                ]
-                slots["conversation_context"] = dialogue[-8:]
+                slots["conversation_context"] = bounded_conversation_history(
+                    messages, getattr(thinker, "backend_history_turn_limit", DEFAULT_BACKEND_HISTORY_TURN_LIMIT)
+                )
                 slots["client_timezone"] = getattr(thinker, "client_timezone", "UTC")
             filler_task: asyncio.Task | None = None
             filler_started = False

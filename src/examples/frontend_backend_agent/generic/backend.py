@@ -21,6 +21,11 @@ from examples.frontend_backend_agent.generic.dispatcher import (
 from examples.frontend_backend_agent.generic.planner import EmptyPlanError, GenericPlanner
 from examples.frontend_backend_agent.generic.result_formatters import planner_failure, timeout_failure
 from examples.frontend_backend_agent.generic.state import GenericThinkerSessionState
+from examples.frontend_backend_agent.src.conversation_history import (
+    DEFAULT_BACKEND_HISTORY_TURN_LIMIT,
+    bounded_conversation_history,
+    validate_backend_history_turn_limit,
+)
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent
 from examples.frontend_backend_agent.src.tools import ToolContext, ToolSpec
 
@@ -61,6 +66,7 @@ class GenericThinkerBackend:
         state: GenericThinkerSessionState | None = None,
         on_tool_started: Callable[[str], Awaitable[None]] | None = None,
         stage_metrics: StageMetricsCoordinator | None = None,
+        backend_history_turn_limit: int = DEFAULT_BACKEND_HISTORY_TURN_LIMIT,
     ) -> None:
         """Create a backend with bounded planner and end-to-end deadlines."""
         self._planner = planner
@@ -71,6 +77,7 @@ class GenericThinkerBackend:
         self._on_tool_started = on_tool_started
         self._stage_metrics = stage_metrics
         self.state = state or GenericThinkerSessionState()
+        self.backend_history_turn_limit = validate_backend_history_turn_limit(backend_history_turn_limit)
 
     async def call(
         self,
@@ -80,17 +87,8 @@ class GenericThinkerBackend:
         on_started: Callable[[ThinkerLifecycleEvent], Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
         """Cancel superseded work and suppress stale results."""
-        dialogue = (slots or {}).get("conversation_context", [])
-        conversation_context = (
-            [
-                {"role": item["role"], "content": item["content"][:1000]}
-                for item in dialogue[-8:]
-                if isinstance(item, dict)
-                and item.get("role") in {"user", "assistant"}
-                and isinstance(item.get("content"), str)
-            ]
-            if isinstance(dialogue, list)
-            else []
+        conversation_context = bounded_conversation_history(
+            (slots or {}).get("conversation_context"), self.backend_history_turn_limit
         )
         clean_query = query.strip()
         if not clean_query:

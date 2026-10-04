@@ -188,6 +188,7 @@ export interface DeploymentOption {
   slots: string[];
   capabilities?: string[];
   domainProfile?: string;
+  backendHistory?: { defaultTurnLimit: number; maxTurnLimit: number };
   default_session_language?: string;
   defaults?: DeploymentDefaults;
 }
@@ -303,7 +304,7 @@ export type SamplingValues = Record<SamplingParameter, number>;
 export type LLMSettings = Record<string, Partial<SamplingValues>>;
 export interface LLMRole {key: string; label: string; description: string; model: string; defaults: SamplingValues}
 export interface LLMSettingsDocument {roles: LLMRole[]; settings: LLMSettings; revision: number}
-export type SessionConfigBody = Record<string, string | Record<string, string> | LLMSettings>;
+export type SessionConfigBody = Record<string, string | number | Record<string, string> | LLMSettings>;
 
 export async function getLLMSettings(example: string, llmId: string, sessionId?: string, signal?: AbortSignal): Promise<LLMSettingsDocument> {
   const url = sessionId ? `/api/sessions/${encodeURIComponent(sessionId)}/llm-settings` :

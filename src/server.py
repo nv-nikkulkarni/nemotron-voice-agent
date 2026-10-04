@@ -254,14 +254,28 @@ def _deployment_response(active: dict, options: list[dict]) -> dict:
     registry plus its environment overrides, so this function just packages
     what the registry has already resolved.
     """
-    active_deployment = dict(active)
+    from examples.frontend_backend_agent.src.conversation_history import (
+        MAX_BACKEND_HISTORY_TURN_LIMIT,
+        backend_history_turn_limit_default,
+    )
+
+    def with_history_settings(option: dict) -> dict:
+        result = dict(option)
+        if result.get("domainProfile") == "generic":
+            result["backendHistory"] = {
+                "defaultTurnLimit": backend_history_turn_limit_default(),
+                "maxTurnLimit": MAX_BACKEND_HISTORY_TURN_LIMIT,
+            }
+        return result
+
+    active_deployment = with_history_settings(active)
     active_deployment.setdefault("slots", [])
     active_deployment.setdefault("capabilities", [])
     transports = set(examples_registry.visible_transports())
     return {
         "active": active_deployment,
         "selectable": not examples_registry.is_locked(),
-        "options": options,
+        "options": [with_history_settings(option) for option in options],
         "transports": [option for option in _TRANSPORT_OPTIONS if option["id"] in transports],
         "audio": {
             "input_sample_rate": PIPELINE_AUDIO_IN_SAMPLE_RATE,
@@ -307,6 +321,19 @@ def _sanitize_session_config(data: dict, fallback_example_key: str = "") -> dict
     except (ZoneInfoNotFoundError, ValueError, TypeError) as exc:
         raise ValueError("client_timezone must be an IANA timezone") from exc
     config["client_timezone"] = timezone
+    if example.get("domain_profile") == "generic":
+        from examples.frontend_backend_agent.src.conversation_history import (
+            backend_history_turn_limit_default,
+            validate_backend_history_turn_limit,
+        )
+
+        config["backend_history_turn_limit"] = (
+            validate_backend_history_turn_limit(config["backend_history_turn_limit"])
+            if "backend_history_turn_limit" in config
+            else backend_history_turn_limit_default()
+        )
+    elif "backend_history_turn_limit" in config:
+        raise ValueError("backend_history_turn_limit is only supported by the Generic Frontend/Backend Assistant")
     _bind_registry_prompt(example, config)
     sanitized = filter_session_config(config)
     if "tts_pronunciations" in sanitized:

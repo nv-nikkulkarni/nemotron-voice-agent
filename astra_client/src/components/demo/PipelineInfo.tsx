@@ -7,7 +7,7 @@
 import { useApp } from "../../context/useApp";
 
 export function PipelineInfo({ onClose }: Readonly<{ onClose: () => void }>) {
-  const { selectedExample, selectedASR, selectedLLM, selectedTTS, selectedVoiceId, tools, selectedTools, selectedPrompt, promptOverride, prompts, backendPromptOverride, persistentPrompt, pronunciationOverrides, voiceSample, useVoiceSample, storeConsent, recordSession } = useApp();
+  const { selectedExample, backendHistoryTurnLimit, selectedASR, selectedLLM, selectedTTS, selectedVoiceId, tools, selectedTools, selectedPrompt, promptOverride, prompts, backendPromptOverride, persistentPrompt, pronunciationOverrides, voiceSample, useVoiceSample, storeConsent, recordSession } = useApp();
   const slots = new Set(selectedExample?.slots ?? []);
   const activeTools = tools.filter((t) => selectedTools.includes(t.name));
   const backendPrompt = backendPromptOverride || prompts.find(prompt => prompt.role === "backend")?.content;
@@ -52,6 +52,7 @@ export function PipelineInfo({ onClose }: Readonly<{ onClose: () => void }>) {
           </section>
           {backendPrompt && <section className="set-section"><h3 className="set-section__title">Backend prompt {backendPromptOverride && <span className="widget-count">edited</span>}</h3><pre className="pi-prompt">{backendPrompt}</pre></section>}
           {persistentPrompt && <section className="set-section"><h3 className="set-section__title">Persistent instructions <span className="widget-count">always appended</span></h3><pre className="pi-prompt">{persistentPrompt}</pre></section>}
+          {selectedExample?.backendHistory && <section className="set-section"><h3 className="set-section__title">Backend conversation context</h3><p className="set-hint">Up to {backendHistoryTurnLimit} recent user turns, including the current request and associated replies. Longer histories are shortened to fit the size budget.</p></section>}
           <section className="set-section"><h3 className="set-section__title">Voice configuration</h3>
             <p className="set-hint">{sampleActive ? `Zero-shot sample: ${voiceSample!.name}` : `Preset voice: ${selectedVoiceId || selectedTTS?.voiceId || "Engine default"}`}</p>
             <p className="set-hint">{ipaSupported ? "Deployed IPA defaults plus your pronunciation fixes." : "Engine pronunciation; IPA fixes are inactive."}</p>

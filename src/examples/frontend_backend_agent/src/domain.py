@@ -12,6 +12,7 @@ from typing import Any, Literal, Protocol
 
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 
+from examples.frontend_backend_agent.src.conversation_history import DEFAULT_BACKEND_HISTORY_TURN_LIMIT
 from examples.frontend_backend_agent.src.tools import ToolSpec
 
 
@@ -42,6 +43,7 @@ class DomainBuildContext:
     on_tool_started: Callable[[str], Awaitable[None]] | None = None
     stage_metrics: Any = None
     thinker_model_name: str = ""
+    backend_history_turn_limit: int = DEFAULT_BACKEND_HISTORY_TURN_LIMIT
 
 
 FillerPolicy = Literal["code_authored", "planner_authored", "talker_authored"]

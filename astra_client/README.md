@@ -77,6 +77,16 @@ selected example; browser selection cannot add an unregistered tool. The page
 also shows Generic's fixed Talker and Thinker model roles. Omni exposes its
 pre-session **Reasoning** choice there.
 
+For Generic, **Tools > Conversation context > Backend history** selects `1`–`20`
+recent user turns for the backend. The deployment default is `8`, including the
+current request and associated assistant replies. Your choice saves separately
+for each example in browser localStorage and applies to the next conversation
+or reconnect. **Agent configuration** shows the selected limit during a session.
+The backend keeps this session's text within a 32,000-character and 128-message
+budget; long histories can retain fewer turns. Refer to
+[backend follow-up context](../docs/how-to/configure-frontend-backend-domains.md#follow-up-context-and-fresh-results)
+for filtering and oversized-message behavior.
+
 **Audio settings** and **Agent configuration** appear only on the conversation
 page. **Audio settings** opens microphone and speaker selectors.
 **Agent configuration** shows the current agent configuration. Small,

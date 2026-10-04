@@ -91,6 +91,16 @@ We use context summarization logic for our examples to always **pin the initial 
 CHAT_HISTORY_RECENT_TURNS=10
 ```
 
+The Generic Frontend/Backend domain also has a separate delegated history
+window: `BACKEND_HISTORY_TURN_LIMIT` defaults to `8` user turns, including the
+current request and associated assistant text, and accepts `1`–`20`.
+Session configuration can override it with `backend_history_turn_limit`.
+If a positive native Talker window is smaller, the pipeline raises it to the
+backend limit. Zero or negative native-window values still disable trimming.
+The backend remains bounded to 32,000 content characters and 128 messages.
+Refer to [backend follow-up context](configure-frontend-backend-domains.md#follow-up-context-and-fresh-results)
+for turn grouping, the Astra control, and oversized-message behavior.
+
 ### How It Works
 
 When the recent-turn window exceeds `CHAT_HISTORY_RECENT_TURNS`:

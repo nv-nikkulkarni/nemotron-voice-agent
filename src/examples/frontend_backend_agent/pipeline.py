@@ -27,6 +27,13 @@ from pipecat.workers.runner import WorkerRunner
 
 import examples_registry
 from examples.frontend_backend_agent.src.barge_in import BargeInState, BargeInTracker
+from examples.frontend_backend_agent.src.conversation_history import (
+    DEFAULT_BACKEND_HISTORY_TURN_LIMIT,
+    MAX_BACKEND_HISTORY_CHARS,
+    MAX_BACKEND_HISTORY_MESSAGES,
+    backend_history_turn_limit_default,
+    validate_backend_history_turn_limit,
+)
 from examples.frontend_backend_agent.src.domain import DomainBuildContext, resolve_domain_spec
 from examples.frontend_backend_agent.src.reliable_talker import ReliableNvidiaLLMService
 from examples.frontend_backend_agent.src.response_policy import GENERIC_SESSION_BOUNDARY
@@ -328,12 +335,20 @@ async def bot(runner_args: RunnerArguments) -> None:
     async def on_internal_tool_started(tool_name: str) -> None:
         await task.queue_frame(RTVIServerMessageFrame(data={"type": "tool-call", "tool": tool_name}))
 
+    history_turn_limit = DEFAULT_BACKEND_HISTORY_TURN_LIMIT
+    if domain.key == "generic":
+        history_turn_limit = (
+            validate_backend_history_turn_limit(body["backend_history_turn_limit"])
+            if "backend_history_turn_limit" in body
+            else backend_history_turn_limit_default()
+        )
     thinker = domain.build_backend(
         DomainBuildContext(
             thinker_llm=thinker_llm,
             thinker_model_name=thinker_model_id,
             thinker_prompt=thinker_prompt,
             thinker_max_tokens=None,
+            backend_history_turn_limit=history_turn_limit,
             tool_names=tool_names,
             tool_delay_seconds=THINKER_TOOL_DELAY_MAX_SECONDS,
             tool_delay_min_seconds=THINKER_TOOL_DELAY_MIN_SECONDS,
@@ -344,6 +359,10 @@ async def bot(runner_args: RunnerArguments) -> None:
     )
     if domain.key == "generic":
         thinker.client_timezone = str(body.get("client_timezone") or "UTC")
+        logger.info(
+            f"Backend conversation history: turns={history_turn_limit}, "
+            f"max_chars={MAX_BACKEND_HISTORY_CHARS}, max_messages={MAX_BACKEND_HISTORY_MESSAGES}"
+        )
     logger.info(f"Frontend/Backend domain: {domain.key} ({domain.label})")
     logger.info(
         f"Thinker LLM: model={thinker_model_id}, base_url={thinker_base_url}, "
@@ -468,7 +487,12 @@ async def bot(runner_args: RunnerArguments) -> None:
     @assistant_aggregator.event_handler("on_assistant_turn_stopped")
     async def on_assistant_turn_stopped(aggregator, message):
         async with summary_lock:
-            _apply_chat_history_sliding_window(context, preserve_prompt_messages, CHAT_HISTORY_RECENT_TURNS)
+            # Retain enough source turns for the backend, even when the Talker
+            # sliding window is configured smaller than the delegated window.
+            retained_turns = CHAT_HISTORY_RECENT_TURNS
+            if domain.key == "generic" and retained_turns > 0:
+                retained_turns = max(retained_turns, history_turn_limit)
+            _apply_chat_history_sliding_window(context, preserve_prompt_messages, retained_turns)
 
     @latency_observer.event_handler("on_first_bot_speech_latency")
     async def on_first_bot_speech(observer, latency):

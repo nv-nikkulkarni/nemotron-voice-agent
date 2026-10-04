@@ -1,3 +1,8 @@
+{{- with .Values.app.backendHistoryTurnLimit }}
+{{- if or (not (regexMatch "^[0-9]{1,2}$" (toString .))) (lt (int .) 1) (gt (int .) 20) }}
+{{- fail "app.backendHistoryTurnLimit must be an integer from 1 to 20" }}
+{{- end }}
+{{- end }}
 {{- if and .Values.sessionCapture.enabled (gt (int .Values.app.replicas) 1) (not .Values.redis.enabled) }}
 {{- fail "sessionCapture.enabled with app.replicas>1 requires redis.enabled=true: the two-signal coordination state (pipeline-done / consent) is per-process without it, so a signal recorded on one pod is never visible to another -- sessions posted to a different pod than the one that ran the pipeline simply never finalize. Either set redis.enabled=true or run app.replicas=1." }}
 {{- end }}
@@ -189,6 +194,10 @@ spec:
             {{- if .Values.app.chatHistoryRecentTurns }}
             - name: CHAT_HISTORY_RECENT_TURNS
               value: {{ .Values.app.chatHistoryRecentTurns | quote }}
+            {{- end }}
+            {{- with .Values.app.backendHistoryTurnLimit }}
+            - name: BACKEND_HISTORY_TURN_LIMIT
+              value: {{ . | quote }}
             {{- end }}
             {{- with .Values.app.frontendBackendTalkerFillerMode }}
             - name: FRONTEND_BACKEND_TALKER_FILLER_MODE

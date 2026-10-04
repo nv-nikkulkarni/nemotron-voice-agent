@@ -205,6 +205,8 @@ app:
   prewarmTimeoutSecs: ""
   uvicornWorkers: ""
   chatHistoryRecentTurns: ""
+  # Generic backend context: user turns including the current request (1–20).
+  backendHistoryTurnLimit: "8"
   # Generic Frontend/Backend orchestration. The explicit release settings use
   # Talker-authored progress and deterministic trusted-result delivery. `off` and
   # `talker` remain explicit diagnostic modes; the legacy boolean remains false

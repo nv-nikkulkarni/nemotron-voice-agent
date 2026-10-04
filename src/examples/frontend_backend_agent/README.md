@@ -254,6 +254,7 @@ The following environment variables bound shared and domain-specific orchestrati
 | Environment Variable | Default | Purpose |
 | --- | --- | --- |
 | `CHAT_HISTORY_RECENT_TURNS` | `20` | Retains this many user turns with their associated messages and tool results; initial prompts stay pinned. |
+| `BACKEND_HISTORY_TURN_LIMIT` | `8` | Generic Thinker dialogue window: `1`–`20` recent user turns, including the current request and associated assistant text; sessions can override it. |
 | `FRONTEND_BACKEND_VAD_STOP_SECS` | `2.0` | Local VAD pause in seconds; accommodates pauses and trailing words at the cost of end-of-turn latency. Native ASR can finalize earlier; Smart Turn decides completion. |
 | `FRONTEND_BACKEND_SMART_TURN_STOP_SECS` | `2.0` | Semantic turn silence fallback in seconds; minimum `0.8`. |
 | `FRONTEND_BACKEND_TALKER_FILLER_MODE` | `emit` | Uses `off` or `observe` to suppress progress speech, or `emit` to permit it; Generic uses code-authored progress |
@@ -349,10 +350,30 @@ HTTP 5xx responses can trigger the retry. Other HTTP errors fail immediately.
 After the second failure, the tool returns the existing grounded unavailable
 response.
 
-The Generic Thinker receives up to 8 recent user or assistant messages, each
-bounded to 1,000 characters. This dialogue resolves follow-up references and
-corrections; it does not replace new tool calls for changing facts. The
-planner extracts the latest actual user entry as `untrusted_user_request`
+The Generic Thinker receives recent actual dialogue grouped by user turn.
+The default window is 8 user turns, including the current request and associated
+assistant text; configure `BACKEND_HISTORY_TURN_LIMIT` from `1` to `20`.
+The Astra client exposes **Tools > Conversation context > Backend history**
+before starting. Its per-example browser setting applies to the next session
+through `backend_history_turn_limit`. **Agent configuration** shows the limit.
+The Helm default is `app.backendHistoryTurnLimit: "8"`.
+
+Only real-session user and assistant text enters this window. Initial prompt
+examples, system/developer messages, tool traffic, malformed or nontext entries,
+and orphan welcome replies are excluded. Retained messages are no longer clipped
+to 1,000 characters. A shared helper caps the window at 32,000 content characters
+and 128 messages, removing oldest whole turns first. If the newest turn alone
+exceeds a budget, its user request takes priority over associated replies.
+An oversized user request retains its beginning and end with an explicit
+shortening marker; recent replies fit within the remaining budget.
+
+The native Talker window remains separately controlled by
+`CHAT_HISTORY_RECENT_TURNS`. A positive Generic window smaller than the backend
+limit is raised to that limit, so the source dialogue remains available.
+Zero or negative values preserve the existing disabled-trimming behavior.
+This dialogue resolves follow-up references and corrections; it does not replace
+new tool calls for changing facts or reconstruct a truncated speech transcript.
+The planner extracts the latest actual user entry as `untrusted_user_request`
 and retains the frontend query as `untrusted_talker_proposal`. Without an
 actual user entry, it falls back to the query. Native Thinker guidance
 prioritizes the actual request over conflicting proposals and inherits only
@@ -465,7 +486,7 @@ Generic sets `talker_protocol_prompt_key` to `generic_talker` and provides a
 pipeline invokes these hooks without importing domain-specific modules.
 The optional defaults preserve existing domains' behavior.
 
-`build_backend` receives a `DomainBuildContext` with `thinker_llm`, the resolved `thinker_prompt`, `thinker_max_tokens`, server-approved `tool_names`, `tool_delay_seconds`, `tool_delay_min_seconds`, and `load_service_entry`. This backend-factory context does not expose the raw session body or prompt
+`build_backend` receives a `DomainBuildContext` with `thinker_llm`, the resolved `thinker_prompt`, `thinker_max_tokens`, `backend_history_turn_limit`, server-approved `tool_names`, `tool_delay_seconds`, `tool_delay_min_seconds`, and `load_service_entry`. This backend-factory context does not expose the raw session body or prompt
 metadata. The optional session-runtime callback receives session configuration
 separately.
 

@@ -154,11 +154,42 @@ When a credential is absent, the service returns an unavailable result. It does 
 
 ### Follow-Up Context And Fresh Results
 
-The Generic Thinker receives up to 8 recent user or assistant messages, with
-at most 1,000 characters per message. It uses this dialogue to resolve
-references such as "there," "that company," and "again." Dialogue is not
-factual evidence; changing weather, stock, web, and clock results require a
-new tool call.
+The Generic Thinker receives recent actual dialogue grouped by user turn.
+A turn starts with a user request and includes its associated assistant text.
+The default limit is 8 user turns, including the current request.
+This dialogue resolves references such as "there," "that company," and "again."
+Changing weather, stock, web, and clock results still require a new tool call.
+
+Configure the Generic backend window through these surfaces:
+
+| Surface | Setting | Behavior |
+| --- | --- | --- |
+| Application environment | `BACKEND_HISTORY_TURN_LIMIT=8` | Deployment default; accepts `1`–`20`. |
+| Helm values | `app.backendHistoryTurnLimit: "8"` | Renders the same application environment variable. |
+| Session configuration | `backend_history_turn_limit` | Overrides the default with an integer or decimal integer string from `1` to `20`; only Generic-domain examples accept it. |
+| Astra client | **Tools > Conversation context > Backend history** | Saves per example in browser localStorage and applies to the next conversation or reconnect. |
+
+`GET /api/deployment` exposes Generic's `backendHistory.defaultTurnLimit` and
+`backendHistory.maxTurnLimit`. The browser slider uses these values and sends the
+chosen limit with both WebRTC and WebSocket session configuration.
+**Agent configuration** shows the selected backend limit during a conversation.
+This setting does not change an active session through the sampling API.
+
+The shared history helper forwards only user and assistant text after the
+protocol-example boundary. It excludes system/developer messages, tool and
+function traffic, malformed or nontext records, and replies without a user turn.
+Normal retained messages stay complete; there is no fixed 1,000-character clip.
+The total budget is 32,000 content characters and 128 messages. Oldest whole
+turns are removed first. If the newest turn alone exceeds a budget, its user
+request takes priority and recent replies use the remaining space. An oversized
+user request keeps its beginning and end with an explicit shortening marker.
+The handler and backend both enforce these bounds.
+
+`CHAT_HISTORY_RECENT_TURNS` controls the native Talker window separately, with a
+Frontend/Backend default of `20`. A positive Generic window is raised to the
+backend limit when smaller. Zero or negative values retain the existing
+behavior of disabling native-history trimming. More backend history helps
+follow-ups; it does not repair a truncated automatic speech recognition transcript.
 
 The planner structurally extracts the latest actual user entry into
 `untrusted_user_request` and keeps the frontend query separately as
@@ -315,7 +346,7 @@ Generic declares `talker_protocol_prompt_key: generic_talker` and a
 pipeline consumes these optional hooks without importing Generic domain code.
 Other domains keep their existing behavior unless their factory declares a hook.
 
-`build_backend` receives a `DomainBuildContext` with `thinker_llm`, the resolved `thinker_prompt`, `thinker_max_tokens`, registry-owned `tool_names`, `tool_delay_seconds`, `tool_delay_min_seconds`, and `load_service_entry`. The backend factory does not receive the raw session body or prompt metadata
+`build_backend` receives a `DomainBuildContext` with `thinker_llm`, the resolved `thinker_prompt`, `thinker_max_tokens`, `backend_history_turn_limit`, registry-owned `tool_names`, `tool_delay_seconds`, `tool_delay_min_seconds`, and `load_service_entry`. The backend factory does not receive the raw session body or prompt metadata
 through this context. The optional session-runtime callback receives the session
 configuration separately.
 

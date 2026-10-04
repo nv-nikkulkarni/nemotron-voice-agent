@@ -369,6 +369,11 @@
   input { margin-top: 3px; accent-color: #a3e635; }
   small { display: block; margin-top: 5px; font-size: 11px; line-height: 1.6; color: var(--text-muted); }
 }
+.backend-history-control { flex-wrap: wrap; align-items: center;
+  > span { flex: 1 1 260px; }
+  input[type="range"] { flex: 1 1 180px; width: 100%; max-width: 320px; min-height: 28px; cursor: pointer; }
+  input:disabled { cursor: not-allowed; opacity: 0.6; }
+}
 .pronunciation-form { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) auto; align-items: end; gap: 12px; margin: 22px 0 16px; }
 .pronunciation-form__ipa, .pronunciation-rule__ipa { font-family: var(--font-mono); }
 .pronunciation-search { margin-top: 22px; max-width: 540px; }

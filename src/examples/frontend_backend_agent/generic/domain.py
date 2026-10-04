@@ -51,6 +51,7 @@ def _build_backend(context: DomainBuildContext) -> GenericThinkerBackend:
         planner_timeout_seconds=parse_env_float("GENERIC_PLANNER_TIMEOUT_SECONDS", 6.0, min_value=1.0),
         on_tool_started=context.on_tool_started,
         stage_metrics=context.stage_metrics,
+        backend_history_turn_limit=context.backend_history_turn_limit,
     )
 
 

@@ -26,5 +26,12 @@ export function ToolsPage({ onClose, onLLM }: Readonly<{ onClose: () => void; on
       {generic ? <div className="agent-roles"><div><strong>Nemotron 3.5 Lightning</strong><span>Talker · fast responses · reasoning off</span></div><div><strong>Nemotron 3 Super 120B-A12B</strong><span>Thinker · grounded planning · reasoning on</span></div></div>
         : <label className="studio-toggle"><input type="checkbox" disabled={locked || app.llmsLoading} checked={app.reasoning} onChange={event => app.setReasoning(event.target.checked)} /><span>Reasoning<small>Think before answering. Off by default; enabling it adds several seconds before speech starts.</small></span></label>}
     </section>
+    {generic && <section className="studio-section">
+      <div className="studio-section__head"><span className="studio-section__number" aria-hidden="true">03</span><div><h3>Conversation context</h3><p>Give the backend recent exchanges to understand follow-up requests.</p></div></div>
+      <label className="studio-toggle backend-history-control"><span>Backend history<small>{app.backendHistoryTurnLimit} user {app.backendHistoryTurnLimit === 1 ? "turn" : "turns"}, including the current request and associated replies. Applies to your next conversation.</small></span>
+        <input type="range" aria-label="Backend history turns" min={1} max={app.selectedExample?.backendHistory?.maxTurnLimit ?? 20} step={1} disabled={locked || !app.selectedExample?.backendHistory} value={app.backendHistoryTurnLimit} onChange={event => app.setBackendHistoryTurnLimit(Number(event.target.value))} />
+      </label>
+      <p className="set-hint">Only this session’s conversation is shared. Long histories use a bounded size budget.</p>
+    </section>}
   </section>;
 }

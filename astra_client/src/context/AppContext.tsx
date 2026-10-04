@@ -254,6 +254,8 @@ export interface AppState {
   removeTTS: (id: string) => void;
   selectedTTS: SimpleService | undefined;
 
+  backendHistoryTurnLimit: number;
+  setBackendHistoryTurnLimit: (value: number) => void;
   llmOverrides: LLMSettings;
   setLLMOverrides: (value: LLMSettings) => void;
   pronunciationOverrides: Record<string, string>;
@@ -404,6 +406,25 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
       return next;
     });
   }, [promptStorageKey]);
+
+  const [savedHistoryLimits, setSavedHistoryLimits] = useState<Record<string, number>>(() => {
+    try {
+      const raw: unknown = JSON.parse(readLSString("nva-backend-history-turn-limits") || "{}");
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+      return Object.fromEntries(Object.entries(raw).filter(([, value]) =>
+        typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 20));
+    } catch { return {}; }
+  });
+  const historySettings = selectedExample?.backendHistory;
+  const backendHistoryTurnLimit = Math.min(savedHistoryLimits[promptStorageKey] ?? historySettings?.defaultTurnLimit ?? 8, historySettings?.maxTurnLimit ?? 20);
+  const setBackendHistoryTurnLimit = useCallback((value: number) => {
+    if (!Number.isInteger(value) || value < 1 || value > (historySettings?.maxTurnLimit ?? 20)) return;
+    setSavedHistoryLimits(previous => {
+      const next = {...previous, [promptStorageKey]: value};
+      writeLSJson("nva-backend-history-turn-limits", next);
+      return next;
+    });
+  }, [promptStorageKey, historySettings?.maxTurnLimit]);
 
   // --- LLM state ---
   const serviceCatalogKey = selectedExample?.key ?? "";
@@ -672,7 +693,7 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
     llms, llmsLoading, selectedLLMId: effectiveSelectedLLMId, selectLLM, addLLM, updateLLM, removeLLM, selectedLLM,
     asrServices, asrLoading, selectedASRId: effectiveSelectedASRId, selectASR, addASR, updateASR, removeASR, selectedASR,
     ttsServices, ttsLoading, selectedTTSId: effectiveSelectedTTSId, selectTTS, addTTS, updateTTS, removeTTS, selectedTTS,
-    llmOverrides, setLLMOverrides, pronunciationOverrides, setPronunciationOverrides, selectedVoiceId, setSelectedVoiceId, voiceSample, setVoiceSample, useVoiceSample, setUseVoiceSample,
+    backendHistoryTurnLimit, setBackendHistoryTurnLimit, llmOverrides, setLLMOverrides, pronunciationOverrides, setPronunciationOverrides, selectedVoiceId, setSelectedVoiceId, voiceSample, setVoiceSample, useVoiceSample, setUseVoiceSample,
     selectedSessionLanguage, setSelectedSessionLanguage,
     prompts, promptsLoading, selectedPromptKey: effectiveSelectedPromptKey, selectPrompt, addPrompt, updatePrompt, removePrompt, selectedPrompt,
     tools, toolsLoading,
@@ -684,7 +705,7 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
        llms, llmsLoading, effectiveSelectedLLMId, selectLLM, addLLM, updateLLM, removeLLM, selectedLLM,
        asrServices, asrLoading, effectiveSelectedASRId, selectASR, addASR, updateASR, removeASR, selectedASR,
        ttsServices, ttsLoading, effectiveSelectedTTSId, selectTTS, addTTS, updateTTS, removeTTS, selectedTTS,
-       llmOverrides, setLLMOverrides, pronunciationOverrides, setPronunciationOverrides, selectedVoiceId, voiceSample, useVoiceSample, selectedSessionLanguage, setSelectedSessionLanguage,
+       backendHistoryTurnLimit, setBackendHistoryTurnLimit, llmOverrides, setLLMOverrides, pronunciationOverrides, setPronunciationOverrides, selectedVoiceId, voiceSample, useVoiceSample, selectedSessionLanguage, setSelectedSessionLanguage,
        prompts, promptsLoading, effectiveSelectedPromptKey, selectPrompt, addPrompt, updatePrompt, removePrompt, selectedPrompt,
        tools, toolsLoading]);
 
