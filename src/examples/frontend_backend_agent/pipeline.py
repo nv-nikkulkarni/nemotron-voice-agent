@@ -20,7 +20,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
 )
 from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
 from pipecat.runner.types import RunnerArguments
-from pipecat.services.nvidia.llm import NvidiaLLMService, NvidiaLLMSettings
+from pipecat.services.nvidia.llm import NvidiaLLMSettings
 from pipecat.services.nvidia.stt import NvidiaSTTSettings
 from pipecat.services.nvidia.tts import NvidiaTTSSettings
 from pipecat.workers.runner import WorkerRunner
@@ -43,6 +43,7 @@ from examples.shared.pipeline_utils import (
     register_session_start_handlers,
     with_realtime_observers,
 )
+from examples.shared.sampling_llm import SamplingNvidiaLLMService
 from examples.shared.tool_call_speech_gate import ToolCallSpeechGate
 from session_capture.capture import mark_pipeline_finished, run_finalize
 from tracing import IS_TRACING_ENABLED
@@ -283,6 +284,9 @@ async def bot(runner_args: RunnerArguments) -> None:
         settings=llm_settings,
         stage_metrics=stage_metrics,
         stage_model_name=model_id,
+        sampling_session_id=str(body.get("session_id") or ""),
+        sampling_role="frontend",
+        sampling_initial=body.get("llm_settings", {}).get("frontend", {}),
     )
     logger.info(
         f"Talker LLM: model={model_id}, base_url={base_url}, prompt={prompt_key}, "
@@ -312,10 +316,13 @@ async def bot(runner_args: RunnerArguments) -> None:
         thinker_llm_settings.temperature = thinker_temperature
     if thinker_extra_params:
         thinker_llm_settings.extra = thinker_extra_params
-    thinker_llm = NvidiaLLMService(
+    thinker_llm = SamplingNvidiaLLMService(
         api_key=nvidia_api_key(),
         base_url=thinker_base_url,
         settings=thinker_llm_settings,
+        sampling_session_id=str(body.get("session_id") or ""),
+        sampling_role="backend",
+        sampling_initial=body.get("llm_settings", {}).get("backend", {}),
     )
 
     async def on_internal_tool_started(tool_name: str) -> None:
@@ -326,7 +333,7 @@ async def bot(runner_args: RunnerArguments) -> None:
             thinker_llm=thinker_llm,
             thinker_model_name=thinker_model_id,
             thinker_prompt=thinker_prompt,
-            thinker_max_tokens=thinker_max_tokens,
+            thinker_max_tokens=None,
             tool_names=tool_names,
             tool_delay_seconds=THINKER_TOOL_DELAY_MAX_SECONDS,
             tool_delay_min_seconds=THINKER_TOOL_DELAY_MIN_SECONDS,

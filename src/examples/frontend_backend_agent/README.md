@@ -415,15 +415,22 @@ current clock reading. The planner refreshes its local timestamp for each plan
 using `client_timezone`; spoken clock answers require a new `get_current_time`
 result.
 
-Before starting an Astra session, use **Prompts** beside **Configure** in the
-launch bar to edit both roles and save persistent appended instructions.
-**Configure** also provides **Edit prompts** and visible speaking-voice cards.
-Prepare agent options before **Start conversation**; **Settings** contains
-only microphone and speaker selectors. Refer to [Astra voice preview and sample
-upload](../../../docs/how-to/configure-tts.md#preview-and-upload-voices-in-the-astra-client)
-for pre-session voice selection, preview, and compatible reference samples.
+Before starting an Astra session, use **Prompts** in the launch bar to edit
+both roles and save persistent appended instructions. Use **Tools** to choose
+agent capabilities and **Voice** to open the speech studio. Prepare these
+options before **Start conversation**. **Audio settings** appears during a
+conversation and contains microphone and speaker selectors. Refer to
+[Astra voice preview and sample upload](../../../docs/how-to/configure-tts.md#preview-and-upload-voices-in-the-astra-client)
+for voice selection, preview, pronunciation fixes, and compatible reference samples.
 The demo speech wrapper adjusts only aligned “Nemotron” timing; refer to the
 [pronunciation boundary](../../../docs/how-to/configure-tts.md#pronunciation-ipa).
+
+Open **LLM settings** from **Tools** before starting, or select **LLM** in the
+conversation header while connected. Generic provides independent Talker and Thinker controls
+for temperature, top-p, maximum tokens, and advanced sampling parameters.
+**Save settings** retains edits for the next session. **Apply to session** updates
+future model requests after acknowledgement; running requests keep their
+original values. Refer to [LLM Session Controls](../../../docs/how-to/configure-llm.md#llm-session-controls).
 
 For model and catalog settings, refer to [Configure LLM](../../../docs/how-to/configure-llm.md) and [Configure Services](../../../docs/how-to/configure-services.md). For prompt behavior, tool subsets, and domain extension, refer to [Configure Frontend/Backend Agent Domains](../../../docs/how-to/configure-frontend-backend-domains.md).
 

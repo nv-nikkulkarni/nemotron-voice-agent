@@ -385,7 +385,9 @@ The generic domain applies the following controls:
 - A typed empty-plan error can retry once after 0.2 seconds. Each attempt
   keeps its 6-second limit inside the same 40-second backend deadline.
   Generic Super server and cloud catalogs use `max_tokens: 2048`, temperature
-  `0.0`, and a 256-token reasoning budget.
+  `0.0`, and a 256-token reasoning budget. These are deployed defaults;
+  validated, role-specific session overrides can change sampling and output
+  limits through [LLM Session Controls](configure-llm.md#llm-session-controls).
 - With the default web-tool deadline, web search can make at most 2 attempts.
   Each attempt has a 9-second ceiling, and the single retry waits 0.5 seconds.
   This 18.5-second retry budget fits inside the 20-second tool deadline.

@@ -9,6 +9,7 @@
 #   ./sqa.sh converse [generic|omni|both]
 #   ./sqa.sh comprehensive [all|A|B|C|D]  # full E2E: tools, omni, UI, concurrency
 #   ./sqa.sh pre-session-configuration # launch controls, voice cards, prompts, devices
+#   ./sqa.sh llm-settings          # per-model setup, live apply, reset, speech
 #   ./sqa.sh voice-studio          # studios, consent gate, live previews and hints
 #   ./sqa.sh demo-feedback         # focused demo feedback and optional reference voice
 #   ./sqa.sh captured-sessions      # reconstructed production-session regressions
@@ -33,6 +34,7 @@ mkdir -p "$HOST_OUT"
 declare -A CMD=(
   [functional]="node functional.mjs"
   [pre-session-configuration]="node pre-session-configuration.mjs"
+  [llm-settings]="node llm-settings.mjs"
   [voice-studio]="env SQA_LIVE=true node voice-studio.mjs"
   [demo-feedback]="node demo-feedback.mjs"
   [converse]="node converse.mjs ${1:-both}"

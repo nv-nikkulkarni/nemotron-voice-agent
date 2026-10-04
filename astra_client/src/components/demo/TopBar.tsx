@@ -16,12 +16,14 @@ export function TopBar({
   onHome,
   onSettings,
   onPipeline,
+  onLLM,
   onTour,
 }: Readonly<{
   conversationView: boolean;
   onHome: () => void;
   onSettings: () => void;
   onPipeline: () => void;
+  onLLM: () => void;
   onTour: () => void;
 }>) {
   const { phase, endSession } = useSessionLifecycle();
@@ -65,7 +67,7 @@ export function TopBar({
             ?
           </button>
         )}
-        {conversationView && (phase === "live" || phase === "stopping") && <ConversationUtilities onSettings={onSettings} onPipeline={onPipeline} />}
+        {conversationView && (phase === "live" || phase === "stopping") && <ConversationUtilities onSettings={onSettings} onPipeline={onPipeline} onLLM={onLLM} />}
         {active && (
           <button
             className="btn-secondary btn-bubbly clean-end"
@@ -80,13 +82,14 @@ export function TopBar({
   );
 }
 
-function ConversationUtilities({ onSettings, onPipeline }: Readonly<{onSettings: () => void; onPipeline: () => void}>) {
+function ConversationUtilities({ onSettings, onPipeline, onLLM }: Readonly<{onSettings: () => void; onPipeline: () => void; onLLM: () => void}>) {
   const [showHints, setShowHints] = useState(true);
   useEffect(() => {
     const timer = window.setTimeout(() => setShowHints(false), 2000);
     return () => window.clearTimeout(timer);
   }, []);
   return <div className="conversation-utilities">
+    <button type="button" className="btn-secondary llm-trigger" onClick={() => {setShowHints(false);onLLM();}} title="LLM settings" aria-label="LLM settings"><span aria-hidden="true">☷</span> LLM</button>
     <button type="button" className="icon-btn" data-tour="pipeline" onClick={() => {setShowHints(false);onPipeline();}} title="Agent configuration" aria-label="Agent configuration">ⓘ</button>
     <button type="button" className="icon-btn icon-btn--settings" data-tour="settings" onClick={() => {setShowHints(false);onSettings();}} title="Audio settings" aria-label="Audio settings">⚙</button>
     {showHints && <div className="conversation-hints" role="status" aria-live="polite">

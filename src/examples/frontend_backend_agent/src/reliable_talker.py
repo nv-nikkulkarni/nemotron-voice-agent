@@ -18,9 +18,9 @@ from loguru import logger
 from openai.types.chat import ChatCompletionChunk
 from pipecat.processors.aggregators import async_tool_messages
 from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.services.nvidia.llm import NvidiaLLMService
 
 from examples.frontend_backend_agent.src.response_policy import GENERIC_SPOKEN_RESPONSE_POLICY
+from examples.shared.sampling_llm import SamplingNvidiaLLMService
 
 if TYPE_CHECKING:
     from examples.frontend_backend_agent.src.stage_metrics import StageMetricsCoordinator, StageSpan
@@ -163,7 +163,7 @@ _REPLAY_STOPWORDS = frozenset(
 )
 
 
-class ReliableNvidiaLLMService(NvidiaLLMService):
+class ReliableNvidiaLLMService(SamplingNvidiaLLMService):
     """Retry one silent Talker completion, then emit a deterministic fallback.
 
     This service validates completions without inferring request intent or

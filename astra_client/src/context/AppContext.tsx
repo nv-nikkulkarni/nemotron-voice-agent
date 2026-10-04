@@ -15,6 +15,8 @@ import { demoConfig } from "../config";
 import { PRESETS, presetById, type PipelinePreset } from "../demo/presets";
 import { savedVoiceSample, type VoiceSample } from "../demo/voiceSamples";
 import { AppContext } from "./app-context";
+import type { LLMSettings } from "../api";
+import { cleanLLMSettings } from "../demo/llmSettings";
 
 /** An editable prompt shown in the builder's prompt widget. */
 export interface DemoPrompt {
@@ -252,6 +254,8 @@ export interface AppState {
   removeTTS: (id: string) => void;
   selectedTTS: SimpleService | undefined;
 
+  llmOverrides: LLMSettings;
+  setLLMOverrides: (value: LLMSettings) => void;
   pronunciationOverrides: Record<string, string>;
   setPronunciationOverrides: (value: Record<string, string>) => void;
   voiceSample: VoiceSample | null;
@@ -382,6 +386,22 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
     setPronunciationEdits(previous => {
       const next = {...previous, [promptStorageKey]: value};
       writeLSJson("nva-pronunciation-edits", next); return next;
+    });
+  }, [promptStorageKey]);
+
+  const [savedLLMSettings, setSavedLLMSettings] = useState<Record<string, LLMSettings>>(() => {
+    try {
+      const raw = JSON.parse(readLSString("nva-llm-settings") || "{}");
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+      return Object.fromEntries(Object.entries(raw).map(([key, value]) => [key, cleanLLMSettings(value)]));
+    } catch { return {}; }
+  });
+  const llmOverrides = useMemo(() => savedLLMSettings[promptStorageKey] ?? {}, [savedLLMSettings, promptStorageKey]);
+  const setLLMOverrides = useCallback((value: LLMSettings) => {
+    setSavedLLMSettings(previous => {
+      const next = {...previous, [promptStorageKey]: cleanLLMSettings(value)};
+      writeLSJson("nva-llm-settings", next);
+      return next;
     });
   }, [promptStorageKey]);
 
@@ -652,7 +672,7 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
     llms, llmsLoading, selectedLLMId: effectiveSelectedLLMId, selectLLM, addLLM, updateLLM, removeLLM, selectedLLM,
     asrServices, asrLoading, selectedASRId: effectiveSelectedASRId, selectASR, addASR, updateASR, removeASR, selectedASR,
     ttsServices, ttsLoading, selectedTTSId: effectiveSelectedTTSId, selectTTS, addTTS, updateTTS, removeTTS, selectedTTS,
-    pronunciationOverrides, setPronunciationOverrides, selectedVoiceId, setSelectedVoiceId, voiceSample, setVoiceSample, useVoiceSample, setUseVoiceSample,
+    llmOverrides, setLLMOverrides, pronunciationOverrides, setPronunciationOverrides, selectedVoiceId, setSelectedVoiceId, voiceSample, setVoiceSample, useVoiceSample, setUseVoiceSample,
     selectedSessionLanguage, setSelectedSessionLanguage,
     prompts, promptsLoading, selectedPromptKey: effectiveSelectedPromptKey, selectPrompt, addPrompt, updatePrompt, removePrompt, selectedPrompt,
     tools, toolsLoading,
@@ -664,7 +684,7 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
        llms, llmsLoading, effectiveSelectedLLMId, selectLLM, addLLM, updateLLM, removeLLM, selectedLLM,
        asrServices, asrLoading, effectiveSelectedASRId, selectASR, addASR, updateASR, removeASR, selectedASR,
        ttsServices, ttsLoading, effectiveSelectedTTSId, selectTTS, addTTS, updateTTS, removeTTS, selectedTTS,
-       pronunciationOverrides, setPronunciationOverrides, selectedVoiceId, voiceSample, useVoiceSample, selectedSessionLanguage, setSelectedSessionLanguage,
+       llmOverrides, setLLMOverrides, pronunciationOverrides, setPronunciationOverrides, selectedVoiceId, voiceSample, useVoiceSample, selectedSessionLanguage, setSelectedSessionLanguage,
        prompts, promptsLoading, effectiveSelectedPromptKey, selectPrompt, addPrompt, updatePrompt, removePrompt, selectedPrompt,
        tools, toolsLoading]);
 

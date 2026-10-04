@@ -32,7 +32,6 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.workers.base_worker import BaseWorker
 
 from examples.omni_assistant.nvidia_omni_multimodal_service import (
-    NvidiaOmniLLMService,
     NvidiaOmniSettings,
     text_message_part,
     video_message_part,
@@ -42,6 +41,8 @@ from examples.shared.json_parsing import extract_json_object
 from webcam_frame_store import WebcamFrame, recent_webcam_frames
 
 WEBCAM_SUMMARY_TASK_NAME = "summarize_webcam_frame"
+
+from examples.shared.sampling_llm import SamplingOmniLLMService
 
 WEBCAM_CONTEXT_PREFIX = "Live webcam state:"
 WEBCAM_FIRST_SIGHT_PREFIX = "First live webcam sighting:"
@@ -126,6 +127,8 @@ class WebcamAgent(BaseWorker):
         base_url: str,
         model_id: str,
         extra_params: dict[str, Any] | None = None,
+        sampling_session_id: str = "",
+        sampling_initial: dict | None = None,
         reasoning: str = "off",
         gesture_system_prompt: str = "",
         gesture_prompt: str = "",
@@ -155,7 +158,10 @@ class WebcamAgent(BaseWorker):
             "enable_thinking": enable_thinking,
         }
         omni_extra["extra_body"] = extra_body
-        self._omni = NvidiaOmniLLMService(
+        self._omni = SamplingOmniLLMService(
+            sampling_session_id=sampling_session_id,
+            sampling_role="webcam",
+            sampling_initial=sampling_initial,
             api_key=api_key,
             base_url=base_url,
             extra=omni_extra,

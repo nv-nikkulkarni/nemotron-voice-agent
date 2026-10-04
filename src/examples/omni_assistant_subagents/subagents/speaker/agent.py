@@ -21,7 +21,6 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.llm_service import LLMService
 
 from examples.omni_assistant.nvidia_omni_multimodal_service import (
-    NvidiaOmniLLMService,
     NvidiaOmniSettings,
     text_message_part,
 )
@@ -41,6 +40,7 @@ from examples.omni_assistant_subagents.subagents.speaker.action_envelope import 
 from examples.omni_assistant_subagents.subagents.speaker.json_stream import JsonStringFieldStreamer
 from examples.omni_assistant_subagents.subagents.speaker.repeat_guard import RepeatGuard, is_affirmation
 from examples.shared.json_parsing import extract_json_object
+from examples.shared.sampling_llm import SamplingOmniLLMService
 from utils import parse_env_float, parse_env_int
 
 _CAPTURE_ESCALATION_COOLDOWN = 3
@@ -103,7 +103,7 @@ def _is_transient_omni_error(exc: Exception) -> bool:
     )
 
 
-class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
+class SubagentsSpeakerOmniService(SamplingOmniLLMService):
     """Speaker Omni wrapper that turns each strict-JSON turn into one owned action.
 
     The Speaker uses no tools, so it can afford the forced ``json_object`` response
@@ -730,6 +730,8 @@ class SpeakerOmniAgent(PipelineWorker):
         model_id: str,
         audio_response_instruction: str,
         extra_params: dict[str, Any] | None = None,
+        sampling_session_id: str = "",
+        sampling_initial: dict | None = None,
         media_analysis_prompt_handler: Callable[[str, str, str, str], Awaitable[None]] | None = None,
         uploaded_attachment_available: Callable[[], bool] | None = None,
         attachment_pending: Callable[[], bool] | None = None,
@@ -744,6 +746,9 @@ class SpeakerOmniAgent(PipelineWorker):
         transcript (the speaker must not convert it a second time).
         """
         omni = SubagentsSpeakerOmniService(
+            sampling_session_id=sampling_session_id,
+            sampling_role="speaker",
+            sampling_initial=sampling_initial,
             api_key=api_key,
             base_url=base_url,
             context=context,

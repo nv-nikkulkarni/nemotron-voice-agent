@@ -21,6 +21,7 @@ import { TopBar } from "./components/demo/TopBar";
 import { ConversationStage } from "./components/demo/ConversationStage";
 import { SettingsPage } from "./components/demo/SettingsPage";
 import { SessionCaptureReporter } from "./demo/SessionCaptureReporter";
+import { LLMSettingsDialog } from "./components/demo/LLMSettingsDialog";
 import { PipelineInfo } from "./components/demo/PipelineInfo";
 import { SessionControls } from "./components/demo/SessionControls";
 import { SessionLifecycleProvider } from "./hooks/useSessionLifecycle";
@@ -40,7 +41,7 @@ type View = "main" | "prompts" | "tools" | "voice";
 function viewFromPath(): View {
   return location.pathname === "/prompts" ? "prompts" : location.pathname === "/tools" ? "tools" : location.pathname === "/voice" ? "voice" : "main";
 }
-type Overlay = "settings" | "pipeline" | null;
+type Overlay = "settings" | "pipeline" | "llm" | null;
 type Tour = "introduction" | null;
 
 function AppInner() {
@@ -139,13 +140,14 @@ function AppInner() {
             onHome={() => navigate("main")}
             onSettings={() => setOverlay("settings")}
             onPipeline={() => setOverlay("pipeline")}
+            onLLM={() => setOverlay("llm")}
             onTour={() => {
               navigate("main");
               setTour("introduction");
             }}
           />
           <main className="clean-main">
-            {view === "prompts" ? <PromptPage onClose={() => navigate("main")} /> : view === "voice" ? <VoicePage onClose={() => navigate("main")} /> : view === "tools" ? <ToolsPage onClose={() => navigate("main")} /> : (
+            {view === "prompts" ? <PromptPage onClose={() => navigate("main")} /> : view === "voice" ? <VoicePage onClose={() => navigate("main")} /> : view === "tools" ? <ToolsPage onClose={() => navigate("main")} onLLM={() => setOverlay("llm")} /> : (
               <><ConversationStage onLiveChange={handleLiveChange} onPrompts={() => navigate("prompts")} onTools={() => navigate("tools")} onVoice={() => navigate("voice")} /><ArchitecturePresentation /></>
             )}
           </main>
@@ -155,6 +157,7 @@ function AppInner() {
         </div>
         <StoppingOverlayHost />
         {overlay === "settings" && <SettingsPage onClose={() => setOverlay(null)} />}
+        {overlay === "llm" && <LLMSettingsDialog onClose={() => setOverlay(null)} />}
         {overlay === "pipeline" && <PipelineInfo onClose={() => setOverlay(null)} />}
         {tour === "introduction" && <IntroductionTour onClose={() => setTour(null)} />}
       </SessionLifecycleProvider>

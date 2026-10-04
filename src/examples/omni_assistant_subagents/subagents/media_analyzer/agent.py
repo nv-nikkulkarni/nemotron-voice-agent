@@ -17,12 +17,12 @@ from pipecat.workers.base_worker import BaseWorker
 
 from attachment_store import Attachment, get_attachment
 from examples.omni_assistant.nvidia_omni_multimodal_service import (
-    NvidiaOmniLLMService,
     NvidiaOmniSettings,
     media_message_part,
     text_message_part,
 )
 from examples.shared.json_parsing import extract_json_object
+from examples.shared.sampling_llm import SamplingOmniLLMService
 from utils import parse_env_float, parse_env_int
 
 MEDIA_ANALYSIS_TASK_NAME = "analyze_media"
@@ -59,6 +59,8 @@ class MediaAnalyzerWorker(BaseWorker):
         base_url: str,
         model_id: str,
         extra_params: dict[str, Any] | None = None,
+        sampling_session_id: str = "",
+        sampling_initial: dict | None = None,
         system_prompt: str = "",
         reasoning: str = "on",
     ) -> None:
@@ -80,7 +82,10 @@ class MediaAnalyzerWorker(BaseWorker):
             "enable_thinking": reasoning == "on",
         }
         omni_extra["extra_body"] = extra_body
-        self._omni = NvidiaOmniLLMService(
+        self._omni = SamplingOmniLLMService(
+            sampling_session_id=sampling_session_id,
+            sampling_role="media",
+            sampling_initial=sampling_initial,
             api_key=api_key,
             base_url=base_url,
             extra=omni_extra,

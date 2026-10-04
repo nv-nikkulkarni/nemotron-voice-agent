@@ -3,7 +3,7 @@ import { useApp } from "../../context/useApp";
 import { useConnectionState } from "../../hooks/useConnectionState";
 import { ToolSelector } from "./ToolSelector";
 
-export function ToolsPage({ onClose }: Readonly<{ onClose: () => void }>) {
+export function ToolsPage({ onClose, onLLM }: Readonly<{ onClose: () => void; onLLM: () => void }>) {
   const app = useApp();
   const { isConnected, isConnecting } = useConnectionState();
   const locked = isConnected || isConnecting;
@@ -22,6 +22,7 @@ export function ToolsPage({ onClose }: Readonly<{ onClose: () => void }>) {
     </section>
     <section className="studio-section">
       <div className="studio-section__head"><span className="studio-section__number" aria-hidden="true">02</span><div><h3>Agent model roles</h3><p>{generic ? "A fast conversational voice with a reasoning planner behind its tools." : "A multimodal agent for speech, images, and video."}</p></div></div>
+      <button type="button" className="btn-secondary llm-setup-trigger" disabled={locked} onClick={onLLM}>LLM settings</button>
       {generic ? <div className="agent-roles"><div><strong>Nemotron 3.5 Lightning</strong><span>Talker · fast responses · reasoning off</span></div><div><strong>Nemotron 3 Super 120B-A12B</strong><span>Thinker · grounded planning · reasoning on</span></div></div>
         : <label className="studio-toggle"><input type="checkbox" disabled={locked || app.llmsLoading} checked={app.reasoning} onChange={event => app.setReasoning(event.target.checked)} /><span>Reasoning<small>Think before answering. Off by default; enabling it adds several seconds before speech starts.</small></span></label>}
     </section>

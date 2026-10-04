@@ -349,7 +349,12 @@ async def _open_out_of_band_stream(llm, context: LLMContext, *, max_tokens: int 
         system_instruction=settings.system_instruction,
         convert_developer_to_user=not llm.supports_developer_role,
     )
-    params = llm.build_chat_completion_params(invocation_params)
+    build_session_params = getattr(llm, "build_session_chat_completion_params", None)
+    params = (
+        await build_session_params(invocation_params)
+        if build_session_params is not None
+        else llm.build_chat_completion_params(invocation_params)
+    )
     params["stream"] = True
     if max_tokens is not None:
         token_key = "max_completion_tokens" if "max_completion_tokens" in params else "max_tokens"

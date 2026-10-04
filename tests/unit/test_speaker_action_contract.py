@@ -682,6 +682,10 @@ class EnvelopeContractDeliveryTests(unittest.TestCase):
 
     def _service(self) -> SubagentsSpeakerOmniService:
         service = object.__new__(SubagentsSpeakerOmniService)
+        from contextvars import ContextVar
+
+        service._sampling_snapshot = ContextVar("test_sampling", default=None)
+        service._sampling_initial = {}
         service._audio_response_instruction_content = "Output one JSON object only, with these fields"
         service._visual_status_provider = None
         service._attachment_pending = None
@@ -992,7 +996,7 @@ class DispatchRegressionTests(unittest.IsolatedAsyncioTestCase):
 class ThinkerBudgetTests(unittest.IsolatedAsyncioTestCase):
     def test_constructor_uses_total_generation_ceiling(self) -> None:
         with (
-            patch("examples.omni_assistant_subagents.subagents.thinker.agent.NvidiaOmniLLMService") as omni_service,
+            patch("examples.omni_assistant_subagents.subagents.thinker.agent.SamplingOmniLLMService") as omni_service,
             patch("examples.omni_assistant_subagents.subagents.thinker.agent.parse_env_float", return_value=0.6),
             patch("examples.omni_assistant_subagents.subagents.thinker.agent.parse_env_int", return_value=16384),
         ):

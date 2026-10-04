@@ -140,6 +140,7 @@ export function useVoiceSession() {
     (example: DeploymentOption, preset?: PipelinePreset): SessionConfigBody => {
       const slots = new Set(example.slots);
       const config: SessionConfigBody = { pipeline_mode: example.key };
+      if (Object.keys(app.llmOverrides).length) config.llm_settings = app.llmOverrides;
       config.client_timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
       if (app.backendPromptOverride.trim()) config.thinker_prompt_content = app.backendPromptOverride;
       if (app.persistentPrompt.trim()) config.persistent_prompt = app.persistentPrompt;

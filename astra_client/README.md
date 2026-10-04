@@ -12,6 +12,8 @@ backend. The upstream client in `client/` has a separate build.
 - **Dual transport**: WebRTC (recommended) or WebSocket.
 - **Runtime service switching**: add or remove LLM, ASR, and TTS services without redeploying.
 - **Prompt management**: pick a built-in persona or write a custom system prompt.
+- **LLM settings**: tune each model role before starting or apply sampling changes
+  to future requests during a conversation.
 - **Voice studio**: choose a speech engine, preview voice cards, upload a
   zero-shot sample, and save pronunciation fixes.
 - **Audio visualizers**: real-time input and output waveform display.
@@ -81,7 +83,8 @@ page. **Audio settings** opens microphone and speaker selectors.
 nonblocking hints point to both controls for 2 seconds after the session starts.
 The configuration view includes models, tools, frontend and backend prompts,
 persistent instructions, voice settings, pronunciation fixes, and capture
-choices. Configure voices, tools, and prompts before starting.
+choices. Configure voices, tools, and prompts before starting. **LLM settings**
+provides separate model request controls.
 
 Model endpoints come from the deployment's service catalog. **Settings** does
 not expose a local model URL override, which prevents a browser-only endpoint
@@ -126,6 +129,33 @@ facts to expand. Required results and safety information stay intact.
 These are model instructions rather than a guaranteed word cap.
 Refer to
 [Configure Prompts](../docs/how-to/configure-prompts.md) for API limits.
+
+## Tune Model Responses
+
+Select **LLM** in the conversation header to open **LLM settings**, or open
+**LLM settings** from **Tools** before starting. Generic exposes independent **Frontend · Talker** and
+**Backend · Thinker** controls. Omni Subagents exposes **Speaker**, **Thinker**,
+**Media Analyzer**, and **Webcam** controls for the shared Nemotron Omni model.
+The controls change request parameters; they do not switch model endpoints or
+change reasoning modes.
+
+Adjust temperature, top-p, and maximum output tokens for each role. Advanced
+controls provide top-k, repetition penalty, presence penalty, and frequency
+penalty. Role defaults come from the backend. Top-k `1` restricts
+sampling to the leading candidate, so temperature and top-p have little effect
+until you change top-k. Refer to [LLM Session Controls](../docs/how-to/configure-llm.md#llm-session-controls)
+for parameter ranges and token-budget behavior.
+
+Before starting, select **Save settings** to retain your edits separately for
+each example in your browser. A new conversation or reconnect uses the saved
+settings. During a conversation, select **Apply to session** and wait for
+acknowledgement. A successful update also saves the settings for later sessions.
+Changes affect future model requests; a request already running continues with
+its original values. Closing the panel discards unapplied edits.
+
+**Reset** restores one role and **Reset all** restores every role in the draft.
+Save or apply again to retain the reset. If a revision conflict appears, close
+and reopen the panel to load the current session settings before editing again.
 
 ## Build a Voice
 
@@ -281,6 +311,8 @@ The client reads its configuration from the backend (`src/server.py`) and starts
 | `/api/session-config` | Prompts and default session settings |
 | `/api/prompts` | Prompt catalog with frontend/backend role metadata |
 | `/api/tools` | Tool specifications allowed for the selected example |
+| `GET /api/llm-settings` | Supported model roles and deployed sampling defaults |
+| `GET/PUT /api/sessions/{session_id}/llm-settings` | Read or apply live sampling settings with a revision |
 | `/api/tts-config` | Available TTS voices and languages |
 | `GET /api/tts/pronunciations` | Deployed IPA pronunciation defaults |
 | `POST /api/tts/preview` | Bounded pre-session voice preview as WAV audio |

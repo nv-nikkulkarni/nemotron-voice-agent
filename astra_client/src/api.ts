@@ -297,8 +297,29 @@ export function useVoiceCatalog(
   });
 }
 
-/** A session-config body: a flat map of string fields (matches the backend contract on develop). */
-export type SessionConfigBody = Record<string, string | Record<string, string>>;
+/** Session configuration combines catalog identifiers with bounded structured overrides. */
+export type SamplingParameter = "temperature" | "top_p" | "max_tokens" | "top_k" | "repetition_penalty" | "frequency_penalty" | "presence_penalty";
+export type SamplingValues = Record<SamplingParameter, number>;
+export type LLMSettings = Record<string, Partial<SamplingValues>>;
+export interface LLMRole {key: string; label: string; description: string; model: string; defaults: SamplingValues}
+export interface LLMSettingsDocument {roles: LLMRole[]; settings: LLMSettings; revision: number}
+export type SessionConfigBody = Record<string, string | Record<string, string> | LLMSettings>;
+
+export async function getLLMSettings(example: string, llmId: string, sessionId?: string, signal?: AbortSignal): Promise<LLMSettingsDocument> {
+  const url = sessionId ? `/api/sessions/${encodeURIComponent(sessionId)}/llm-settings` :
+    `/api/llm-settings?${new URLSearchParams({pipeline_mode: example, llm_id: llmId})}`;
+  const response = await fetch(url, {signal});
+  if (!response.ok) throw new Error(`Unable to load LLM settings (HTTP ${response.status}).`);
+  return response.json();
+}
+export async function applyLLMSettings(sessionId: string, settings: LLMSettings, revision: number): Promise<LLMSettingsDocument> {
+  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/llm-settings`, {
+    method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({settings, revision}),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.detail || `Unable to apply LLM settings (HTTP ${response.status}).`);
+  return data;
+}
 
 export async function createSessionConfig(config: SessionConfigBody): Promise<string> {
   const res = await fetch("/api/session-config", {

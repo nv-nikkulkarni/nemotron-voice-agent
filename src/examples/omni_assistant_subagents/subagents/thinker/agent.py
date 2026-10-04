@@ -26,10 +26,10 @@ from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
 from pipecat.workers.base_worker import BaseWorker
 
 from examples.omni_assistant.nvidia_omni_multimodal_service import (
-    NvidiaOmniLLMService,
     NvidiaOmniSettings,
     text_message_part,
 )
+from examples.shared.sampling_llm import SamplingOmniLLMService
 from utils import parse_env_float, parse_env_int
 
 THINKING_TASK_NAME = "think"
@@ -65,6 +65,8 @@ class ThinkerWorker(BaseWorker):
         base_url: str,
         model_id: str,
         extra_params: dict[str, Any] | None = None,
+        sampling_session_id: str = "",
+        sampling_initial: dict | None = None,
         system_prompt: str = "",
     ) -> None:
         """Configure the reasoning-ON Omni client for deliberate thinking."""
@@ -81,7 +83,10 @@ class ThinkerWorker(BaseWorker):
             "enable_thinking": True,
         }
         omni_extra["extra_body"] = extra_body
-        self._omni = NvidiaOmniLLMService(
+        self._omni = SamplingOmniLLMService(
+            sampling_session_id=sampling_session_id,
+            sampling_role="thinker",
+            sampling_initial=sampling_initial,
             api_key=api_key,
             base_url=base_url,
             extra=omni_extra,

@@ -165,6 +165,101 @@ Cloud (NVCF) endpoints enable the parsers server-side. **Self-hosted NIM and vLL
 - **NIM** receives them through `NIM_PASSTHROUGH_ARGS`, which is already fixed in the Lightning and Super Compose files.
 - **Raw vLLM** (single-GPU or Omni) takes the same flags directly on `vllm serve`.
 
+## LLM Session Controls
+
+The Astra client exposes role-specific large language model (LLM) request
+settings. Select **LLM** in the conversation header to open **LLM settings**,
+or select **LLM settings** from **Tools** before starting. **Audio settings** remains dedicated to your
+microphone and speaker devices.
+
+The panel separates the supported roles as follows:
+
+| Example | Role Controls | Model |
+| --- | --- | --- |
+| Generic Frontend/Backend Agent | Frontend · Talker, Backend · Thinker | Catalog-selected Lightning Talker and Super Thinker |
+| Omni Assistant Subagents | Speaker, Thinker, Media Analyzer, Webcam | Catalog-selected Nemotron Omni, shared across the roles |
+
+Each role displays its deployed defaults. Generic's Talker defaults to
+`temperature: 0.0` and `max_tokens: 512`; its Super Thinker defaults to
+`temperature: 0.0` and `max_tokens: 2048`. Omni defaults come from its service
+catalog and worker configuration. The panel does not switch models, endpoints,
+or reasoning modes.
+
+You can change the following parameters independently for each role:
+
+| Parameter | Accepted Values | Effect |
+| --- | --- | --- |
+| `temperature` | `0`–`2` | Controls sampling variation. Zero favors a deterministic response. |
+| `top_p` | `0.000001`–`1` | Limits candidates by cumulative probability. |
+| `max_tokens` | Integer `64`–`32,768` | Caps generated tokens, including model reasoning where applicable. |
+| `top_k` | `-1`, or integer `1`–`1,000` | Disables the cutoff with `-1`, or limits the candidate count. |
+| `repetition_penalty` | `0.1`–`2` | Values above `1` discourage repeated tokens. |
+| `presence_penalty` | `-2`–`2` | Positive values discourage tokens already present. |
+| `frequency_penalty` | `-2`–`2` | Positive values discourage frequently repeated tokens. |
+
+Temperature, top-p, and maximum tokens appear in the main controls. Open the
+advanced controls for the remaining parameters. The server rejects unknown
+roles, unknown parameters, invalid types, nonfinite values, and out-of-range
+values. An inference service can impose tighter output or context limits.
+
+Top-k `1` makes sampling effectively greedy. Temperature and top-p have little
+effect while that setting selects only the leading candidate. The Omni catalog
+uses top-k `1` by default; choose `-1` or a larger value to allow more candidates.
+
+A token limit is not a word limit. Very small limits can truncate a structured
+Talker response, a backend plan, media analysis, or a reasoning pass. Keep enough
+tokens for the role's output contract and adjust prompt instructions for shorter
+speech. Existing reasoning settings and planner validation continue to apply.
+
+### Save and Apply Changes
+
+Before starting, select **Save settings** to retain edits separately for each
+example in browser localStorage. Saved settings accompany the next session start
+or reconnect. Browser storage is
+specific to your profile and origin; it does not change deployment catalogs or
+another user's sessions.
+
+During a conversation, select **Apply to session** and wait for the server's
+acknowledgement. A successful update also saves settings for later sessions.
+The revision advances when the update succeeds. Future model
+requests use the new values. In-flight requests keep the values captured when
+they began; applying settings does not restart the conversation or interrupt
+current speech. Each Omni worker snapshots its own settings before an inference
+request.
+
+**Reset** restores one role and **Reset all** restores every role in the draft.
+Select **Save settings** before starting, or **Apply to session** while connected,
+to retain the reset. Closing the panel discards unapplied changes. If another
+client changes the session first, the server rejects a stale revision. Close and
+reopen the panel to load current settings, review your edits, and apply again.
+Closing the session removes its live settings state.
+
+### Session API
+
+The backend provides the following endpoints:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/llm-settings?pipeline_mode=<example-key>` | Returns supported roles and deployed defaults. |
+| `GET /api/sessions/{session_id}/llm-settings` | Returns the active session settings and revision. |
+| `PUT /api/sessions/{session_id}/llm-settings` | Applies a validated update against the expected revision. |
+
+Session creation accepts a bounded, structured `llm_settings` mapping keyed by
+role. Generic uses `frontend` and `backend`; Omni uses `speaker`, `thinker`,
+`media`, and `webcam`. The same validation applies before creation and during
+live updates. A PUT body contains only `settings` and the expected `revision`.
+The server returns HTTP `400` for invalid input, `409` for a stale revision, and
+`404` after the live settings state ends or expires. PUT bodies are limited to
+16 KiB.
+Only sampling fields cross this boundary; model IDs, credentials, endpoints,
+tools, and reasoning modes retain their existing configuration paths.
+
+Redis shares live settings across application replicas. The process-local store
+supports deployments without Redis. A live WebSocket remains on its owning
+replica, and the runtime reads the shared settings before each new model request.
+Refer to [Configure Services](configure-services.md) for persistent catalog
+changes.
+
 ## Tuning LLM Request Parameters
 
 LLM request parameters are set per catalog entry using `extra_params`, a JSON string merged into each chat-completion request. OpenAI-standard fields (`temperature`, `top_p`, `max_tokens`) go at the top level of `extra_params`. vLLM/NIM extensions (`repetition_penalty`, `chat_template_kwargs`) go under `extra_body`. Use the following structure to set default sampling in the `llm:` section of `services.cloud.yaml` or `services.local.yaml`:
@@ -186,7 +281,10 @@ llm:
 | `repetition_penalty` | `extra_body` | `1.05` | `> 1` discourages repeated phrasing. |
 | `chat_template_kwargs.enable_thinking` | `extra_body` | `false` | Reasoning on/off. |
 
-> The repo ships `repetition_penalty: 1.05` and the appropriate `enable_thinking` per entry. Add `temperature` / `top_p` / `max_tokens` to the same `extra_params` string to default them. Per session, you can override using the UI or session configurations.
+> Catalog defaults retain `repetition_penalty: 1.05` and the role-specific
+> `enable_thinking` setting. Keep default sampling in the service catalog. Use
+> [LLM Session Controls](#llm-session-controls) for supported role-specific UI
+> and live session overrides.
 
 ## Reference
 

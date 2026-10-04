@@ -187,6 +187,8 @@ async def bot(runner_args: RunnerArguments) -> None:
         )
 
     speaker_agent = SpeakerOmniAgent(
+        sampling_session_id=session_id,
+        sampling_initial=body.get("llm_settings", {}).get("speaker", {}),
         context=context,
         api_key=api_key,
         base_url=base_url,
@@ -202,6 +204,8 @@ async def bot(runner_args: RunnerArguments) -> None:
         visual_status_provider=transport_agent.current_visual_status,
     )
     media_analyzer_agent = MediaAnalyzerWorker(
+        sampling_session_id=session_id,
+        sampling_initial=body.get("llm_settings", {}).get("media", {}),
         api_key=api_key,
         base_url=base_url,
         model_id=model_id,
@@ -210,6 +214,8 @@ async def bot(runner_args: RunnerArguments) -> None:
         reasoning=_reasoning_for(registry, MediaAnalyzerWorker.AGENT_NAME, "on"),
     )
     webcam_agent = WebcamAgent(
+        sampling_session_id=session_id,
+        sampling_initial=body.get("llm_settings", {}).get("webcam", {}),
         api_key=api_key,
         base_url=base_url,
         model_id=model_id,
@@ -219,6 +225,8 @@ async def bot(runner_args: RunnerArguments) -> None:
         gesture_prompt=_agent_prompt_content(prompt_catalog, "WebcamAgent", "gesture_prompt"),
     )
     thinker_agent = ThinkerWorker(
+        sampling_session_id=session_id,
+        sampling_initial=body.get("llm_settings", {}).get("thinker", {}),
         api_key=api_key,
         base_url=base_url,
         model_id=model_id,

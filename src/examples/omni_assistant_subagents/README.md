@@ -97,13 +97,23 @@ edits persist in browser localStorage. Global persistent instructions append
 to both roles and remain when you restore a default. Other worker prompts stay
 in `prompts.yaml`. Refer to [Configure Prompts](../../../docs/how-to/configure-prompts.md).
 
-Use **Settings** or **Configure** to preview a catalog voice before connecting.
-Live voice changes stay within the current engine. Magpie Zeroshot
-accepts an explicitly enabled browser reference sample for the next
-session. The transport agent uses the shared demo speech wrapper for reference
-samples and aligned Magpie “Nemotron” timing. Refer to
+Use **Voice** in the launch bar to open the speech studio before connecting.
+Choose a catalog voice, preview it, or add IPA pronunciation fixes for Magpie.
+Magpie Zeroshot accepts an explicitly enabled browser reference sample for the
+next session. **Audio settings** appears during a conversation and contains
+microphone and speaker selectors. The transport agent uses the shared demo
+speech wrapper for reference samples and aligned Magpie “Nemotron” timing. Refer to
 [Configure TTS](../../../docs/how-to/configure-tts.md#preview-and-upload-voices-in-the-astra-client)
 for sample limits and the pronunciation qualification boundary.
+
+Open **LLM settings** from **Tools** before starting, or select **LLM** in the
+conversation header while connected. Tune **Speaker**, **Thinker**, **Media Analyzer**, and
+**Webcam** separately for the shared Nemotron Omni model. **Save settings**
+retains edits for the next session. **Apply to session** updates future inference requests
+after acknowledgement; running requests keep their original settings. Model
+endpoints and reasoning modes remain unchanged. Refer to
+[LLM Session Controls](../../../docs/how-to/configure-llm.md#llm-session-controls)
+for limits, advanced sampling parameters, and the top-k `1` default.
 
 Ask to show the voice-agent architecture to display the repository-owned Omni
 SVG in the Astra client. The Speaker prompt pairs the image with a short

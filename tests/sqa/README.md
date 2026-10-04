@@ -24,6 +24,7 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 | `functional.mjs` | Landing actions, cards, fixed model roles, explicit capture choices, optional recording, conversation settings, session lifecycle (start→end→thanks→restart), **upload validation**, and visual diff. |
 | `demo-feedback.mjs` | Focused prompt persistence, voice preview, Generic follow-ups and brief speech, Generic/Omni architecture, optional zero-shot sample, and capture acknowledgement checks. |
 | `pre-session-configuration.mjs` | Four launch actions, prompt persistence, voice-card and IPA previews, capture-dialog cancellation, device-only conversation settings, mobile layout, optional zero-shot sample, and one spoken exchange with capture acknowledgement. |
+| `llm-settings.mjs` | Responsive per-role model controls, validation, saved settings, draft cancellation, Generic/Omni live apply and reset, real spoken turns, and ended-session state cleanup. |
 | `voice-studio.mjs` | Responsive studios, capture-dialog cancellation without microphone acquisition, IPA persistence and assistant isolation, real previews, optional zero-shot sample, Generic/Omni welcomes, capture choices, brief header hints, and reconnect permission. |
 | `converse.mjs` | Real multi-turn **spoken** conversations (generic + omni); verifies each turn via ASR + DOM, tools, latency, dialogue context. |
 | `concurrent.mjs` | N isolated sessions at once; distinct session IDs, all connect + hear greeting, 0 errors. |
@@ -64,6 +65,7 @@ export SQA_BASE=http://localhost:7862 # default
 ./sqa.sh demo-feedback
 ./sqa.sh pre-session-configuration
 ./sqa.sh voice-studio
+./sqa.sh llm-settings
 ./sqa.sh captured-sessions
 ./sqa.sh repeated-expect-tool
 ./sqa.sh corner
@@ -113,6 +115,49 @@ configuration, 1 real spoken exchange with capture acknowledgement, and Omni
 configuration. It writes `pre-session-configuration-report.json`, screenshots,
 and audio under `SQA_OUT`. This focused suite does not replace release suites
 or human listening acceptance.
+
+## LLM Settings Acceptance Checks
+
+Run the focused model-control suite from the repository root:
+
+```bash
+SQA_BASE=http://localhost:7880 bash tests/sqa/sqa.sh llm-settings
+```
+
+Use an externally supplied `SQA_KEY` with inference-hub access for the harness's
+speech generator and independent speech recognizer. The target must expose
+Generic Frontend/Backend Agent and Omni Assistant Subagents with their model
+services ready. Both real voice sessions run by default.
+
+The suite checks the settings dialog at widths of 1,440, 1,024, 768, 390, and
+320 pixels. It validates Generic's independent role controls, invalid-input
+feedback, explicit **Save settings**, persistence across reloads, and cancellation
+of an unapplied draft. Omni exposes all four role cards, with advanced top-k
+controls that can override its greedy default. The landing launch bar keeps its
+four actions; **LLM settings** opens from **Tools** before connecting.
+
+During separate Generic and Omni sessions, the suite checks saved settings in
+the submitted session configuration. It then opens **LLM** in the conversation
+header, applies new values, verifies a successful PUT and current revision, and
+speaks to the real agent. The Generic turn asks for the current time in Tokyo;
+the Omni turn requests a brief greeting. Input transcription, a visible reply,
+audible response audio, and independent bot speech recognition must succeed.
+**Reset all** must restore defaults after applying. After **End**, the live
+settings endpoint must return HTTP `404`. Reports and screenshots are written
+under `SQA_OUT`, including `llm-settings-report.json`.
+
+The backend request-boundary checks live in `tests/unit/test_llm_settings.py`:
+
+```bash
+uv run pytest tests/unit/test_llm_settings.py -v
+```
+
+These checks validate bounded numeric fields, session isolation, revision
+conflicts, reset, and teardown. They also inspect mocked native planner and
+multimodal requests, including all four Omni roles, and confirm that an
+in-flight request keeps its snapshot while a later request receives the update.
+The browser suite checks real Generic and Omni speech; it does not exercise
+every uploaded-media or webcam inference path.
 
 ## Voice Studio Acceptance Checks
 

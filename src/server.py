@@ -322,6 +322,10 @@ def _sanitize_session_config(data: dict, fallback_example_key: str = "") -> dict
         if not supports_audio_prompt(str(sanitized.get("tts_model") or "")):
             raise ValueError("Select Magpie Zero-shot to use a voice sample")
         validate_voice_sample(sample)
+    if "llm_settings" in sanitized:
+        from llm_settings import validate_settings
+
+        sanitized["llm_settings"] = validate_settings(sanitized["llm_settings"], example["key"])
     sanitized["_session_capabilities"] = list(example.get("capabilities") or ())
     return sanitized
 
@@ -506,6 +510,9 @@ def _get_default_llm_selection() -> tuple[str, str]:
 def _store_session_config(data: dict, fallback_example_key: str = "") -> str:
     session_id = uuid.uuid4().hex[:12]
     cfg = _sanitize_session_config(data, fallback_example_key=fallback_example_key)
+    from llm_settings import initialize
+
+    initialize(session_id, cfg)
     _session_configs[session_id] = cfg
     _persist_session(session_id, cfg)  # cross-pod: any replica can resolve this session
     return session_id
@@ -925,6 +932,44 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
             return failure
         return {"session_id": _store_session_config(config, fallback_example_key=fallback_example_key)}
 
+    @app.get("/api/llm-settings")
+    async def llm_setting_defaults(pipeline_mode: str = "", llm_id: str = ""):
+        from llm_settings import role_specs
+
+        config = _sanitize_session_config({"pipeline_mode": pipeline_mode, "llm_id": llm_id}, fallback_example_key)
+        return {"roles": role_specs(config), "settings": {}, "revision": 0}
+
+    @app.get("/api/sessions/{session_id}/llm-settings")
+    async def get_llm_settings(session_id: str):
+        from llm_settings import read
+
+        try:
+            document = await asyncio.to_thread(read, session_id)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"detail": str(exc)})
+        if document is None:
+            return JSONResponse(status_code=404, content={"detail": "Session ended or expired"})
+        return document
+
+    @app.put("/api/sessions/{session_id}/llm-settings")
+    async def update_llm_settings(session_id: str, request: Request):
+        from llm_settings import SettingsConflict, replace
+
+        try:
+            raw = await request.body()
+            if len(raw) > 16384:
+                raise ValueError("LLM settings request is too large")
+            data = json.loads(raw)
+            if not isinstance(data, dict) or set(data) != {"settings", "revision"}:
+                raise ValueError("Provide settings and revision only")
+            return await asyncio.to_thread(replace, session_id, data["settings"], data["revision"])
+        except SettingsConflict as exc:
+            return JSONResponse(status_code=409, content={"detail": str(exc)})
+        except LookupError as exc:
+            return JSONResponse(status_code=404, content={"detail": str(exc)})
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"detail": str(exc)})
+
     # ---- Session capture (consent + transcript + per-session log -> tarball -> NGC) ----
     # Fully isolated in session_capture/; a no-op (routes never registered) unless
     # SESSION_CAPTURE_ENABLED is true. See session_capture/settings.py for the env contract.
@@ -1056,6 +1101,9 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
         selected = examples_registry.find(config.get("pipeline_mode", fallback_example_key))
         bot_fn = examples_registry.resolve_bot(selected)
         if session_id:
+            from llm_settings import initialize
+
+            initialize(session_id, config)
             _active_session_configs[session_id] = dict(config)
 
         async def run_bot_session(runner_args: SmallWebRTCRunnerArguments) -> None:
@@ -1063,6 +1111,9 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
                 await bot_fn(runner_args)
             finally:
                 if session_id:
+                    from llm_settings import close
+
+                    await asyncio.to_thread(close, session_id)
                     _active_session_configs.pop(session_id, None)
 
         async def on_connection(connection: SmallWebRTCConnection):
@@ -1112,6 +1163,9 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
             bot_fn = examples_registry.resolve_bot(selected)
             _bind_example_context_by_key(example["key"])
             if session_id:
+                from llm_settings import initialize
+
+                initialize(session_id, config)
                 _active_session_configs[session_id] = dict(config)
 
             runner_args = SimpleNamespace(
@@ -1126,6 +1180,9 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
                 logger.error(f"WebSocket session error: {e}")
             finally:
                 if session_id:
+                    from llm_settings import close
+
+                    await asyncio.to_thread(close, session_id)
                     _active_session_configs.pop(session_id, None)
                 with contextlib.suppress(Exception):
                     await websocket.close()
@@ -1160,6 +1217,9 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
             _bind_example_context_by_key(selected["key"])
             session_id = str(session_view.get("id") or "")
             if session_id:
+                from llm_settings import initialize
+
+                initialize(session_id, config)
                 _active_session_configs[session_id] = dict(config)
             runner_args = SimpleNamespace(
                 websocket=ws,
@@ -1178,6 +1238,9 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
                 logger.error(f"Realtime pipeline session error: {e}")
             finally:
                 if session_id:
+                    from llm_settings import close
+
+                    await asyncio.to_thread(close, session_id)
                     _active_session_configs.pop(session_id, None)
                 with contextlib.suppress(Exception):
                     await ws.close()
