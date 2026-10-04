@@ -25,6 +25,8 @@ import * as H from "./lib/harness.mjs";
 
 const IMG = "/sqa/omni_test.png";                 // navy bg, red square, text "BANANA 42"
 const IMG_HINT = /\bred\b.*\bsquare\b|\bsquare\b.*\bred\b|\bbanana\s+(?:42|forty[ -]two)\b/i;
+// A progress phrase mentioning "price" is not a quoted stock price.
+const STOCK_QUOTE_HINT = /\b\d+(?:[.,]\d+)*\s*(?:USD|dollars?)\b|\$\s*\d+(?:[.,]\d+)*|\b(?:trading|priced)\s+at\s+\d+(?:[.,]\d+)*/i;
 
 // --------------------------------------------------------------------------- //
 // Hang detection: wrap any await; a timeout is recorded as a hang, never a throw.
@@ -52,7 +54,7 @@ const signalCounts = (sig) => ({
 // internal tool name (shown in .conv-tool box) → spoken prompt + answer matcher.
 const TOOL_TURNS = [
   { tool: "get_weather", label: "Weather", text: "What's the weather in Tokyo right now?", want: /degree|celsius|fahrenheit|rain|cloud|clear|sunny|humid|wind|tokyo/i, notWant: /\bnvidia\b|\bnvda\b|\bstock\b|\btrading\b/i },
-  { tool: "get_stock_price", label: "Stock price", text: "What's Nvidia's stock price?", want: /\d|hundred|dollar|point|price/i, notWant: /\btokyo\b|\blondon\b|\bweather\b|\bdegrees?\b/i },
+  { tool: "get_stock_price", label: "Stock price", text: "What's Nvidia's stock price?", want: STOCK_QUOTE_HINT, notWant: /\btokyo\b|\blondon\b|\bweather\b|\bdegrees?\b/i },
   { tool: "web_search", label: "Web search", text: "Search the web for the latest news about artificial intelligence.", want: /ai|artificial|model|news|research|company|announc|\w{4,}/i },
   { tool: "calculate_bmi", label: "BMI", text: "What's my BMI if I'm 70 kilos and 1.75 meters?", want: /22\.9|22 point 9|twenty.?two|\bbmi\b|normal|healthy/i },
   { tool: "generate_random_number", label: "Random number", text: "Give me a random number between one and one hundred.", want: /\d|number/i },
@@ -64,7 +66,7 @@ const CHAT_TURNS = [
   { text: "Can you tell me a fun one sentence fact about space?", want: /.+/ },
   { text: "What can you help me with today?", want: /help|weather|stock|convert|tool|assist|.+/i },
   { text: "And how about the weather in London?", want: /degree|celsius|london|cloud|rain|clear|sunny|wind|humid/i, tool: "get_weather" },
-  { text: "Repeat the NVIDIA stock price now.", want: /\d|price|dollar|nvidia/i, notWant: /\btokyo\b|\blondon\b|\bweather\b|\bdegrees?\b/i, tool: "get_stock_price", label: "Stock price" },
+  { text: "Repeat the NVIDIA stock price now.", want: STOCK_QUOTE_HINT, notWant: /\btokyo\b|\blondon\b|\bweather\b|\bdegrees?\b/i, tool: "get_stock_price", label: "Stock price" },
   { text: "Thanks so much. Goodbye!", want: /bye|welcome|glad|help|day|care/i },
 ];
 const ALL_TOOL_NAMES = TOOL_TURNS.map((t) => t.tool);
