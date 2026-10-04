@@ -3,9 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export function ExpandedPromptEditor({
-  role, example, value, disabled, onChange, onRestore, onClose,
+  role, roleLabel, example, value, disabled, onChange, onRestore, onClose,
 }: Readonly<{
   role: "frontend" | "backend";
+  roleLabel?: string;
   example: string;
   value: string;
   disabled: boolean;
@@ -16,7 +17,7 @@ export function ExpandedPromptEditor({
   const dialog = useRef<HTMLDialogElement>(null);
   const editor = useRef<HTMLTextAreaElement>(null);
   const [textSize, setTextSize] = useState(16);
-  const title = `${role === "frontend" ? "Frontend" : "Backend"} system prompt`;
+  const title = `${roleLabel ?? (role === "frontend" ? "Frontend" : "Backend")} system prompt`;
 
   useEffect(() => {
     if (dialog.current && !dialog.current.open) {
@@ -65,7 +66,7 @@ export function ExpandedPromptEditor({
         onChange={(event) => onChange(event.target.value)}
       />
       <footer className="expanded-prompt-editor__foot">
-        <button type="button" className="btn-secondary" disabled={disabled} onClick={onRestore}>Restore {role} default</button>
+        <button type="button" className="btn-secondary" disabled={disabled} onClick={onRestore}>Restore {roleLabel?.toLowerCase() ?? role} default</button>
         <span className="expanded-prompt-editor__count">{value.length.toLocaleString()} / 32,000 characters</span>
         <button type="button" className="btn-primary" onClick={() => dialog.current?.close()}>Done</button>
       </footer>

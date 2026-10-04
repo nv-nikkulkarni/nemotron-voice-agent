@@ -92,10 +92,12 @@ The example declares `capabilities: [attachments, webcam]` in `examples_registry
 ## Astra Session Controls
 
 Before starting a session, open **Prompts** in the Astra client to edit the
-frontend session instructions and the `ThinkerAgent` prompt. Each pipeline's
-edits persist in browser localStorage. Global persistent instructions append
-to both roles and remain when you restore a default. Other worker prompts stay
-in `prompts.yaml`. Refer to [Configure Prompts](../../../docs/how-to/configure-prompts.md).
+**Speaker** instructions and the **Thinker** prompt. The cards, fields, restore
+controls, and expanded editors identify the Speaker and Thinker roles. Each
+pipeline's edits persist separately in browser localStorage. Global persistent
+instructions append to Speaker and Thinker and remain when you restore a default.
+Other worker prompts stay in `prompts.yaml`. Refer to
+[Configure Prompts](../../../docs/how-to/configure-prompts.md).
 
 Use **Voice** in the launch bar to open the speech studio before connecting.
 Choose a catalog voice, preview it, or add IPA pronunciation fixes for Magpie.

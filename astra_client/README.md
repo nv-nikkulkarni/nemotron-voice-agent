@@ -102,21 +102,25 @@ system's reduced-motion preference.
 
 ## Prepare Prompts
 
-Select **Prompts** before starting a session to open `/prompts`. Edit the
-frontend instructions and, for Frontend/Backend Agent or Omni Subagents, the
-backend Thinker instructions. The editor saves each pipeline's overrides in
-browser localStorage. **Persistent instructions** apply across pipelines and
-append to both roles, including your edited prompts. Reloads and restoring
-either default preserve these instructions; clear their field to remove them.
+Select **Prompts** before starting a session to open `/prompts`. Generic
+Frontend/Backend Agent shows frontend and backend instructions. Omni Subagents
+shows **Speaker** and **Thinker** instructions, with matching role names in the compact
+fields and expanded editors. The selected example supplies its own prompt
+defaults. The editor saves each pipeline's overrides in browser localStorage.
+**Persistent instructions** apply across pipelines and append to both roles,
+including your edited prompts. For Omni, they append to Speaker and Thinker.
+Reloads and restoring either default preserve these instructions; clear their
+field to remove them.
 Changes apply to the next session. Open the editor with **Prompts** in the
 launch bar. Select **Back to setup** to return.
 
 Select **Expand editor** on either role card to open a large dialog for that
 prompt. The dialog uses wrapped monospace text and lets you choose a text size
 from 14 to 22 pixels in 2-pixel steps. Edits save to the same browser
-overrides as the compact fields. **Restore frontend default** or
-**Restore backend default** resets that role. **Done** or **Escape** closes
-the dialog and returns focus to **Expand editor**. Each role accepts up to
+overrides as the compact fields. Each role has a matching default-restore
+control. Generic uses **Restore frontend default** and **Restore backend default**.
+Omni uses **Restore speaker default** and **Restore thinker default**. **Done**
+or **Escape** closes the dialog and returns focus to **Expand editor**. Each role accepts up to
 32,000 characters. Prompt editing, expansion, and restoring defaults are
 disabled during an active session and while catalog defaults load. Unedited
 sessions use the displayed catalog prompt, preserving its native examples.
