@@ -69,6 +69,7 @@ export function VoiceStudio({ onBusyChange }: Readonly<{ onBusyChange: (busy: bo
         headers: { "Content-Type": "application/json" }, body: JSON.stringify({
           pipeline_mode: app.selectedExample?.key, tts_id: app.selectedTTSId,
           tts_voice_id: selectedVoice?.id || app.selectedTTS?.voiceId, text,
+          ...(/magpie/i.test(app.selectedTTS?.model ?? "") && Object.keys(app.pronunciationOverrides).length ? {tts_pronunciations: app.pronunciationOverrides} : {}),
           ...(sampleActive ? { tts_voice_sample: app.voiceSample!.audio } : {}),
         }) });
       if (!response.ok) { const result = await response.json(); throw new Error(result.detail || "Voice preview failed."); }

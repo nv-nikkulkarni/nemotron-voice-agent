@@ -1397,7 +1397,16 @@ The receiving replica:
 3. records consent state in Redis;
 4. schedules `maybe_finalize`.
 
-If consent is denied and consent is required, it schedules eager deletion immediately and repeats cleanup after pipeline completion to catch late writes.
+The request must contain a JSON boolean `consent`; missing or nonboolean values
+return HTTP 400. An explicit `false` schedules eager deletion immediately and
+repeats cleanup after pipeline completion to catch late writes. Explicit decline
+is honored even when `SESSION_CAPTURE_REQUIRE_CONSENT=false`.
+
+The Astra client asks for this decision before each connection. **Allow and
+start** permits quality-review capture; **Continue without saving** declines
+it. The separate **Keep a downloadable recording** option controls a browser
+recording, not server retention. Temporary server artifacts can exist while
+the pipeline runs, before the teardown report carries the choice.
 
 ### 14.5 Exactly-one finalizer
 

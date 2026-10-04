@@ -132,7 +132,7 @@ For first-chunk and inter-chunk latency and throughput (RTFX) across GPUs, refer
 
 ### Voices & Emotions
 
-The active voice is the `voice_id` in the catalog entry. The upstream client includes a voice selector that discovers available voices and languages for mid-session switching. The Astra demo uses pre-session voice cards under **Configure**. Voice IDs follow each model's naming. For example, use `Magpie-Multilingual.EN-US.Aria`, `Magpie-ZeroShot-Multilingual.Female`, or `Chatterbox-Multilingual.en-US.Male`. Available voices and emotions depend on the deployed NIM and can be discovered at runtime over gRPC or HTTP. Refer to [available voices and emotions](https://docs.nvidia.com/nim/speech/latest/tts/voices.html).
+The active voice is the `voice_id` in the catalog entry. The upstream client includes a voice selector that discovers available voices and languages for mid-session switching. The Astra demo uses pre-session voice cards on the **Voice** studio page. Voice IDs follow each model's naming. For example, use `Magpie-Multilingual.EN-US.Aria`, `Magpie-ZeroShot-Multilingual.Female`, or `Chatterbox-Multilingual.en-US.Male`. Available voices and emotions depend on the deployed NIM and can be discovered at runtime over gRPC or HTTP. Refer to [available voices and emotions](https://docs.nvidia.com/nim/speech/latest/tts/voices.html).
 
 - **Magpie Multilingual**: multiple voices and emotional styles per locale.
 - **Magpie Zeroshot**: languages listed in [Supported languages](#supported-languages); built-in voices across locales are `Magpie-ZeroShot-Multilingual.Female` (default) and `Magpie-ZeroShot-Multilingual.Male` ([model card](https://build.nvidia.com/nvidia/magpie-tts-zeroshot/modelcard)).
@@ -277,6 +277,31 @@ and [phoneme support](https://docs.nvidia.com/nim/speech/latest/tts/phoneme-supp
 > `NvidiaTTSService(...)` call in
 > [`src/examples/generic/pipeline.py`](../../src/examples/generic/pipeline.py).
 
+### Session Pronunciation Fixes in the Astra Client
+
+Select **Voice** before starting a conversation and use **Pronunciation fixes**
+in the studio. The list includes deployed defaults and your saved fixes. Select
+**Edit** beside a rule, or enter a **Word** and **IPA pronunciation**, then
+select **Save pronunciation**. Use **Find a pronunciation** to search the list.
+
+You can save up to 50 custom rules per assistant. Each word accepts at most
+80 characters, and each IPA value accepts at most 200 characters. Enter a single
+word; create separate rules for multiword names. The editor accepts IPA without
+markup and rejects ARPAbet numbers. Removing a custom rule restores the deployed
+default for that word.
+
+The browser saves rules per assistant in localStorage. They apply to
+**Preview voice** and the next session through `tts_pronunciations`, a
+word-to-IPA map. The backend combines validated session rules with its deployed
+dictionary. This does not modify `TTS_IPA_FILE_PATH` or the packaged registry.
+Reloading the page preserves your edits for the same browser profile and
+origin. End the conversation before editing them.
+
+IPA controls require a Magpie engine. Chatterbox does not receive these rules;
+your edits remain saved when you switch back to Magpie. Preview a sentence with
+the changed word and listen before using it in a demo. An IPA edit does not
+establish human listening approval.
+
 ### TTS Text Filter
 
 LLM output frequently contains Markdown emphasis and characters the Magpie preprocessor reserves for its own markup. Unfiltered, these are spoken literally, make synthesis fail, or produce odd audio. A text filter sits between the LLM and TTS and strips them before synthesis. The default filter removes:
@@ -322,17 +347,18 @@ tts = NvidiaTTSService(
 
 ### Preview and Upload Voices in the Astra Client
 
-Before starting a session, select **Configure** in the launch bar below the
-example cards. Choose a catalog **Speech engine**, then a **Speaking voice**
-card. The scrollable gallery shows voice names and language details without a
+Before starting a session, select **Voice** in the launch bar below the
+example cards to open the `/voice` studio. Choose a catalog **Speech engine**,
+then a **Speaking voice** card. The scrollable gallery shows voice names and language details without a
 dropdown or collapsed section. Larger catalogs offer **Find a voice** search
 by name or expression and show a matching count. Enter up to 200 characters
 and select **Preview voice**.
 Preview uses `POST /api/tts/preview` and returns WAV audio. Engines, voices,
 languages, and samples are pre-session choices; end the session before
-changing them. **Settings** contains only microphone and speaker selectors.
-The configuration popup lists available deployment engines, including
-Magpie Zeroshot when enabled.
+changing them. **Audio settings** appears on the conversation page and opens
+only microphone and speaker selectors. The studio lists available deployment
+engines, including Magpie Zeroshot when enabled. Select **Back to setup** to
+return to the landing page.
 
 For the Frontend/Backend Agent or Omni Subagents, select Magpie Zeroshot
 to use a reference voice. Under **Create a character voice**, upload

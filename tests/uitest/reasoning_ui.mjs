@@ -12,18 +12,19 @@ async function check(exampleRe, label) {
   await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 30000 });
   const card = page.locator(".example-card").filter({ hasText: exampleRe }).first();
   await card.click();
-  await page.locator(".ex-config").waitFor({ state: "visible", timeout: 8000 });
+  await page.getByRole("button",{name:"Tools",exact:true}).click();
+  await page.locator(".agent-studio--tools").waitFor({ state: "visible", timeout: 8000 });
   await sleep(6000); // let the LLM catalog load so the reset effect runs
 
   const read = () => page.evaluate(() => {
-    const cb = document.querySelector(".reasoning-toggle input[type=checkbox]");
+    const cb = document.querySelector(".studio-toggle input[type=checkbox]");
     const warn = document.querySelector(".reasoning-warn");
     return { rendered: !!cb, checked: cb ? cb.checked : null, warning: warn ? warn.textContent.trim() : null };
   });
 
   const before = await read();
   // enable it and re-read
-  await page.locator(".reasoning-toggle input[type=checkbox]").evaluate((el) => el.click()).catch(() => {});
+  await page.locator(".studio-toggle input[type=checkbox]").evaluate((el) => el.click()).catch(() => {});
   await sleep(400);
   const after = await read();
 

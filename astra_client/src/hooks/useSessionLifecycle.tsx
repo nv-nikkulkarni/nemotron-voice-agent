@@ -19,6 +19,7 @@ import { useVoiceSession, type StartOptions } from "./useVoiceSession";
 import { useSessionRecorder } from "./useSessionRecorder";
 import { useApp } from "../context/useApp";
 import { demoConfig } from "../config";
+import { CaptureConsentDialog } from "../components/demo/CaptureConsentDialog";
 import { flushSessionCapture } from "../demo/captureCoordinator";
 
 export type SessionPhase = "idle" | "starting" | "live" | "stopping" | "ended";
@@ -47,7 +48,7 @@ interface SessionLifecycleValue {
   overlayVisible: boolean;
   connectionError: string;
   clearError: () => void;
-  beginSession: (opts?: StartOptions) => Promise<void>;
+  requestSession: (opts?: StartOptions) => void;
   endSession: (reason?: EndedReason) => Promise<void>;
   dismiss: () => void;
   isRecording: boolean;
@@ -87,6 +88,7 @@ export function SessionLifecycleProvider({ children }: Readonly<{ children: Reac
   const enabled = demoConfig.gracefulTeardown !== false;
   const graceMs = demoConfig.teardownGraceMs ?? DEFAULT_GRACE_MS;
 
+  const [pendingStart, setPendingStart] = useState<StartOptions | null>(null);
   const [phase, setPhase] = useState<SessionPhase>("idle");
   const [endedReason, setEndedReason] = useState<EndedReason | null>(null);
   const [overlayVisible, setOverlayVisible] = useState(false);
@@ -222,6 +224,11 @@ export function SessionLifecycleProvider({ children }: Readonly<{ children: Reac
     }
   }, [enabled, rawConnect, client, app]);
 
+  const requestSession = useCallback((opts: StartOptions = {}) => {
+    if (phaseRef.current === "starting" || phaseRef.current === "live" || phaseRef.current === "stopping") return;
+    setPendingStart(opts);
+  }, []);
+
   const dismiss = useCallback(() => {
     setPhase("idle"); setEndedReason(null); recorderRef.current.clear();
   }, []);
@@ -256,14 +263,19 @@ export function SessionLifecycleProvider({ children }: Readonly<{ children: Reac
 
   const value = useMemo<SessionLifecycleValue>(() => ({
     phase, endedReason, overlayVisible, connectionError, clearError,
-    beginSession, endSession, dismiss,
+    requestSession, endSession, dismiss,
     isRecording: recorder.isRecording, recording: recorder.recording,
     downloadRecording: recorder.download, clearRecording: recorder.clear,
     lastTeardown,
-  }), [phase, endedReason, overlayVisible, connectionError, clearError, beginSession, endSession, dismiss,
+  }), [phase, endedReason, overlayVisible, connectionError, clearError, requestSession, endSession, dismiss,
       recorder.isRecording, recorder.recording, recorder.download, recorder.clear, lastTeardown]);
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={value}>{children}
+    {pendingStart && <CaptureConsentDialog onClose={() => setPendingStart(null)} onConfirm={(consent, localRecording) => {
+      app.setStoreConsent(consent); app.setRecordSession(localRecording); setPendingStart(null);
+      void beginSession(pendingStart);
+    }} />}
+  </Ctx.Provider>;
 }
 
 export function useSessionLifecycle(): SessionLifecycleValue {

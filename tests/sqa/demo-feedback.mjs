@@ -37,7 +37,7 @@ const turns = [
   { text: "How are you?", heard: /how.*you/i, expect: /well|good|ready|help|Nemotron/i, wordLimit: 35 },
 ];
 async function voicePreview() {
-  const studio = page.locator(".ex-config .voice-studio");
+  const studio = page.locator(".agent-studio .voice-studio");
   await studio.locator('input[name="tts-voice"]').first().waitFor();
   const voices = await studio.locator('input[name="tts-voice"]').evaluateAll((inputs) => inputs.map((input) => input.value));
   assert(voices.length >= 2, "voice catalog must offer multiple voices");
@@ -131,8 +131,10 @@ try {
   await H.shot(page, `${H.OUT}/prompts.png`);
   await page.getByRole("button", { name: "Back to setup" }).click();
   await H.selectExample(page, { consent: true });
+  await page.getByRole("button",{name:"Voice",exact:true}).click();
   await voicePreview();
   await page.locator('input[name="tts-voice"][value="Magpie-Multilingual.EN-US.Aria"]').check();
+  await page.getByRole("button",{name:"Back to setup",exact:true}).click();
   const generic = { key: "generic", turns: [] }; result.conversations.push(generic);
   assert((await H.startConversation(page)).connected);
   assert.deepEqual(result.sessionConfigs.at(-1), { pipeline: "generic-frontend-backend-agent",
@@ -142,7 +144,7 @@ try {
   for (let index = 0; index < turns.length; index++) {
     await runTurn(generic, turns[index], index + 1);
     if (index === 4) {
-      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("button", { name: "Audio settings", exact: true }).click();
       const settings = page.getByRole("dialog", { name: "Settings", exact: true });
       assert.equal(await settings.getByRole("combobox").count(), 2, "Settings must expose only audio device controls");
       assert.equal(await settings.locator(".voice-studio").count(), 0);
@@ -211,10 +213,12 @@ try {
   await finish(omni);
   if (process.env.SQA_VOICE_SAMPLE) {
     await H.selectExample(page, { consent: true, tts: "zeroshot" });
-    const studio = page.locator(".ex-config .voice-studio");
+    await page.getByRole("button",{name:"Voice",exact:true}).click();
+    const studio = page.locator(".agent-studio .voice-studio");
     await studio.locator('input[type="file"]').setInputFiles(process.env.SQA_VOICE_SAMPLE);
     await studio.getByLabel("Use sample for zero-shot voice").check();
     for (const voice of await studio.locator('input[name="tts-voice"]').all()) assert(await voice.isDisabled());
+    await page.getByRole("button",{name:"Back to setup",exact:true}).click();
     const clone = { key: "clone", turns: [] }; result.conversations.push(clone);
     assert((await H.startConversation(page)).connected);
     const config = result.sessionConfigs.at(-1);

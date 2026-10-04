@@ -13,6 +13,8 @@ import { queryClient, useDeployment, useIceServers } from "./api";
 import { AppProvider } from "./context/AppContext";
 import { useApp } from "./context/useApp";
 import { demoConfig } from "./config";
+import { VoicePage } from "./components/demo/VoicePage";
+import { ToolsPage } from "./components/demo/ToolsPage";
 import { PromptPage } from "./components/demo/PromptPage";
 import { ArchitecturePresentation } from "./components/demo/ArchitecturePresentation";
 import { TopBar } from "./components/demo/TopBar";
@@ -34,7 +36,10 @@ const EMPTY_ICE_SERVERS: RTCIceServer[] = [];
 const DEFAULT_AUDIO_INPUT_SAMPLE_RATE = 16000;
 const DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE = 22050;
 type ProviderClient = ComponentProps<typeof PipecatClientProvider>["client"];
-type View = "main" | "prompts";
+type View = "main" | "prompts" | "tools" | "voice";
+function viewFromPath(): View {
+  return location.pathname === "/prompts" ? "prompts" : location.pathname === "/tools" ? "tools" : location.pathname === "/voice" ? "voice" : "main";
+}
 type Overlay = "settings" | "pipeline" | null;
 type Tour = "introduction" | null;
 
@@ -45,15 +50,15 @@ function AppInner() {
   const iceServers = iceConfig?.iceServers ?? EMPTY_ICE_SERVERS;
   const recorderSampleRate = deployment?.audio?.input_sample_rate ?? DEFAULT_AUDIO_INPUT_SAMPLE_RATE;
   const playerSampleRate = deployment?.audio?.output_sample_rate ?? DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE;
-  const [view, setView] = useState<View>(() => location.pathname === "/prompts" ? "prompts" : "main");
+  const [view, setView] = useState<View>(viewFromPath);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const navigate = useCallback((next: View) => {
-    history.pushState({}, "", next === "prompts" ? "/prompts" : "/");
+    history.pushState({}, "", next === "main" ? "/" : `/${next}`);
     setOverlay(null);
     setView(next);
   }, []);
   useEffect(() => {
-    const sync = () => { setOverlay(null); setView(location.pathname === "/prompts" ? "prompts" : "main"); };
+    const sync = () => { setOverlay(null); setView(viewFromPath()); };
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
@@ -129,6 +134,7 @@ function AppInner() {
       <SessionLifecycleProvider>
         <div className="clean-app">
           <TopBar
+            conversationView={view === "main"}
             onHome={() => navigate("main")}
             onSettings={() => setOverlay("settings")}
             onPipeline={() => setOverlay("pipeline")}
@@ -138,11 +144,11 @@ function AppInner() {
             }}
           />
           <main className="clean-main">
-            {view === "prompts" ? <PromptPage onClose={() => navigate("main")} /> : (
-              <><ConversationStage onLiveChange={handleLiveChange} onPrompts={() => navigate("prompts")} /><ArchitecturePresentation /></>
+            {view === "prompts" ? <PromptPage onClose={() => navigate("main")} /> : view === "voice" ? <VoicePage onClose={() => navigate("main")} /> : view === "tools" ? <ToolsPage onClose={() => navigate("main")} /> : (
+              <><ConversationStage onLiveChange={handleLiveChange} onPrompts={() => navigate("prompts")} onTools={() => navigate("tools")} onVoice={() => navigate("voice")} /><ArchitecturePresentation /></>
             )}
           </main>
-          {view !== "prompts" && <SessionControls />}
+          {view === "main" && <SessionControls />}
           <PipecatClientAudio />
           <SessionCaptureReporter />
         </div>

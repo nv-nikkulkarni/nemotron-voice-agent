@@ -161,10 +161,13 @@ export function useVoiceSession() {
         // Always carry the LLM's extra_params so the Reasoning toggle
         // (enable_thinking chat-template kwarg) reaches the backend, which
         // applies extra_params as an override for built-in and custom LLMs alike.
-        config.extra_params = buildExtraParams(llm.extraParams, app.reasoning);
+        config.extra_params = buildExtraParams(llm.extraParams, example.domainProfile === "generic" ? false : app.reasoning);
       }
       applyService(config, slots.has("asr"), "asr", asr, { model: asr?.model, function_id: asr?.functionId });
       applyService(config, slots.has("tts"), "tts", tts, { function_id: tts?.functionId });
+      if (slots.has("tts") && /magpie/i.test(tts?.model ?? "") && Object.keys(app.pronunciationOverrides).length) {
+        config.tts_pronunciations = app.pronunciationOverrides;
+      }
       if (slots.has("tts") && voiceId) config.tts_voice_id = voiceId;
       if (slots.has("tts") && app.useVoiceSample && app.voiceSample && /zero.?shot/i.test(tts?.model ?? "")) {
         config.tts_voice_sample = app.voiceSample.audio;

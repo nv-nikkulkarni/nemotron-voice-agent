@@ -309,6 +309,12 @@ def _sanitize_session_config(data: dict, fallback_example_key: str = "") -> dict
     config["client_timezone"] = timezone
     _bind_registry_prompt(example, config)
     sanitized = filter_session_config(config)
+    if "tts_pronunciations" in sanitized:
+        from utils import validate_pronunciation_overrides
+
+        sanitized["tts_pronunciations"] = validate_pronunciation_overrides(sanitized["tts_pronunciations"])
+        if sanitized["tts_pronunciations"] and "magpie" not in str(sanitized.get("tts_model") or "").casefold():
+            raise ValueError("IPA pronunciation rules require a Magpie speech engine")
     sample = sanitized.get("tts_voice_sample")
     if sample:
         from examples.shared.demo_speech import supports_audio_prompt, validate_voice_sample
@@ -1186,6 +1192,12 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
             default_pipeline_mode=DEFAULT_PIPELINE_MODE,
         )
 
+    @app.get("/api/tts/pronunciations")
+    async def pronunciation_defaults():
+        from utils import load_ipa_dictionary
+
+        return {"entries": load_ipa_dictionary("magpie") or {}}
+
     preview_slots = asyncio.Semaphore(4)
 
     @app.post("/api/tts/preview")
@@ -1198,7 +1210,7 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
 
         from examples.shared.demo_speech import DemoNvidiaTTSService, synthesize_request, validate_voice_sample
         from examples.shared.nemotron_speech_text_filter import NemotronSpeechTextFilter
-        from utils import load_ipa_dictionary, nvidia_api_key
+        from utils import nvidia_api_key, resolve_ipa_dictionary
 
         raw = bytearray()
         async for chunk in request.stream():
@@ -1222,7 +1234,7 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
                 use_ssl=is_nvcf(config["tts_server"]),
                 settings=NvidiaTTSSettings(voice=config.get("tts_voice_id")),
                 model_function_map={"model_name": model, "function_id": config.get("tts_function_id", "")},
-                custom_dictionary=load_ipa_dictionary(model),
+                custom_dictionary=resolve_ipa_dictionary(model, config.get("tts_pronunciations")),
                 sample_rate=PIPELINE_AUDIO_OUT_SAMPLE_RATE,
             )
             if config.get("tts_voice_sample"):

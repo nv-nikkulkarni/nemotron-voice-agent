@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 // Pipeline-info page (opened from the ⓘ icon): the models, tools, and prompt the
-// selected example uses. Read-only — editing lives in Settings.
+// selected example uses. Read-only; editing lives in the pre-session studios.
 
 import { useApp } from "../../context/useApp";
 
 export function PipelineInfo({ onClose }: Readonly<{ onClose: () => void }>) {
-  const { selectedExample, selectedASR, selectedLLM, selectedTTS, selectedVoiceId, tools, selectedTools, selectedPrompt, promptOverride } = useApp();
+  const { selectedExample, selectedASR, selectedLLM, selectedTTS, selectedVoiceId, tools, selectedTools, selectedPrompt, promptOverride, prompts, backendPromptOverride, persistentPrompt, pronunciationOverrides, voiceSample, useVoiceSample, storeConsent, recordSession } = useApp();
   const slots = new Set(selectedExample?.slots ?? []);
   const activeTools = tools.filter((t) => selectedTools.includes(t.name));
+  const backendPrompt = backendPromptOverride || prompts.find(prompt => prompt.role === "backend")?.content;
+  const sampleActive = useVoiceSample && !!voiceSample && /zero.?shot/i.test(selectedTTS?.model ?? "");
+  const ipaSupported = /magpie/i.test(selectedTTS?.model ?? "");
   const promptText = promptOverride || selectedPrompt?.content || "(the example's built-in prompt)";
 
   return (
@@ -44,9 +47,17 @@ export function PipelineInfo({ onClose }: Readonly<{ onClose: () => void }>) {
           </section>
 
           <section className="set-section">
-            <h3 className="set-section__title">🎭 Prompt {promptOverride && <span className="widget-count">edited</span>}</h3>
+            <h3 className="set-section__title">🎭 Frontend prompt {promptOverride && <span className="widget-count">edited</span>}</h3>
             <pre className="pi-prompt">{promptText}</pre>
           </section>
+          {backendPrompt && <section className="set-section"><h3 className="set-section__title">Backend prompt {backendPromptOverride && <span className="widget-count">edited</span>}</h3><pre className="pi-prompt">{backendPrompt}</pre></section>}
+          {persistentPrompt && <section className="set-section"><h3 className="set-section__title">Persistent instructions <span className="widget-count">always appended</span></h3><pre className="pi-prompt">{persistentPrompt}</pre></section>}
+          <section className="set-section"><h3 className="set-section__title">Voice configuration</h3>
+            <p className="set-hint">{sampleActive ? `Zero-shot sample: ${voiceSample!.name}` : `Preset voice: ${selectedVoiceId || selectedTTS?.voiceId || "Engine default"}`}</p>
+            <p className="set-hint">{ipaSupported ? "Deployed IPA defaults plus your pronunciation fixes." : "Engine pronunciation; IPA fixes are inactive."}</p>
+            {ipaSupported && Object.keys(pronunciationOverrides).length > 0 && <div className="pi-tools">{Object.entries(pronunciationOverrides).map(([word, ipa]) => <div className="pi-tool" key={word}><code>{word}</code><span>{ipa}</span></div>)}</div>}
+          </section>
+          <section className="set-section"><h3 className="set-section__title">Session capture choice</h3><p className="set-hint">Quality-review capture: {storeConsent ? "Allowed" : "Declined"}. Browser download recording: {recordSession ? "Enabled" : "Disabled"}.</p></section>
         </div>
 
         <div className="page-panel__foot">

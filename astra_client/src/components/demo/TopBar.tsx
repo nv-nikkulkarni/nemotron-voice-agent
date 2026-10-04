@@ -12,11 +12,13 @@ function deployedAtLabel(value: string): string {
 }
 
 export function TopBar({
+  conversationView,
   onHome,
   onSettings,
   onPipeline,
   onTour,
 }: Readonly<{
+  conversationView: boolean;
   onHome: () => void;
   onSettings: () => void;
   onPipeline: () => void;
@@ -63,8 +65,7 @@ export function TopBar({
             ?
           </button>
         )}
-        <button className="icon-btn" data-tour="pipeline" onClick={onPipeline} title="Pipeline info" aria-label="Pipeline info">ⓘ</button>
-        <button className="icon-btn icon-btn--settings" data-tour="settings" onClick={onSettings} title="Settings" aria-label="Settings">⚙</button>
+        {conversationView && (phase === "live" || phase === "stopping") && <ConversationUtilities onSettings={onSettings} onPipeline={onPipeline} />}
         {active && (
           <button
             className="btn-secondary btn-bubbly clean-end"
@@ -77,4 +78,20 @@ export function TopBar({
       </div>
     </header>
   );
+}
+
+function ConversationUtilities({ onSettings, onPipeline }: Readonly<{onSettings: () => void; onPipeline: () => void}>) {
+  const [showHints, setShowHints] = useState(true);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowHints(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return <div className="conversation-utilities">
+    <button type="button" className="icon-btn" data-tour="pipeline" onClick={() => {setShowHints(false);onPipeline();}} title="Agent configuration" aria-label="Agent configuration">ⓘ</button>
+    <button type="button" className="icon-btn icon-btn--settings" data-tour="settings" onClick={() => {setShowHints(false);onSettings();}} title="Audio settings" aria-label="Audio settings">⚙</button>
+    {showHints && <div className="conversation-hints" role="status" aria-live="polite">
+      <p><span aria-hidden="true">⚙</span> Configure audio devices here</p>
+      <p><span aria-hidden="true">ⓘ</span> Check current agent configuration here</p>
+    </div>}
+  </div>;
 }

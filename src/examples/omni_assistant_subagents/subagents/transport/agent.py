@@ -75,7 +75,7 @@ from examples.shared.tts_chunk_aggregator import (
 )
 from session_capture.capture import mark_pipeline_finished, run_finalize
 from tracing import IS_TRACING_ENABLED
-from utils import load_ipa_dictionary, normalize_lang_code, parse_env_float
+from utils import normalize_lang_code, parse_env_float, resolve_ipa_dictionary
 from webcam_frame_store import clear_session_webcam_frames
 
 _ANALYZER_FOLLOWUP_TURN_DELAY_SECS = 2.6
@@ -110,6 +110,7 @@ class OmniTransportAgent(PipelineWorker):
         tts_model: str,
         tts_zero_shot_audio_prompt_file: str,
         tts_voice_sample: str = "",
+        tts_pronunciations: dict[str, str] | None = None,
         runner_args: RunnerArguments,
         session_id: str,
         subagent_registry: SubagentRegistry,
@@ -150,7 +151,7 @@ class OmniTransportAgent(PipelineWorker):
             "settings": NvidiaTTSSettings(**tts_settings_kwargs),
             "use_ssl": tts_ssl,
             "text_filters": [NemotronSpeechTextFilter()],
-            "custom_dictionary": load_ipa_dictionary(tts_model),
+            "custom_dictionary": resolve_ipa_dictionary(tts_model, tts_pronunciations),
             "stop_frame_timeout_s": parse_env_float("TTS_STOP_FRAME_TIMEOUT_S", 30.0, min_value=5.0),
         }
         if tts_function_id or tts_model:

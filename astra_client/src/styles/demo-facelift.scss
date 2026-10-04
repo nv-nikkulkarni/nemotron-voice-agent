@@ -330,3 +330,93 @@
     &, *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   }
 }
+
+// Dedicated setup studios retain the aurora and glass styling of the landing page.
+.agent-studio { width: min(1240px, 100%); padding: 40px 28px 48px; margin-inline: auto; }
+.agent-studio__head { display: flex; justify-content: space-between; align-items: center; gap: 24px;
+  h2 { font-family: var(--font-grotesk); font-size: clamp(26px, 3vw, 38px); font-weight: 500; line-height: 1.15; letter-spacing: -0.04em; }
+  > div > p:last-child { margin-top: 10px; color: var(--text-muted); font-size: 12px; }
+  > button { flex-shrink: 0; }
+}
+.agent-studio__lead { max-width: 720px; margin: 20px 0 28px; color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
+.studio-section { min-width: 0; padding: 26px; margin-bottom: 22px; border: 1px solid var(--border-subtle); border-radius: 20px; background: radial-gradient(ellipse at 0% 0%, rgba(139, 92, 246, 0.065), transparent 65%), rgba(23, 26, 34, 0.82); backdrop-filter: blur(10px); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2); }
+.studio-section__head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px;
+  h3 { font-family: var(--font-grotesk); font-size: 20px; font-weight: 500; }
+  p { margin-top: 5px; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+}
+.studio-section__number { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border: 1px solid rgba(167, 139, 250, 0.22); background: rgba(167, 139, 250, 0.08); color: #bda5fb; border-radius: 12px; font-family: var(--font-mono); font-size: 11px; }
+.agent-studio fieldset { min-width: 0; border: 0; padding: 0; }
+.speech-engines { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.speech-engine { position: relative; display: flex; align-items: center; gap: 12px; padding: 18px; border: 1px solid var(--border-default); border-radius: 14px; cursor: pointer; background: rgba(255, 255, 255, 0.025); transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+  input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  > span:nth-of-type(2) { min-width: 0; flex: 1; }
+  strong { display: block; font-family: var(--font-grotesk); font-size: 15px; overflow-wrap: anywhere; }
+  small { display: block; font-size: 11px; line-height: 1.5; color: var(--text-muted); margin-top: 6px; }
+  &:hover { border-color: rgba(167, 139, 250, 0.5); }
+  &--selected { border-color: rgba(167, 139, 250, 0.6); background: rgba(139, 92, 246, 0.09); box-shadow: 0 0 24px rgba(139, 92, 246, 0.1); }
+  &:has(input:focus-visible) { outline: 2px solid #bda5fb; outline-offset: 3px; }
+}
+.speech-engine__symbol { color: #bda5fb; font-size: 26px; }
+.speech-engine__state { font-size: 10px; color: #bda5fb; white-space: nowrap; }
+.speech-engines:disabled .speech-engine { opacity: 0.6; cursor: not-allowed; }
+.agent-studio--voice .voice-studio__grid { max-height: 430px; }
+.agent-roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;
+  > div { padding: 20px; border-radius: 14px; border: 1px solid rgba(118, 185, 0, 0.2); background: rgba(118, 185, 0, 0.04); }
+  strong { display: block; font-family: var(--font-grotesk); font-size: 17px; }
+  span { display: block; color: var(--text-muted); font-size: 12px; margin-top: 10px; }
+}
+.studio-toggle { display: flex; align-items: flex-start; gap: 12px; font-size: 13px;
+  input { margin-top: 3px; accent-color: #a3e635; }
+  small { display: block; margin-top: 5px; font-size: 11px; line-height: 1.6; color: var(--text-muted); }
+}
+.pronunciation-form { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) auto; align-items: end; gap: 12px; margin: 22px 0 16px; }
+.pronunciation-form__ipa, .pronunciation-rule__ipa { font-family: var(--font-mono); }
+.pronunciation-search { margin-top: 22px; max-width: 540px; }
+.pronunciation-list { max-height: 380px; overflow: auto; margin: 16px 0 12px; border: 1px solid var(--border-subtle); border-radius: 12px; }
+.pronunciation-rule { display: flex; align-items: center; gap: 20px; padding: 12px 16px; border-bottom: 1px solid var(--border-subtle);
+  &:last-child { border-bottom: 0; }
+  > div:first-child { min-width: 120px; flex: 0 1 180px; overflow-wrap: anywhere; }
+  strong { display: block; font-size: 13px; }
+  small { display: block; color: var(--text-muted); font-size: 10px; margin-top: 3px; }
+  &--custom { background: rgba(139, 92, 246, 0.07); }
+}
+.pronunciation-rule__ipa { flex: 1; min-width: 0; overflow-wrap: anywhere; color: #c4b5fd; font-size: 14px; }
+.pronunciation-rule__actions { display: flex; gap: 8px; flex-shrink: 0; .btn-ghost { padding: 6px; font-size: 11px; } }
+.clean-app .startview__actions .btn-secondary[data-tour="voice"] { --action-accent: #a78bfa; }
+.conversation-utilities { position: relative; display: flex; align-items: center; gap: 8px; }
+.conversation-hints { position: absolute; z-index: 50; top: calc(100% + 12px); right: 0; width: min(266px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid rgba(163, 230, 53, 0.24); border-radius: 10px; background: rgba(17, 24, 30, 0.96); color: #c1cec7; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); pointer-events: none;
+  p { font-size: 10px; line-height: 1.5; margin: 0; display: flex; align-items: center; gap: 7px; }
+  p + p { margin-top: 4px; }
+  span { color: #b3e76a; }
+  &::before, &::after { content: ""; position: absolute; top: -5px; width: 8px; height: 8px; transform: rotate(45deg); border-top: 1px solid rgba(163, 230, 53, 0.24); border-left: 1px solid rgba(163, 230, 53, 0.24); background: #11181e; }
+  &::before { right: 16px; } &::after { right: 60px; }
+}
+.capture-consent { width: min(560px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); padding: 30px; margin: auto; overflow: auto; color: var(--text-primary); background: radial-gradient(ellipse at 0% 0%, rgba(118, 185, 0, 0.09), transparent 70%), #11151d; border: 1px solid rgba(118, 185, 0, 0.3); border-radius: 22px; box-shadow: 0 24px 100px rgba(0, 0, 0, 0.6);
+  &::backdrop { background: rgba(4, 7, 12, 0.76); backdrop-filter: blur(8px); }
+  h2 { font-family: var(--font-grotesk); font-size: 27px; font-weight: 500; line-height: 1.2; margin-bottom: 18px; }
+  > p:not(.studio-eyebrow) { font-size: 13px; line-height: 1.7; color: var(--text-secondary); }
+  .capture-consent__note { font-size: 11px !important; color: var(--text-muted) !important; margin: 12px 0 22px; }
+  .studio-toggle { border: 1px solid var(--border-subtle); border-radius: 12px; padding: 14px; }
+  :is(button, input):focus-visible { outline: 2px solid #a3e635; outline-offset: 3px; }
+}
+.capture-consent__head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
+.capture-consent__symbol { display: grid; place-items: center; width: 46px; height: 46px; background: rgba(118, 185, 0, 0.08); border: 1px solid rgba(118, 185, 0, 0.2); color: #a3e635; font-size: 28px; border-radius: 14px; }
+.capture-consent__actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; button { min-height: 44px; } }
+@media (max-width: 700px) {
+  .agent-studio { padding: 24px 18px 32px; }
+  .agent-studio__head { align-items: flex-start; flex-wrap: wrap; gap: 18px; }
+  .studio-section { padding: 20px; }
+  .agent-roles { grid-template-columns: 1fr; }
+  .pronunciation-form { grid-template-columns: repeat(2, minmax(0, 1fr)); > button { grid-column: 1 / -1; } }
+  .pronunciation-rule { flex-wrap: wrap; gap: 10px; > div:first-child { min-width: 0; flex-basis: 40%; } }
+  .pronunciation-rule__ipa { flex-basis: 45%; }
+  .pronunciation-rule__actions { margin-left: auto; }
+}
+@media (max-width: 480px) {
+  .startview__actions { grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; button { padding-inline: 6px; } }
+  .studio-section { padding: 16px; }
+  .speech-engines, .pronunciation-form { grid-template-columns: minmax(0, 1fr); }
+  .capture-consent { padding: 22px; }
+  .capture-consent__actions { flex-direction: column-reverse; }
+  .conversation-hints { width: 236px; }
+}

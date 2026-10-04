@@ -33,34 +33,28 @@ const INTRODUCTION_STEPS: TourStep[] = [
     body: "Choose the Generic grounded-tools assistant or the multimodal Omni experience. Selecting a card does not open a popup.",
   },
   {
-    target: '[data-tour="configure"]',
+    target: '[data-tour="tools"]',
     eyebrow: "Step 2",
-    title: "Configure only when needed",
-    body: "Choose the voice, recording preferences, and—on the Generic agent—the exact tools available to your session.",
+    title: "Choose agent tools",
+    body: "Enable the tools available to your next conversation. The server keeps each assistant's tool permissions bounded.",
+  },
+  {
+    target: '[data-tour="voice"]',
+    eyebrow: "Step 3",
+    title: "Create a voice",
+    body: "Explore voices, upload a zero-shot sample, and fine-tune IPA pronunciation in the Voice studio.",
   },
   {
     target: '[data-tour="prompts"]',
-    eyebrow: "Step 3",
+    eyebrow: "Step 4",
     title: "Prepare your prompts",
     body: "Edit system prompts and persistent instructions before starting. Your edits are saved in this browser.",
   },
   {
     target: '[data-tour="start"]',
-    eyebrow: "Step 4",
+    eyebrow: "Step 5",
     title: "Start talking",
-    body: "Launch the selected example directly. You can interrupt speech naturally and end the session from the header.",
-  },
-  {
-    target: '[data-tour="pipeline"]',
-    eyebrow: "Explore",
-    title: "Understand the pipeline",
-    body: "Open the architecture view to see how audio, models, tools, and services work together.",
-  },
-  {
-    target: '[data-tour="settings"]',
-    eyebrow: "Fine tune",
-    title: "Choose your audio devices",
-    body: "Settings contains your microphone and speaker choices. Prepare voices, tools, and prompts from the launch bar before starting.",
+    body: "Choose whether to save a quality-review capture, then start talking. During conversation, the header provides audio settings, agent info, and End.",
   },
 ];
 

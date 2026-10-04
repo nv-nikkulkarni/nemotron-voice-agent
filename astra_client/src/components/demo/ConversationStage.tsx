@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2024–2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: BSD-2-Clause
 
-// The main page body: pick an example + record choice + Start (idle), or the
-// live orb + transcript (connected). Nothing else — settings/pipeline-info live
-// on their own pages.
+// Landing owns pre-session studio navigation and the capture choice.
+// The connected view owns the live orb, transcript, and microphone controls.
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useConnectionState } from "../../hooks/useConnectionState";
 import { useSessionLifecycle } from "../../hooks/useSessionLifecycle";
 import { useApp } from "../../context/useApp";
@@ -13,7 +12,6 @@ import type { DeploymentOption } from "../../api";
 import { ConversationPanel } from "../content/ConversationPanel";
 import { WebcamVisionPanel } from "../WebcamVisionPanel";
 import { MicButton } from "./MicButton";
-import { ExampleConfigModal } from "./ExampleConfigModal";
 
 interface ExampleMeta {
   accent: string;
@@ -109,7 +107,9 @@ function ExampleCard({
   );
 }
 
-function StartView({ connecting, onPrompts }: Readonly<{ connecting: boolean; onPrompts: () => void }>) {
+type SetupNavigation = { onPrompts: () => void; onTools: () => void; onVoice: () => void };
+
+function StartView({ connecting, onPrompts, onTools, onVoice }: Readonly<{ connecting: boolean } & SetupNavigation>) {
   const {
     deploymentOptions,
     selectedExample,
@@ -120,14 +120,8 @@ function StartView({ connecting, onPrompts }: Readonly<{ connecting: boolean; on
     promptsLoading,
     toolsLoading,
   } = useApp();
-  const { beginSession, connectionError } = useSessionLifecycle();
-  const [configOpen, setConfigOpen] = useState(false);
+  const { requestSession, connectionError } = useSessionLifecycle();
   const configurationLoading = llmsLoading || asrLoading || ttsLoading || promptsLoading || toolsLoading;
-
-  const openConfig = (key: string) => {
-    selectExample(key);
-    setConfigOpen(true);
-  };
 
   return (
     <div className="startview">
@@ -160,21 +154,14 @@ function StartView({ connecting, onPrompts }: Readonly<{ connecting: boolean; on
             <strong>{selectedExample.label}</strong>
           </div>
           <div className="startview__actions">
-            <button
-              type="button"
-              className="btn-secondary"
-              data-tour="configure"
-              onClick={() => openConfig(selectedExample.key)}
-              disabled={connecting}
-            >
-              Configure
-            </button>
             <button type="button" className="btn-secondary" data-tour="prompts" onClick={onPrompts} disabled={connecting}>Prompts</button>
+            <button type="button" className="btn-secondary" data-tour="tools" onClick={onTools} disabled={connecting}>Tools</button>
+            <button type="button" className="btn-secondary" data-tour="voice" onClick={onVoice} disabled={connecting}>Voice</button>
             <button
               type="button"
               className="btn-primary btn-bubbly"
               data-tour="start"
-              onClick={() => void beginSession()}
+              onClick={() => requestSession()}
               disabled={connecting || configurationLoading}
             >
               {connecting ? "Connecting…" : configurationLoading ? "Preparing…" : "Start conversation"}
@@ -183,18 +170,9 @@ function StartView({ connecting, onPrompts }: Readonly<{ connecting: boolean; on
         </section>
       )}
 
-      {connectionError && !configOpen && <p className="startview__error" role="alert">{connectionError}</p>}
+      {connectionError && <p className="startview__error" role="alert">{connectionError}</p>}
 
-      {configOpen && selectedExample && (
-        <ExampleConfigModal
-          option={selectedExample}
-          connecting={connecting}
-          connectionError={connectionError}
-          onStart={() => void beginSession()}
-          onClose={() => setConfigOpen(false)}
-          onPrompts={() => { setConfigOpen(false); onPrompts(); }}
-        />
-      )}
+
     </div>
   );
 }
@@ -230,7 +208,7 @@ function ConversationLive() {
   );
 }
 
-export function ConversationStage({ onLiveChange, onPrompts }: Readonly<{ onLiveChange?: (live: boolean) => void; onPrompts: () => void }>) {
+export function ConversationStage({ onLiveChange, onPrompts, onTools, onVoice }: Readonly<{ onLiveChange?: (live: boolean) => void } & SetupNavigation>) {
   const { isConnected, isConnecting } = useConnectionState();
   const { phase } = useSessionLifecycle();
   const live = isConnected && phase === "live";
@@ -241,5 +219,5 @@ export function ConversationStage({ onLiveChange, onPrompts }: Readonly<{ onLive
   // Keep the live view mounted through teardown so it doesn't flash back to the
   // landing between disconnect and the thank-you/stopping overlay.
   if (isConnected || phase === "stopping") return <ConversationLive />;
-  return <StartView connecting={isConnecting || phase === "starting"} onPrompts={onPrompts} />;
+  return <StartView connecting={isConnecting || phase === "starting"} onPrompts={onPrompts} onTools={onTools} onVoice={onVoice} />;
 }

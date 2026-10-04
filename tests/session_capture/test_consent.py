@@ -85,3 +85,33 @@ def test_eager_discard_failure_is_swallowed_and_logged_not_raised(monkeypatch) -
     sid = _sid("discardfails")
     backend.put(k.log_key(sid), b"data")
     routes._eager_discard(sid)  # must not raise
+
+
+def test_consent_api_requires_boolean_and_honors_decline_when_not_required(monkeypatch) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from session_capture import settings
+
+    backend = FakeBackend()
+    monkeypatch.setattr(ssc, "_backend", backend)
+    monkeypatch.setattr(settings, "ENABLED", True)
+    monkeypatch.setattr(settings, "REQUIRE_CONSENT", False)
+    monkeypatch.setattr(routes, "maybe_finalize", lambda sid: None)
+    app = FastAPI()
+    routes.register_routes(app)
+    client = TestClient(app)
+    sid = _sid("declinedoptional")
+    state.clear_state(sid)
+    for consent in ["false", "true", 0, 1, None]:
+        assert client.post("/api/session-capture", json={"session_id": sid, "consent": consent}).status_code == 400
+    assert client.post("/api/session-capture", json=[]).status_code == 400
+    backend.put(k.log_key(sid), b"private log")
+    backend.put(k.audio_key(sid, "asr", 0), b"private audio")
+    response = client.post(
+        "/api/session-capture", json={"session_id": sid, "consent": False, "transcript": "private speech"}
+    )
+    assert response.status_code == 200
+    assert backend.list(k.session_prefix(sid)) == []
+    assert state.get(sid)["consent"] == "false"
+    state.clear_state(sid)

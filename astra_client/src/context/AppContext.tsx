@@ -252,6 +252,8 @@ export interface AppState {
   removeTTS: (id: string) => void;
   selectedTTS: SimpleService | undefined;
 
+  pronunciationOverrides: Record<string, string>;
+  setPronunciationOverrides: (value: Record<string, string>) => void;
   voiceSample: VoiceSample | null;
   setVoiceSample: (value: VoiceSample | null) => void;
   useVoiceSample: boolean;
@@ -332,8 +334,8 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   const [currentSessionId, setCurrentSessionId] = useState("");
   const [recordSession, setRecordSession] = useState(false);
-  // Consent to store audio is opt-out: checked by default (user can uncheck to opt out).
-  const [storeConsent, setStoreConsent] = useState(true);
+  // Quality capture requires an explicit choice before each demo session.
+  const [storeConsent, setStoreConsent] = useState(false);
   // Reasoning (enable_thinking): OFF by default and opt-in per session. The popup
   // resets it to the selected LLM's catalog default on every model switch, so this
   // initial value only applies before a model is chosen -- but it must still be
@@ -365,6 +367,23 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [persistentPrompt, setPersistentPromptState] = useState(() => readLSString("nva-prompt-persistent"));
   const setPersistentPrompt = useCallback((value: string) => { setPersistentPromptState(value); writeLSString("nva-prompt-persistent", value); }, []);
 
+
+  const [pronunciationEdits, setPronunciationEdits] = useState<Record<string, Record<string, string>>>(() => {
+    try {
+      const value: unknown = JSON.parse(readLSString("nva-pronunciation-edits") || "{}");
+      if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+      return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry && typeof entry === "object" && !Array.isArray(entry))
+        .map(([key, entry]) => [key, Object.fromEntries(Object.entries(entry).filter(([word, ipa]) =>
+          /^[\p{L}\p{M}\p{N}'’-]{1,80}$/u.test(word) && typeof ipa === "string" && ipa.length > 0 && ipa.length <= 200).slice(0, 50).map(([word, ipa]) => [word, ipa as string]))]));
+    } catch { return {}; }
+  });
+  const pronunciationOverrides = useMemo(() => pronunciationEdits[promptStorageKey] ?? {}, [pronunciationEdits, promptStorageKey]);
+  const setPronunciationOverrides = useCallback((value: Record<string, string>) => {
+    setPronunciationEdits(previous => {
+      const next = {...previous, [promptStorageKey]: value};
+      writeLSJson("nva-pronunciation-edits", next); return next;
+    });
+  }, [promptStorageKey]);
 
   // --- LLM state ---
   const serviceCatalogKey = selectedExample?.key ?? "";
@@ -633,7 +652,7 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
     llms, llmsLoading, selectedLLMId: effectiveSelectedLLMId, selectLLM, addLLM, updateLLM, removeLLM, selectedLLM,
     asrServices, asrLoading, selectedASRId: effectiveSelectedASRId, selectASR, addASR, updateASR, removeASR, selectedASR,
     ttsServices, ttsLoading, selectedTTSId: effectiveSelectedTTSId, selectTTS, addTTS, updateTTS, removeTTS, selectedTTS,
-    selectedVoiceId, setSelectedVoiceId, voiceSample, setVoiceSample, useVoiceSample, setUseVoiceSample,
+    pronunciationOverrides, setPronunciationOverrides, selectedVoiceId, setSelectedVoiceId, voiceSample, setVoiceSample, useVoiceSample, setUseVoiceSample,
     selectedSessionLanguage, setSelectedSessionLanguage,
     prompts, promptsLoading, selectedPromptKey: effectiveSelectedPromptKey, selectPrompt, addPrompt, updatePrompt, removePrompt, selectedPrompt,
     tools, toolsLoading,
@@ -645,7 +664,7 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
        llms, llmsLoading, effectiveSelectedLLMId, selectLLM, addLLM, updateLLM, removeLLM, selectedLLM,
        asrServices, asrLoading, effectiveSelectedASRId, selectASR, addASR, updateASR, removeASR, selectedASR,
        ttsServices, ttsLoading, effectiveSelectedTTSId, selectTTS, addTTS, updateTTS, removeTTS, selectedTTS,
-       selectedVoiceId, voiceSample, useVoiceSample, selectedSessionLanguage, setSelectedSessionLanguage,
+       pronunciationOverrides, setPronunciationOverrides, selectedVoiceId, voiceSample, useVoiceSample, selectedSessionLanguage, setSelectedSessionLanguage,
        prompts, promptsLoading, effectiveSelectedPromptKey, selectPrompt, addPrompt, updatePrompt, removePrompt, selectedPrompt,
        tools, toolsLoading]);
 

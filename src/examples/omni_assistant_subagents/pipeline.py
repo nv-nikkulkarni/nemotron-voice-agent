@@ -157,6 +157,7 @@ async def bot(runner_args: RunnerArguments) -> None:
         tts_model=tts_model,
         tts_zero_shot_audio_prompt_file=tts_zero_shot_audio_prompt_file,
         tts_voice_sample=body.get("tts_voice_sample", ""),
+        tts_pronunciations=body.get("tts_pronunciations"),
         runner_args=runner_args,
         session_id=session_id,
         subagent_registry=registry,

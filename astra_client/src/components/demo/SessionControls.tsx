@@ -16,7 +16,7 @@ import { SessionTimer } from "./SessionTimer";
 
 export function SessionControls() {
   const { selectedExample, currentSessionId } = useApp();
-  const { phase, endedReason, isRecording, recording, downloadRecording, dismiss, beginSession, endSession } = useSessionLifecycle();
+  const { phase, endedReason, isRecording, recording, downloadRecording, dismiss, requestSession, endSession } = useSessionLifecycle();
   const lastSessionId = useRef("");
   if (currentSessionId) lastSessionId.current = currentSessionId;
   const reason = endedReason ?? "user";
@@ -44,7 +44,7 @@ export function SessionControls() {
         endedReason={reason}
         hasRecording={!!recording}
         onDownloadRecording={downloadRecording}
-        onReconnect={reason !== "user" ? () => void beginSession() : undefined}
+        onReconnect={reason !== "user" ? () => requestSession() : undefined}
         onClose={dismiss}
       />
     </>

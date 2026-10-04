@@ -67,7 +67,6 @@ from examples.shared.prewarm import (
 from tracing import IS_TRACING_ENABLED
 from utils import (
     is_nvcf,
-    load_ipa_dictionary,
     load_prompt_catalog,
     load_service_entry,
     load_service_entry_by_id,
@@ -78,6 +77,7 @@ from utils import (
     parse_env_int,
     parse_json_dict,
     render_prompt_addon,
+    resolve_ipa_dictionary,
     resolve_prompt,
 )
 
@@ -275,7 +275,7 @@ async def bot(runner_args: RunnerArguments) -> None:
     )
 
     # --- TTS ---
-    custom_dictionary = load_ipa_dictionary(tts_model)
+    custom_dictionary = resolve_ipa_dictionary(tts_model, body.get("tts_pronunciations"))
     tts_synthesis_mode = body.get("tts_synthesis_mode", "") or default_tts.get("synthesis_mode", "")
     tts_zero_shot_audio_prompt_file = body.get("tts_zero_shot_audio_prompt_file", "") or default_tts.get(
         "zero_shot_audio_prompt_file", ""

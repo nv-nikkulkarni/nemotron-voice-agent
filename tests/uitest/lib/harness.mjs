@@ -82,116 +82,61 @@ export async function newPage(browser, sig, { viewport = { width: 1280, height: 
   return { ctx, page };
 }
 
-// Select an example with its full card, then open the ExampleConfigModal from
-// the launch bar. We configure per-session choices in the popup but do NOT launch
-// here — startConversation() clicks the popup's "Start conversation".
-//   example : "generic" | "omni"
-//   model   : "lightning" | "super"            (generic only; anything not "super" → Lightning)
-//   tts     : "magpie" | "chatterbox"          (optional; leaves the popup default if omitted)
-//   tools   : string[] of visible tool LABELS to ENABLE, e.g. ["Weather","BMI"];
-//             the enabled set is made to match this exactly (generic only). Omitted → defaults.
-//   reasoning: boolean (optional); explicitly set the popup reasoning toggle.
-//              Generic has fixed model roles (Talker reasoning off, Thinker on),
-//              so `false` is valid even though that popup has no toggle.
-//   consent : check the "Store my audio…" toggle inside the popup.
+// Pre-session configuration uses the Tools and Voice studios; capture consent
+// is chosen in startConversation() before connecting.
+const captureChoices = new WeakMap();
+
+// Configure an assistant through the pre-session Tools and Voice pages. Starting
+// remains separate and always confirms that test's capture choice in the dialog.
 export async function selectExample(page, { example = "generic", model = "lightning", tts, tools, reasoning, consent = false } = {}) {
   const isOmni = /omni/i.test(example);
-  const declineTour = page.getByRole("button", { name: /No/i });
-  if (await declineTour.isVisible().catch(() => false)) await declineTour.click();
-  const skipTour = page.getByRole("button", { name: /skip tour/i });
-  if (await skipTour.isVisible().catch(() => false)) await skipTour.click();
-  // 1. Select with the full card, then open configuration from the launch bar.
-  const matchingCard = page.locator(".example-card").filter({ hasText: isOmni ? /omni/i : /generic/i }).first();
-  const card = await matchingCard.count() ? matchingCard : page.locator(".example-card").nth(isOmni ? 1 : 0);
-  await card.evaluate((element) => element.click());
-  const selection = page.locator(".startview__selection strong");
-  await selection.waitFor({ state: "visible", timeout: 8000 });
-  const selectedLabel = (await selection.innerText()).trim();
-  if (!(isOmni ? /omni/i : /generic/i).test(selectedLabel)) {
-    throw new Error(`example card did not select the requested experience: ${selectedLabel}`);
+  const back = page.getByRole("button", {name:"Back to setup",exact:true});
+  if(await back.isVisible().catch(()=>false)) await back.click();
+  await page.locator('.example-card').first().waitFor({timeout:30000});
+  const skipTour = page.getByRole('button',{name:/skip tour/i});
+  if (await skipTour.isVisible().catch(()=>false)) await skipTour.click();
+  const card=page.locator('.example-card').filter({hasText:isOmni ? /omni/i : /generic/i}).first();
+  await card.click();
+  if(await card.getAttribute('aria-pressed')!=='true') throw new Error('Example selection did not apply');
+  if(!isOmni && model && model!=='lightning') throw new Error(`Generic model roles are fixed; unsupported requested model: ${model}`);
+  await page.getByRole('button',{name:'Tools',exact:true}).click();
+  const studio=page.getByRole('region',{name:'Tool configuration',exact:true});
+  await studio.waitFor();
+  if(!isOmni) {
+    const roles=await studio.locator('.agent-roles').innerText();
+    if(!/lightning/i.test(roles)||!/super/i.test(roles)) throw new Error('Generic model roles are missing');
   }
-  if (await card.getAttribute("aria-pressed") !== "true") {
-    throw new Error("selected example card did not expose aria-pressed=true");
-  }
-  const configure = page.locator(".startview__launch").getByRole("button", { name: /^configure$/i });
-  await configure.evaluate((element) => element.click());
-
-  // 2. Wait for the popup to appear (the launch surface).
-  const popup = page.locator(".ex-config");
-  await popup.waitFor({ state: "visible", timeout: 8000 });
-
-  // 3. LLM radio (generic only). "super" → Nemotron Super, otherwise Lightning.
-  if (!isOmni && model) {
-    const wanted = model === "super" ? /super/i : /lightning/i;
-    const opt = popup.locator('label.ex-opt', { has: page.locator('input[name="llm"]') }).filter({ hasText: wanted }).first();
-    if (await opt.count()) await opt.locator("input").evaluate((el) => el.click()).catch(() => {});
-    // Let the modal's model-change effect apply the catalog default before a
-    // test requests an explicit reasoning state below.
-    await sleep(300);
-  }
-
-  // 4. TTS radio (both examples expose it).
-  if (tts) {
-    const wanted = tts === "chatterbox" ? /chatterbox/i : /magpie/i;
-    const opt = popup.locator('label.ex-opt', { has: page.locator('input[name="tts"]') }).filter({ hasText: wanted }).first();
-    if (await opt.count()) await opt.locator("input").evaluate((el) => el.click()).catch(() => {});
-  }
-
-  // 5. Tools multi-select (generic only): make the enabled set exactly match `tools`.
-  if (!isOmni && Array.isArray(tools)) {
-    const want = new Set(tools.map((t) => t.trim().toLowerCase()));
-    const labels = popup.locator("label.ex-tool");
-    const n = await labels.count();
-    for (let i = 0; i < n; i++) {
-      const lbl = labels.nth(i);
-      const txt = (await lbl.locator("span").last().innerText().catch(() => "")).trim().toLowerCase();
-      const box = lbl.locator('input[type=checkbox]');
-      const checked = await box.isChecked().catch(() => false);
-      if (checked !== want.has(txt)) await box.evaluate((el) => el.click()).catch(() => {});
+  if(!isOmni && Array.isArray(tools)) {
+    const want=new Set(tools.map(name=>name.trim().toLowerCase()));
+    await page.waitForFunction(()=>!document.querySelector('.tool-selector__status')?.textContent?.includes('Loading'));
+    const labels=studio.locator('label.ex-tool');const seen=new Set();
+    for(const label of await labels.all()) {
+      const name=(await label.locator('span').innerText()).trim().toLowerCase();seen.add(name);
+      await label.locator('input').setChecked(want.has(name));
     }
+    for(const name of want) if(!seen.has(name)) throw new Error(`Requested tool not offered: ${name}`);
   }
-
-  // 6. Optional explicit reasoning state, so SQA can qualify both paths.
-  const reasoningToggle = popup.locator(".reasoning-toggle input[type=checkbox]");
-  const reasoningToggleCount = typeof reasoning === "boolean" ? await reasoningToggle.count() : 0;
-  if (typeof reasoning === "boolean" && reasoningToggleCount === 0) {
-    if (isOmni || reasoning) throw new Error("reasoning toggle not found");
-  } else if (typeof reasoning === "boolean") {
-    const cb = reasoningToggle;
-    if (reasoningToggleCount !== 1) throw new Error("reasoning toggle is ambiguous");
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (await cb.isChecked() === reasoning) break;
-      await cb.evaluate((el) => el.click());
-      await sleep(150);
-    }
-    if (await cb.isChecked() !== reasoning) {
-      throw new Error("reasoning toggle did not reach requested state: " + reasoning);
-    }
+  if(typeof reasoning==='boolean') {
+    const toggle=studio.getByRole('checkbox',{name:/^Reasoning/});
+    if(await toggle.count()) await toggle.setChecked(reasoning);
+    else if(isOmni || reasoning) throw new Error('Reasoning toggle not offered');
   }
-
-  // 7. Consent toggle (inside the popup, may be visually hidden → toggle via the input).
-  if (consent) {
-    const cb = popup.locator(".consent-toggle input[type=checkbox]");
-    if (await cb.count()) await cb.first().evaluate((el) => { if (!el.checked) el.click(); }).catch(() => {});
+  await studio.getByRole('button',{name:'Back to setup',exact:true}).click();
+  if(tts) {
+    await page.getByRole('button',{name:'Voice',exact:true}).click();
+    const wanted=tts==='chatterbox' ? /chatterbox/i : tts==='zeroshot' ? /zero.?shot/i : /magpie(?!.*zero)/i;
+    const engine=page.locator('.speech-engine').filter({hasText:wanted}).first();
+    await engine.waitFor({timeout:10000});await engine.locator('input').check();
+    await page.getByRole('button',{name:'Back to setup',exact:true}).click();
   }
-  await sleep(750);
-  if (typeof reasoning === "boolean" && reasoningToggleCount === 1) {
-    const cb = reasoningToggle;
-    if (await cb.isChecked() !== reasoning) {
-      await cb.evaluate((el) => el.click());
-      await sleep(150);
-    }
-    if (await cb.isChecked() !== reasoning) {
-      throw new Error("reasoning toggle was reset before launch: " + reasoning);
-    }
-  }
+  captureChoices.set(page,consent);
 }
 
 export async function startConversation(page, { timeoutMs = 30000 } = {}) {
-  // The popup's primary button ("Start conversation" / "Connecting…") launches.
-  const btn = page.locator(".ex-config__actions .btn-primary").first();
-  if (await btn.count()) await btn.click({ timeout: 10000 });
-  else await page.getByRole("button", { name: /start conversation/i }).click({ timeout: 10000 });
+  await page.getByRole("button", { name: /^start conversation$/i }).click({ timeout: 10000 });
+  const consent = page.getByRole("dialog", {name: "Help improve the conversation?", exact: true});
+  await consent.waitFor();
+  await consent.getByRole("button", {name: captureChoices.get(page) ? "Allow and start" : "Continue without saving", exact: true}).click();
   const t0 = Date.now();
   while (Date.now() - t0 < timeoutMs) {
     await sleep(700);
@@ -331,7 +276,7 @@ export const sessionCaptureStatus = (page) =>
 // Open the mid-conversation Settings (⚙) or Pipeline info (ⓘ) overlay. These do
 // NOT disconnect the live session (only the brand/End button does).
 export async function openOverlay(page, which) {
-  const sel = which === "settings" ? '.icon-btn--settings, [aria-label="Settings"]' : '[aria-label="Pipeline info"]';
+  const sel = which === "settings" ? '.icon-btn--settings, [aria-label="Settings"]' : '[aria-label="Agent configuration"]';
   await page.locator(sel).first().click();
   const label = which === "settings" ? "Settings" : "Pipeline info";
   const overlay = page.locator(`.page-overlay[aria-label="${label}"]`);

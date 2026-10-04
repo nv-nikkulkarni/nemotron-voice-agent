@@ -61,7 +61,6 @@ from session_capture.capture import mark_pipeline_finished, run_finalize
 from tracing import IS_TRACING_ENABLED
 from utils import (
     is_nvcf,
-    load_ipa_dictionary,
     load_service_entry,
     normalize_lang_code,
     nvidia_api_key,
@@ -69,6 +68,7 @@ from utils import (
     parse_env_float,
     parse_env_int,
     parse_json_dict,
+    resolve_ipa_dictionary,
     resolve_prompt,
 )
 
@@ -147,7 +147,7 @@ async def bot(runner_args: RunnerArguments) -> None:
     tts_zero_shot_audio_prompt_file = body.get("tts_zero_shot_audio_prompt_file", "") or default_tts.get(
         "zero_shot_audio_prompt_file", ""
     )
-    custom_dictionary = load_ipa_dictionary(tts_model)
+    custom_dictionary = resolve_ipa_dictionary(tts_model, body.get("tts_pronunciations"))
 
     tts_settings_kwargs: dict = {"voice": tts_voice}
     if tts_synthesis_mode:

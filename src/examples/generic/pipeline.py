@@ -60,12 +60,12 @@ from tracing import IS_TRACING_ENABLED
 from utils import (
     is_nvcf,
     is_streaming_llm_url,
-    load_ipa_dictionary,
     load_service_entry,
     normalize_lang_code,
     nvidia_api_key,
     parse_env_int,
     parse_json_dict,
+    resolve_ipa_dictionary,
     resolve_prompt,
     resolve_tools_available,
 )
@@ -195,7 +195,7 @@ async def bot(runner_args: RunnerArguments) -> None:
     tts_language_code = body.get("tts_language_code", "") or default_tts.get("language_code", "")
     if tts_language_code:
         tts_language_code = normalize_lang_code(tts_language_code)
-    custom_dictionary = load_ipa_dictionary(tts_model)
+    custom_dictionary = resolve_ipa_dictionary(tts_model, body.get("tts_pronunciations"))
 
     tts_settings_kwargs: dict = {"voice": tts_voice}
     if tts_synthesis_mode:

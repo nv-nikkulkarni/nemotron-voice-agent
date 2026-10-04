@@ -12,6 +12,15 @@ There are two entry points:
 | **single scenario** | `ui_test.cjs` + `run.sh` | one query (planet / generic / Nano) — the original PoC |
 | **regression suite** | `ui_suite.cjs` + `run_suite.sh` | **many** scenarios (both examples, both models) + latency budgets + console/HTTP/WS asserts + **visual-diff** vs committed baselines |
 
+The CommonJS (CJS) entry points above target an earlier landing layout, including model
+buttons and TTS controls in Settings. Use the
+[current SQA suites](../sqa/README.md) to qualify the curated Astra interface.
+The shared `lib/harness.mjs` helpers used by the MJS checks prepare **Tools**
+and **Voice**, then confirm capture permission before connecting. Generic's
+Talker and Thinker model roles are fixed; requesting another Generic model
+through the helper fails explicitly. **Audio settings** contains only device
+selectors during a conversation.
+
 ## How it works
 - **Speak** — Chromium is launched with `--use-file-for-fake-audio-capture=<wav>`,
   so `getUserMedia()` returns a real voice WAV as the mic. The *real* UI captures

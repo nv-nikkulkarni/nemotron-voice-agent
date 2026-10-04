@@ -256,7 +256,7 @@ def _finalize(sid: str, captured_state: dict[str, str]) -> bool:
     consent = captured_state.get("consent", "")
     backend = session_store.backend()
 
-    if settings.REQUIRE_CONSENT and consent != "true":
+    if consent == "false" or (settings.REQUIRE_CONSENT and consent != "true"):
         try:
             backend.delete_prefix(store_keys.session_prefix(sid))
         except Exception as exc:  # noqa: BLE001

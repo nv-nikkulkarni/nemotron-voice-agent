@@ -257,10 +257,10 @@ examples:
 
 Add `search_talker` to `prompts.yaml`, or use another compatible Talker prompt. Preserve the trust, grounding, delegation, cancellation, and spoken-output rules. You can also select a different hidden Thinker prompt through `thinker_prompt`; keep its output envelope and trust-boundary rules compatible with the planner parser.
 
-The Generic configuration popup and **Settings** page display that allowed
-catalog. Their checkboxes share one state and send selected names through
-`tools_available` for the next session. Omitting the field keeps the registry
-default; sending `none` disables every optional tool. The server preserves
+The Astra client's pre-session **Tools** page displays that allowed catalog.
+Its checkboxes send selected names through `tools_available` for the next
+session. **Audio settings** on the conversation page opens only audio device
+selectors. Omitting the field keeps the registry default; sending `none` disables every optional tool. The server preserves
 registry order and ignores names outside the registry allowlist.
 
 Generic frontend persona edits keep the trusted `generic_talker` native-call

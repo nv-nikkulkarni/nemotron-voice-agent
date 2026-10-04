@@ -60,14 +60,16 @@ def register_routes(app: FastAPI) -> None:
             body = await request.json()
         except (ValueError, json.JSONDecodeError):
             return JSONResponse(status_code=400, content={"detail": "invalid JSON"})
+        if not isinstance(body, dict) or not isinstance(body.get("consent"), bool):
+            return JSONResponse(status_code=400, content={"detail": "consent must be a boolean"})
         sid = store_keys.sanitize_sid(body.get("session_id", ""))
         if not sid:
             return JSONResponse(status_code=400, content={"detail": "no session_id"})
-        consent = bool(body.get("consent"))
+        consent = body["consent"]
         transcript = body.get("transcript")
         has_transcript = consent and isinstance(transcript, str) and bool(transcript.strip())
 
-        if settings.REQUIRE_CONSENT and not consent:
+        if not consent:
             # Eager discard: delete the declined session's artifacts NOW rather
             # than waiting for the pipeline-done signal
             # (capture.mark_pipeline_finished), which may never arrive -- a

@@ -298,7 +298,7 @@ export function useVoiceCatalog(
 }
 
 /** A session-config body: a flat map of string fields (matches the backend contract on develop). */
-export type SessionConfigBody = Record<string, string>;
+export type SessionConfigBody = Record<string, string | Record<string, string>>;
 
 export async function createSessionConfig(config: SessionConfigBody): Promise<string> {
   const res = await fetch("/api/session-config", {
@@ -382,4 +382,11 @@ export async function uploadWebcamCapture(sessionId: string, frame: Blob, reques
     throw new Error(`HTTP ${res.status}${details}`);
   }
   return res.json();
+}
+
+export function usePronunciationDefaults() {
+  return useQuery<{entries: Record<string, string>}>({
+    queryKey: ["tts-pronunciations"],
+    queryFn: () => fetchJson("/api/tts/pronunciations"),
+  });
 }

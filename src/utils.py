@@ -8,6 +8,7 @@ import json
 import os
 import socket
 import time
+import unicodedata
 from collections.abc import Iterable, Mapping
 from contextvars import ContextVar
 from pathlib import Path
@@ -55,6 +56,7 @@ _SLOT_CONFIG_KEYS: dict[str, frozenset[str]] = {
             "tts_server",
             "tts_voice_id",
             "tts_voice_sample",
+            "tts_pronunciations",
             "tts_function_id",
             "tts_model",
             "tts_synthesis_mode",
@@ -529,6 +531,7 @@ SESSION_CONFIG_KEYS: frozenset[str] = frozenset(
         "tts_server",
         "tts_voice_id",
         "tts_voice_sample",
+        "tts_pronunciations",
         "tts_function_id",
         "tts_model",
         "tts_synthesis_mode",
@@ -596,6 +599,7 @@ _CLIENT_OVERRIDABLE_BODY_FIELDS = frozenset(
         "tts_language_code",
         "tts_voice_id",
         "tts_voice_sample",
+        "tts_pronunciations",
         "max_tokens",
         "temperature",
         "extra_params",
@@ -910,6 +914,51 @@ def load_ipa_dictionary(model_name: str | None = None) -> dict[str, str] | None:
 
     logger.info(f"Loaded TTS IPA dictionary from {path} ({len(dictionary)} entries)")
     return dictionary
+
+
+def validate_pronunciation_overrides(value: object) -> dict[str, str]:
+    """Validate bounded, session-local grapheme-to-IPA rules from the browser."""
+    if not isinstance(value, dict) or len(value) > 50:
+        raise ValueError("tts_pronunciations must be a mapping with at most 50 rules")
+    result = {}
+    seen = set()
+    for word, ipa in value.items():
+        if not isinstance(word, str) or not isinstance(ipa, str):
+            raise ValueError("Pronunciation words and IPA must be text")
+        word, ipa = word.strip(), ipa.strip()
+        if (ipa.startswith("/") and ipa.endswith("/")) or (ipa.startswith("[") and ipa.endswith("]")):
+            ipa = ipa[1:-1].strip()
+        if not 1 <= len(word) <= 80 or any(
+            not (char.isalnum() or unicodedata.category(char).startswith("M") or char in "-'’") for char in word
+        ):
+            raise ValueError("Pronunciation words must be single words of at most 80 characters")
+        if not 1 <= len(ipa) <= 200 or any(
+            unicodedata.category(char).startswith(("C", "N")) or char in "<>{}[]/\\" for char in ipa
+        ):
+            raise ValueError("Use at most 200 IPA characters without markup or ARPAbet numbers")
+        if word.casefold() in seen:
+            raise ValueError("Pronunciation words must be unique regardless of case")
+        seen.add(word.casefold())
+        result[word] = ipa
+    return result
+
+
+def resolve_ipa_dictionary(model_name: str | None, overrides: object = None) -> dict[str, str] | None:
+    """Merge session fixes over deployer defaults without mutating shared state.
+
+    Update case aliases together. Unsupported engines never receive IPA.
+    """
+    rules = validate_pronunciation_overrides(overrides) if overrides is not None else {}
+    if model_name and "magpie" not in model_name.casefold():
+        return None
+    dictionary = dict(load_ipa_dictionary(model_name) or {})
+    for word, ipa in rules.items():
+        for alias in tuple(dictionary):
+            if alias.casefold() == word.casefold():
+                dictionary[alias] = ipa
+        dictionary[word] = ipa
+        dictionary[word.casefold()] = ipa
+    return dictionary or None
 
 
 def normalize_lang_code(code: str) -> str:

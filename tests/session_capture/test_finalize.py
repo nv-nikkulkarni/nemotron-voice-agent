@@ -353,3 +353,16 @@ def test_exactly_once_under_concurrent_style_interleave(fake_backend) -> None:
     assert token_b is None, "a second caller must not acquire while the first still holds the lock"
     state.release_lock(sid, token_a)
     state.clear_state(sid)
+
+
+def test_explicit_decline_wins_even_when_consent_requirement_is_disabled(fake_backend, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "REQUIRE_CONSENT", False)
+    sid = _sid("explicitdecline")
+    state.clear_state(sid)
+    fake_backend.put(k.log_key(sid), b"private log")
+    fake_backend.put(k.audio_key(sid, "tts", 0), b"private audio")
+    state.mark_pipeline_done(sid)
+    state.mark_consent(sid, consent=False, has_transcript=False)
+    capture.maybe_finalize(sid)
+    assert state.get(sid) == {}
+    assert fake_backend.list(k.session_prefix(sid)) == []

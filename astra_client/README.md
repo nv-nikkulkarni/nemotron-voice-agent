@@ -12,7 +12,8 @@ backend. The upstream client in `client/` has a separate build.
 - **Dual transport**: WebRTC (recommended) or WebSocket.
 - **Runtime service switching**: add or remove LLM, ASR, and TTS services without redeploying.
 - **Prompt management**: pick a built-in persona or write a custom system prompt.
-- **Voice selection**: browse and preview TTS voices with language filtering.
+- **Voice studio**: choose a speech engine, preview voice cards, upload a
+  zero-shot sample, and save pronunciation fixes.
 - **Audio visualizers**: real-time input and output waveform display.
 - **Metrics dashboard**: time-to-first-audio latency, token usage,
   connection status, and Frontend/Backend agent stage metrics grouped by turn.
@@ -29,25 +30,32 @@ backend. The upstream client in `client/` has a separate build.
   at zero. With the Omni webcam rail active, it shifts left so it cannot cover
   the **Chunk** selector.
 - **Per-example tools**: enable or disable tools for the Generic
-  Frontend/Backend Agent from **Configure** before starting a session.
+  Frontend/Backend Agent from **Tools** before starting a session.
+- **Session capture choice**: allow quality-review capture or continue without
+  saving before each conversation. Downloadable browser recording is a separate
+  option.
 
 ## Use the Curated Experience
 
 A brief, nonblocking **Click ? for a tour** hint appears for 5 seconds when the
 landing page loads. No tour invitation or spotlight opens automatically.
-Select **Guided introduction** (`?`) to start the seven-step animated landing
-tour. It highlights the example cards, configuration, prompts and start controls,
-pipeline information, and audio settings. Use **Back** and **Next** to move through
-the steps, or select **Skip tour** from any step. The `?` button is not
-available while a session is starting, live, or stopping. There is no separate
-live-session tour.
+Select **Guided introduction** (`?`) to start the animated landing tour. It
+highlights the example cards and pre-session launch controls. Use **Back** and
+**Next** to move through the steps, or select **Skip tour** from any step. The
+`?` button is not available while a session is starting, live, or stopping.
 
-To prepare a session, select anywhere on an example card. The cards do not
-contain separate **Select example** or **Configure** actions. After selection,
-the launch bar below the cards offers **Configure**, **Prompts**, and
-**Start conversation**. Use **Configure** to choose the speech engine, voice,
-tools, and capture preferences before starting. Use **Prompts** to prepare
-frontend and backend instructions. Start directly when the defaults are suitable.
+To prepare a session, select anywhere on an example card. The launch bar below
+the cards offers **Prompts**, **Tools**, **Voice**, and **Start conversation**.
+Use **Prompts** for frontend and backend instructions, **Tools** for agent
+capabilities, and **Voice** for speech configuration. Each page includes
+**Back to setup** to return to the cards.
+
+Select **Start conversation** to choose capture permission before connecting.
+The dialog asks whether the NVIDIA team can save microphone and assistant
+audio, the transcript, and diagnostic logs for quality review and debugging.
+Select **Allow and start** or **Continue without saving**. Closing the dialog
+or pressing **Escape** cancels the start. Each new conversation asks again.
+**Keep a downloadable recording** is an independent browser recording option.
 
 A live session starts with a compact square `10:00` **TIME LEFT** countdown
 below the session-ID chip at the top right. It uses an absolute deadline and
@@ -61,15 +69,19 @@ timer shifts into the conversation column and leaves the rail controls clear.
 The default and checked-in Astra runtime values set the limit to 600 seconds.
 Deployments can override the limit with `DEMO_SESSION_SECONDS`.
 
-The Generic Frontend/Backend Agent configuration includes its available tools.
-Choose the subset under **Configure** before starting. The server accepts only
-tools allowed by the selected example; browser selection cannot add a tool
-that the deployment did not register. Examples without registered tools do
-not show tool controls.
+The Generic Frontend/Backend Agent exposes its available tools under **Tools**.
+Choose a subset before starting. The server accepts only tools allowed by the
+selected example; browser selection cannot add an unregistered tool. The page
+also shows Generic's fixed Talker and Thinker model roles. Omni exposes its
+pre-session **Reasoning** choice there.
 
-**Settings** contains only the microphone and speaker device selectors. Agent
-options, including voices, tools, capture preferences, and prompts, belong to
-the pre-session launch flow.
+**Audio settings** and **Agent configuration** appear only on the conversation
+page. **Audio settings** opens microphone and speaker selectors.
+**Agent configuration** shows the current agent configuration. Small,
+nonblocking hints point to both controls for 2 seconds after the session starts.
+The configuration view includes models, tools, frontend and backend prompts,
+persistent instructions, voice settings, pronunciation fixes, and capture
+choices. Configure voices, tools, and prompts before starting.
 
 Model endpoints come from the deployment's service catalog. **Settings** does
 not expose a local model URL override, which prevents a browser-only endpoint
@@ -80,12 +92,12 @@ change from bypassing the deployment configuration.
 The landing page uses a centered gradient wordmark, moving aurora background,
 and translucent cards. The example cards, launch controls, voice gallery, and
 prompt editor adapt to narrower windows. Selected example and voice cards show
-a visible selection state. Hover over **Configure** or **Prompts** for a glow
-and shine effect. Use **Tab** to move through controls; keyboard focus has a
-visible outline. Decorative animations and interface transitions respect your
+a visible selection state. Hover over **Prompts**, **Tools**, or **Voice** for
+a glow and shine effect. Use **Tab** to move through controls; keyboard focus
+has a visible outline. Decorative animations and interface transitions respect your
 system's reduced-motion preference.
 
-## Prepare Prompts and Voices
+## Prepare Prompts
 
 Select **Prompts** before starting a session to open `/prompts`. Edit the
 frontend instructions and, for Frontend/Backend Agent or Omni Subagents, the
@@ -93,9 +105,8 @@ backend Thinker instructions. The editor saves each pipeline's overrides in
 browser localStorage. **Persistent instructions** apply across pipelines and
 append to both roles, including your edited prompts. Reloads and restoring
 either default preserve these instructions; clear their field to remove them.
-Changes apply to the next session. Open the editor with **Prompts** beside
-**Configure** in the launch bar, or **Edit prompts** inside the configuration
-popup. Select **Back to setup** to return.
+Changes apply to the next session. Open the editor with **Prompts** in the
+launch bar. Select **Back to setup** to return.
 
 Select **Expand editor** on either role card to open a large dialog for that
 prompt. The dialog uses wrapped monospace text and lets you choose a text size
@@ -104,11 +115,9 @@ overrides as the compact fields. **Restore frontend default** or
 **Restore backend default** resets that role. **Done** or **Escape** closes
 the dialog and returns focus to **Expand editor**. Each role accepts up to
 32,000 characters. Prompt editing, expansion, and restoring defaults are
-disabled during an active session and while catalog defaults load. Opening
-**Settings** or **Pipeline info** keeps the prompt editor underneath; close
-the overlay to return. Unedited sessions use the displayed catalog
-prompt, preserving its native examples. Generic Frontend/Backend Agent also
-retains trusted native tool-call examples when you edit its persona, including
+disabled during an active session and while catalog defaults load. Unedited
+sessions use the displayed catalog prompt, preserving its native examples.
+Generic Frontend/Backend Agent also retains trusted native tool-call examples when you edit its persona, including
 weather lookup and architecture presentation. Current-time requests still
 require a fresh clock tool result. Generic keeps a brief-answer
 baseline when you edit its persona: 1 sentence, normally 10–20 words and at
@@ -118,22 +127,34 @@ These are model instructions rather than a guaranteed word cap.
 Refer to
 [Configure Prompts](../docs/how-to/configure-prompts.md) for API limits.
 
-Open **Configure** before connecting. **Speech engine** lists catalog engines,
-including Magpie Zeroshot when enabled. **Speaking voice** shows visible voice
-cards with names and language details in a scrollable gallery. Larger catalogs
+## Build a Voice
+
+Select **Voice** before connecting to open `/voice`. **Speech engine** lists
+catalog engines, including Magpie Zeroshot when enabled. **Speaking voice**
+shows visible voice cards with names and language details in a scrollable gallery. Larger catalogs
 provide **Find a voice** search by name or expression, with a matching count.
-Select a card, enter up to 200 characters, and choose **Preview voice**. Voice choices and sample controls are pre-session
-options; end the session before changing them. The cards and sample upload
+Select a card, enter up to 200 characters, and choose **Preview voice**. Voice
+choices and sample controls are pre-session options; end the session before
+changing them. The cards and sample upload
 are visible without expanding a section or opening a voice dropdown.
 
 Under **Create a character voice**, upload 3–10 seconds of clear speech and
-select Magpie Zeroshot before enabling **Use sample for zero-shot voice**. The browser converts the
-clip to 22.05 kHz, 16-bit mono PCM WAV and saves it in IndexedDB. The sample is
+select Magpie Zeroshot before enabling **Use sample for zero-shot voice**. The
+browser converts the clip to 22.05 kHz, 16-bit mono PCM WAV and saves it in IndexedDB. The sample is
 carried in session configuration, so replicas do not require shared files.
 The saved clip survives a reload, but its use checkbox resets off. Enable it
 again before previewing or starting with the sample. Select **Remove sample**
-to delete the saved clip. Preview uses the enabled sample. Preset voice selection is disabled while the enabled sample supplies
-the voice. Refer to [voice sample limits](../docs/how-to/configure-tts.md#preview-and-upload-voices-in-the-astra-client).
+to delete the saved clip. Preview uses the enabled sample. Preset voice
+selection is disabled while the enabled sample supplies the voice. Refer to [voice sample limits](../docs/how-to/configure-tts.md#preview-and-upload-voices-in-the-astra-client).
+
+Under **Pronunciation fixes**, edit a deployed rule or enter a **Word** and
+**IPA pronunciation**, then select **Save pronunciation**. Save up to 50 custom
+rules, with 80 characters per word and 200 per IPA value. Use separate rules for
+the words in a name. Rules save per assistant in browser localStorage and apply
+to Magpie previews and new conversations. **Remove** restores the deployed
+default for that word. Rules remain saved when you choose Chatterbox, whose
+request interface does not support IPA dictionaries. Refer to
+[session pronunciation fixes](../docs/how-to/configure-tts.md#session-pronunciation-fixes-in-the-astra-client).
 
 Prompt and sample storage is specific to the browser profile and origin.
 The Generic Frontend/Backend Agent uses the browser IANA timezone for local
@@ -199,8 +220,9 @@ player remembers interrupted track IDs and discards late audio for them. This
 prevents the next session's welcome from being mistaken for audio from a
 cancelled turn. The new session ID also remounts the Conversation Orb, clearing
 session-scoped speaking, thinking, tool, and latency state. User-selected
-examples, service preferences, recording choice, and capture consent remain
-unchanged.
+examples and service preferences remain unchanged. Each start asks for a new
+capture decision and offers the browser recording option again. Reconnecting
+after an involuntary end uses the same permission dialog.
 
 The source SQA oracle in
 [`tests/sqa/test_teardown.mjs`](../tests/sqa/test_teardown.mjs) ends and starts a
@@ -260,7 +282,9 @@ The client reads its configuration from the backend (`src/server.py`) and starts
 | `/api/prompts` | Prompt catalog with frontend/backend role metadata |
 | `/api/tools` | Tool specifications allowed for the selected example |
 | `/api/tts-config` | Available TTS voices and languages |
+| `GET /api/tts/pronunciations` | Deployed IPA pronunciation defaults |
 | `POST /api/tts/preview` | Bounded pre-session voice preview as WAV audio |
+| `POST /api/session-capture` | Session-end capture decision and consented transcript |
 | `/api/architecture/{generic,omni}.svg` | Repository-owned architecture images |
 | `/api/ice-servers` | STUN/TURN configuration for WebRTC |
 | `/api/webcam-config` | Webcam capture defaults for multimodal examples |

@@ -23,7 +23,7 @@ page.on("request", (request) => {
 });
 
 async function audioSettings() {
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Audio settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   assert.equal(await settings.getByRole("combobox").count(), 2);
   assert.equal(await settings.getByRole("checkbox").count(), 0);
@@ -54,7 +54,7 @@ async function previewVoice(name) {
   const acoustics = await detectAudibleWav(path);
   assert(acoustics.audible, `Preview ${name} must contain audible speech`);
   const config = response.request().postDataJSON();
-  result.previews.push({ name, voiceId: config.tts_voice_id, sampleBytes: config.tts_voice_sample?.length ?? 0,
+  result.previews.push({ name, voiceId: config.tts_voice_id, sampleBytes: config.tts_voice_sample?.length ?? 0, pronunciations: config.tts_pronunciations ?? {},
     bytes: fs.statSync(path).size, ...acoustics });
   await player.evaluate((element) => element.pause());
   console.log("Audible preview", name, JSON.stringify(result.previews.at(-1)));
@@ -65,12 +65,12 @@ try {
   assert(await H.waitForDeploymentReady(page));
   const launch = page.getByRole("region", { name: "Selected example actions" });
   await launch.getByRole("button", { name: "Start conversation", exact: true }).waitFor({ timeout: 30000 });
-  for (const name of ["Configure", "Prompts", "Start conversation"]) {
+  for (const name of ["Prompts", "Tools", "Voice", "Start conversation"]) {
     assert(await launch.getByRole("button", { name, exact: true }).isVisible());
   }
   assert.equal(await page.locator(".clean-topbar").getByRole("button", { name: "Prompts", exact: true }).count(), 0);
   await H.shot(page, `${H.OUT}/launch-desktop.png`);
-  await audioSettings();
+  assert.equal(await page.locator("[data-tour=settings], [data-tour=pipeline]").count(), 0);
   await launch.getByRole("button", { name: "Prompts", exact: true }).click();
   assert(new URL(page.url()).pathname === "/prompts");
   const editors = page.locator(".prompt-studio textarea");
@@ -84,12 +84,13 @@ try {
   assert.equal(await editors.nth(0).inputValue(), frontendPrompt);
   assert((await editors.nth(1).inputValue()).endsWith("Keep tool plans valid JSON."));
   assert.equal(await editors.nth(2).inputValue(), persistentPrompt);
-  await audioSettings();
+  assert.equal(await page.locator("[data-tour=settings], [data-tour=pipeline]").count(), 0);
   assert(new URL(page.url()).pathname === "/prompts");
   assert.equal(await editors.nth(0).inputValue(), frontendPrompt);
   await H.shot(page, `${H.OUT}/prompts.png`);
   await page.getByRole("button", { name: "Back to setup" }).click();
   await H.selectExample(page, { consent: true, tts: "magpie" });
+  await page.getByRole("button",{name:"Voice",exact:true}).click();
   const studio = page.locator(".voice-studio");
   const cards = studio.locator('input[name="tts-voice"]');
   await cards.first().waitFor();
@@ -119,25 +120,33 @@ try {
   await previewVoice("aria");
   assert.equal(result.previews.at(-1).voiceId, await aria.inputValue());
 
-  // Phone layout keeps both launch actions together and fits the voice cards.
+  await page.getByLabel("Word",{exact:true}).fill("Spookotron");
+  await page.getByLabel("IPA pronunciation",{exact:true}).fill("ˈspukətɹɑn");
+  await page.getByRole("button",{name:"Save pronunciation",exact:true}).click();
+  await previewVoice("ipa-fix");
+  assert.equal(result.previews.at(-1).pronunciations.Spookotron,"ˈspukətɹɑn");
+
+  // Phone layout keeps setup actions together and fits the voice cards.
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator(".ex-config").evaluate((panel) => { panel.scrollTop = 0; });
+  await page.locator(".agent-studio").evaluate((panel) => { panel.scrollTop = 0; });
   await H.shot(page, `${H.OUT}/voices-mobile.png`);
-  assert(await page.locator(".ex-config").evaluate((panel) => panel.scrollWidth <= panel.clientWidth));
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  assert(await page.locator(".agent-studio").evaluate((panel) => panel.scrollWidth <= panel.clientWidth));
+  await page.getByRole("button", { name: "Back to setup", exact: true }).click();
   await H.shot(page, `${H.OUT}/launch-mobile.png`);
-  const configure = await launch.getByRole("button", { name: "Configure", exact: true }).boundingBox();
+  const configure = await launch.getByRole("button", { name: "Voice", exact: true }).boundingBox();
   const prompts = await launch.getByRole("button", { name: "Prompts", exact: true }).boundingBox();
   assert(configure && prompts && Math.abs(configure.y - prompts.y) < 2);
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-  await launch.getByRole("button", { name: "Configure", exact: true }).click();
-  await page.getByRole("button", { name: "Edit prompts" }).click();
+  await launch.getByRole("button", { name: "Voice", exact: true }).click();
+  await page.getByRole("button", { name: "Back to setup" }).click();
+  await page.getByRole("button", { name: "Prompts", exact: true }).click();
   assert.equal(await editors.nth(0).inputValue(), frontendPrompt);
   await page.getByRole("button", { name: "Back to setup" }).click();
   await page.setViewportSize({ width: 1280, height: 800 });
 
   if (process.env.SQA_VOICE_SAMPLE) {
     await H.selectExample(page, { consent: true, tts: "zeroshot" });
+    await page.getByRole("button",{name:"Voice",exact:true}).click();
     await studio.locator('input[type="file"]').setInputFiles(process.env.SQA_VOICE_SAMPLE);
     const useSample = studio.getByLabel("Use sample for zero-shot voice");
     await useSample.waitFor();
@@ -147,6 +156,7 @@ try {
     assert(result.previews.at(-1).sampleBytes > 1000);
     await page.reload();
     await H.selectExample(page, { consent: true, tts: "zeroshot" });
+    await page.getByRole("button",{name:"Voice",exact:true}).click();
     await studio.getByLabel("Use sample for zero-shot voice").waitFor();
     assert(!(await studio.getByLabel("Use sample for zero-shot voice").isChecked()), "Using a saved sample requires opting in after reload");
     await studio.getByLabel("Use sample for zero-shot voice").check();
@@ -154,22 +164,29 @@ try {
     await studio.getByLabel("Use sample for zero-shot voice").uncheck();
     await studio.getByRole("button", { name: "Remove sample" }).click();
     await studio.getByLabel("Use sample for zero-shot voice").waitFor({ state: "hidden" });
-    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.getByRole("button", { name: "Back to setup", exact: true }).click();
   }
 
   await H.selectExample(page, { consent: true, tts: "magpie" });
+  await page.getByRole("button",{name:"Voice",exact:true}).click();
   await aria.check();
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await launch.getByRole("button", { name: "Configure", exact: true }).click();
-  // Escape closes configuration and restores the launch action focus.
+  await page.getByRole("button", { name: "Back to setup", exact: true }).click();
+  await launch.getByRole("button", { name: "Voice", exact: true }).click();
+  await page.getByRole("button", {name: "Back to setup", exact:true}).click();
+  // Escape cancels the capture dialog and returns focus before any connection.
+  await launch.getByRole("button", {name:"Start conversation",exact:true}).click();
+  const consentDialog=page.getByRole("dialog",{name:"Help improve the conversation?",exact:true});
+  await consentDialog.waitFor();
+  const beforeStart=result.sessionConfigs.length;
   await page.keyboard.press("Escape");
-  await page.locator(".ex-config").waitFor({ state: "hidden" });
-  assert.equal(await page.locator('[data-tour="configure"]').evaluate((element) => element === document.activeElement), true);
-  await launch.getByRole("button", { name: "Configure", exact: true }).click();
+  await consentDialog.waitFor({state:"detached"});
+  assert.equal(result.sessionConfigs.length,beforeStart);
+  assert(await page.locator('[data-tour="start"]').evaluate(element=>element===document.activeElement));
   assert((await H.startConversation(page)).connected);
   assert.deepEqual(result.sessionConfigs.at(-1), { pipeline: "generic-frontend-backend-agent",
     voiceId: "Magpie-Multilingual.EN-US.Aria", frontendEdited: true, backendEdited: true,
     persistent: true, sampleBytes: 0 });
+  await page.locator(".conversation-hints").waitFor({state:"hidden",timeout:4000});
   assert(await H.waitForSettledWelcome(page));
   assert.equal(await page.getByRole("button", { name: "Prompts", exact: true }).count(), 0);
   await audioSettings();
@@ -186,10 +203,11 @@ try {
   await H.dismissFeedback(page);
   // Switching examples must preserve the launch controls and offer that engine's voices.
   await H.selectExample(page, { example: "omni", model: null, tts: "magpie" });
+  await page.getByRole("button",{name:"Voice",exact:true}).click();
   await cards.first().waitFor();
   assert.equal(await page.locator(".ex-config__tools").count(), 0);
   await H.shot(page, `${H.OUT}/omni-configuration.png`);
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("button", { name: "Back to setup", exact: true }).click();
   result.layout = { desktop: true, mobile: true, keyboard: true, deviceOnlySettings: true, promptPersistence: true };
 } catch (error) {
   result.hardFails.push(error.stack || String(error));

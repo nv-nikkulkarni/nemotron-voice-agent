@@ -9,13 +9,12 @@ Choose or edit prompts before starting a session. End the current session before
 The upstream client includes a **Prompts** tab for custom presets. The Astra
 client provides the separate pre-session editor described below.
 
-In the Astra client, select **Prompts** beside **Configure** in the launch bar
-below the example cards to open `/prompts`. **Edit prompts** inside the
-configuration popup opens the same editor. Select **Back to setup** to return.
-**Settings** and **Pipeline info** open over the editor; closing them returns
-to the same prompt page. Editing and restoring
-defaults are disabled while a session is starting or live, and while prompt
-defaults load. Wait for **Loading system prompt defaults…** to clear before
+In the Astra client, select **Prompts** in the launch bar below the example
+cards to open `/prompts`. The same bar offers **Tools**, **Voice**, and
+**Start conversation**. Select **Back to setup** to return. **Audio settings**
+and **Agent configuration** appear only on the conversation page.
+Editing and restoring defaults are disabled while a session is starting or
+live, and while prompt defaults load. Wait for **Loading system prompt defaults…** to clear before
 editing. Edit **Frontend system prompt** for spoken responses and, when
 available, **Backend system prompt** for planning. Frontend/Backend Agent and
 Omni Subagents expose their Thinker prompt in this editor. Other Omni agent

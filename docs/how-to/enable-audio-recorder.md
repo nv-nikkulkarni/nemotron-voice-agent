@@ -6,6 +6,26 @@ Audio is written through `session_store` (`src/session_store/`), the same plugga
 object-store package session capture uses for logs and transcripts — not directly to a
 local path. Refer to [Session capture and NGC publication](../current-deployed-pipeline-architecture.md#14-session-capture-and-ngc-publication) for the full design.
 
+## Choose Capture Permission in the Astra Client
+
+Select **Start conversation** after preparing prompts, tools, and the voice.
+Before connecting, the client asks whether the NVIDIA team can save microphone
+and assistant audio, the transcript, and diagnostic logs for quality review
+and debugging. Select **Allow and start** or **Continue without saving**.
+Closing the dialog or pressing **Escape** cancels the start. Each new session
+requires a new choice.
+
+**Keep a downloadable recording** creates an optional recording in your
+browser. It is separate from quality-review capture permission. After the
+session ends, use the recording download offered in the session-end dialog.
+
+Server recording depends on the deployment settings below. When session capture
+is enabled, an explicit decline discards the capture after the client reports
+the choice. This applies even when `SESSION_CAPTURE_REQUIRE_CONSENT=false`.
+Temporary server artifacts can exist while the pipeline runs. Refer to
+[browser-side capture reporting](../current-deployed-pipeline-architecture.md#144-browser-side-signal)
+for the retention boundary and teardown behavior.
+
 ## Configuration
 
 | Variable | Default | Description |

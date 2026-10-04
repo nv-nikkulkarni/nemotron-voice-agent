@@ -21,9 +21,10 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 ## Suites
 | file | what it does |
 |---|---|
-| `functional.mjs` | Exhaustive DOM: landing, cards, model toggle, Beta badge, consent/record toggles, settings, session lifecycle (start→end→thanks→restart), **upload validation**, visual diff. |
+| `functional.mjs` | Landing actions, cards, fixed model roles, explicit capture choices, optional recording, conversation settings, session lifecycle (start→end→thanks→restart), **upload validation**, and visual diff. |
 | `demo-feedback.mjs` | Focused prompt persistence, voice preview, Generic follow-ups and brief speech, Generic/Omni architecture, optional zero-shot sample, and capture acknowledgement checks. |
-| `pre-session-configuration.mjs` | Launch controls, prompt persistence, voice-card previews, device-only Settings, mobile layout, optional zero-shot sample, and one spoken exchange with capture acknowledgement. |
+| `pre-session-configuration.mjs` | Four launch actions, prompt persistence, voice-card and IPA previews, capture-dialog cancellation, device-only conversation settings, mobile layout, optional zero-shot sample, and one spoken exchange with capture acknowledgement. |
+| `voice-studio.mjs` | Responsive studios, capture-dialog cancellation without microphone acquisition, IPA persistence and assistant isolation, real previews, optional zero-shot sample, Generic/Omni welcomes, capture choices, brief header hints, and reconnect permission. |
 | `converse.mjs` | Real multi-turn **spoken** conversations (generic + omni); verifies each turn via ASR + DOM, tools, latency, dialogue context. |
 | `concurrent.mjs` | N isolated sessions at once; distinct session IDs, all connect + hear greeting, 0 errors. |
 | `comprehensive.mjs` | Full Generic tool, Omni media/webcam, UI lifecycle, and mixed eight-session qualification. |
@@ -39,13 +40,19 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 | `lib/harness.mjs`, `lib/audio.mjs` | Shared browser + ASR/TTS helpers. |
 
 The Generic Frontend/Backend example owns its seven-tool maximum allowlist on
-the server. `GET /api/tools` exposes the allowed ToolSpecs to the configuration
-popup under **Configure**. **Settings** contains only microphone and speaker
-selectors. The client sends the selected subset for the next session; the server never accepts a tool outside
-the registry allowlist. Release suites assert the exact Generic catalog
+the server. `GET /api/tools` exposes the allowed ToolSpecs under **Tools** before
+starting. **Voice** opens the speech studio. **Audio settings** appears only on
+the conversation page and opens microphone and speaker selectors. The client
+sends the selected tools for the next session; the server never accepts a tool
+outside the registry allowlist. Release suites assert the exact Generic catalog
 (`get_weather`, `get_stock_price`, `get_current_time`, `show_architecture`,
 `web_search`, `calculate_bmi`, and `generate_random_number`) before exercising native tool calls. The harness also
 fails when a UI-claimed tool control is missing or does not reflect selection.
+
+The shared `selectExample()` helper prepares **Tools** and **Voice** without
+connecting. `startConversation()` selects the capture choice in the pre-start
+dialog, then waits for the connection. Capture defaults to declined in the
+harness; pass `consent: true` to qualify a retained capture.
 
 ## Run
 ```bash
@@ -56,6 +63,7 @@ export SQA_BASE=http://localhost:7862 # default
 ./sqa.sh converse both     # or: generic | omni
 ./sqa.sh demo-feedback
 ./sqa.sh pre-session-configuration
+./sqa.sh voice-studio
 ./sqa.sh captured-sessions
 ./sqa.sh repeated-expect-tool
 ./sqa.sh corner
@@ -84,13 +92,17 @@ inference-gateway credential in `SQA_KEY`, then run:
 bash tests/sqa/sqa.sh pre-session-configuration
 ```
 
-The focused suite checks **Configure**, **Prompts**, and **Start conversation**
-in the launch bar, prompt edits across reloads, and **Edit prompts** in the
-configuration popup, keeping the editor open behind audio Settings. It
-verifies voice search and native radio-keyboard selection reaches the preview
-payload, 2 audible preset previews, and mobile layout without overflow
-with **Configure** and **Prompts** side by side. Before and during a session,
-**Settings** must contain only microphone and speaker selectors.
+The focused suite checks **Prompts**, **Tools**, **Voice**, and
+**Start conversation** in the launch bar, plus prompt edits across reloads.
+It verifies voice search, native radio-keyboard selection, 2 audible preset
+previews, and an audible preview carrying a saved IPA rule. Phone checks keep
+**Prompts** and **Voice** aligned and reject horizontal overflow.
+
+Before connecting, **Audio settings** and **Agent configuration** must be absent.
+Pressing **Escape** in the capture dialog must cancel the start, avoid creating
+session configuration, and return focus to **Start conversation**. During a
+session, the brief header hints disappear and **Audio settings** opens only
+microphone and speaker selectors.
 
 Set `SQA_VOICE_SAMPLE` to a host reference file to include saved zero-shot
 sample preview, removal, and reload checks. It verifies the saved file
@@ -101,6 +113,36 @@ configuration, 1 real spoken exchange with capture acknowledgement, and Omni
 configuration. It writes `pre-session-configuration-report.json`, screenshots,
 and audio under `SQA_OUT`. This focused suite does not replace release suites
 or human listening acceptance.
+
+## Voice Studio Acceptance Checks
+
+From the repository root, target the UI with `SQA_BASE` and run the live
+studio checks through the existing launcher:
+
+```bash
+bash tests/sqa/sqa.sh voice-studio
+```
+
+The suite checks layouts at 1,440, 1,024, 768, 390, and 320 pixels wide. It
+verifies tool and voice selection, IPA validation and reload persistence,
+assistant-specific rules, and preserved edits when choosing an engine without
+IPA support. Cancelling the capture dialog must restore focus without creating
+a session or acquiring the microphone.
+
+Live checks synthesize a preset preview carrying the saved IPA rule, then start
+Generic and Omni sessions with different capture choices. They require audible
+welcomes, capture acknowledgements, device-only **Audio settings**, the
+**Agent configuration** inspector, and small header hints that disappear after
+2 seconds. Reconnecting after an involuntary end must request capture
+permission again. These checks do not establish human pronunciation acceptance
+or prove that a consented archive reached NGC.
+
+Set `SQA_VOICE_SAMPLE` to a host speech file to include zero-shot upload,
+reload, preview, and removal checks. The deployment must offer Magpie Zeroshot.
+The saved clip survives reloads; explicitly enable its use again before preview.
+The launcher mounts the reference file using the sample procedure below.
+Reports and screenshots are written under the launcher's run-specific output
+directory, including `voice-studio-report.json`.
 
 ## Demo Feedback Checks
 

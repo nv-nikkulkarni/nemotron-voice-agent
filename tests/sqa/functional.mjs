@@ -71,27 +71,25 @@ async function landingChecks(browser) {
     // Any point on a card selects it without opening configuration.
     const genericCard = page.locator(".example-card").filter({ hasText: /generic/i });
     await genericCard.click(); await H.sleep(300);
-    const popup = page.locator(".ex-config");
     rec("select/full-card-selected", (await genericCard.getAttribute("aria-pressed")) === "true");
-    rec("select/card-does-not-open-modal", !(await popup.isVisible().catch(() => false)));
-    await page.locator(".startview__launch").getByRole("button", { name: /^configure$/i }).click();
-    rec("select/config-modal-visible", await popup.isVisible().catch(() => false));
-    const start = popup.getByRole("button", { name: /start conversation/i });
-    await page.waitForFunction(() => !document.querySelector(".ex-config__actions .btn-primary")?.disabled);
-    rec("select/start-enabled-after-pick", await start.isEnabled(), "generic configured");
-    const roles = await popup.locator(".ex-config__section").filter({ hasText: /agent model roles/i }).innerText().catch(() => "");
-    rec("select/fixed-model-roles", /lightning/i.test(roles) && /super/i.test(roles), roles.replace(/\n/g, " "));
-    rec("select/no-client-llm-radio", (await popup.locator('input[name="llm"]').count()) === 0);
-    rec("select/record-checkbox", (await popup.locator(".record-toggle input[type=checkbox]").count()) >= 2);
-    // consent toggle
-    // Consent is opt-out: checked by default. The styled checkbox is hidden and
-    // below the fold, so read/toggle it programmatically.
-    const consent = popup.locator(".consent-toggle input[type=checkbox]").first();
-    const initial = await consent.evaluate((el) => el.checked);
-    rec("consent/checked-by-default", initial === true, `initial=${initial}`);
-    const flipped = await consent.evaluate((el) => { el.click(); return el.checked; });
-    const restored = await consent.evaluate((el) => { el.click(); return el.checked; });
-    rec("consent/toggle-works", flipped === !initial && restored === initial, `->${flipped}->${restored}`);
+    rec("select/card-does-not-open-modal", (await page.getByRole("dialog").count()) === 0);
+    rec("landing/conversation-utilities-hidden", (await page.locator('[data-tour="settings"], [data-tour="pipeline"]').count()) === 0);
+    const launch = page.locator(".startview__launch");
+    for (const name of ["Prompts", "Tools", "Voice", "Start conversation"]) rec(`landing/action-${name}`,await launch.getByRole("button",{name,exact:true}).isVisible());
+    await launch.getByRole("button",{name:"Tools",exact:true}).click();
+    const roles=await page.locator(".agent-roles").innerText();
+    rec("select/fixed-model-roles",/lightning/i.test(roles)&&/super/i.test(roles));
+    rec("select/no-client-llm-radio",(await page.locator('input[name="llm"]').count())===0);
+    await page.getByRole("button",{name:"Back to setup",exact:true}).click();
+    await page.waitForFunction(()=>!document.querySelector('[data-tour="start"]')?.disabled);
+    await launch.getByRole("button",{name:"Start conversation",exact:true}).click();
+    const dialog=page.getByRole("dialog",{name:"Help improve the conversation?",exact:true});
+    await dialog.waitFor();
+    rec("consent/explicit-choices",(await dialog.getByRole("button",{name:"Allow and start",exact:true}).count())===1&&(await dialog.getByRole("button",{name:"Continue without saving",exact:true}).count())===1);
+    rec("consent/separate-local-recording",await dialog.getByRole("checkbox",{name:/Keep a downloadable recording/}).isVisible());
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({state:"detached"});
+    rec("consent/cancel-focus",await launch.locator('[data-tour="start"]').evaluate(element=>element===document.activeElement));
   } catch (e) { rec("landing/threw", false, String(e).slice(0, 120)); }
   if (sig.consoleErrors.length) rec("landing/no-console-errors", false, sig.consoleErrors[0].slice(0, 100));
   else rec("landing/no-console-errors", true);
@@ -204,7 +202,7 @@ async function visualDiff(browser) {
   const browser = await H.launchBrowser({ headless: false });
   try {
     const landingPage = await landingChecks(browser);
-    await landingPage.locator(".ex-config__close").click().catch(() => {});
+    await landingPage.close();
     await lifecycleChecks(browser);
     await uploadChecks(browser);
     await visualDiff(browser);
