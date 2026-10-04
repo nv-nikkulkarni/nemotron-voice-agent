@@ -24,7 +24,7 @@ import fs from "node:fs";
 import * as H from "./lib/harness.mjs";
 
 const IMG = "/sqa/omni_test.png";                 // navy bg, red square, text "BANANA 42"
-const IMG_HINT = /red|square|box|banana|42|navy|blue|text|number|word|sign/i;
+const IMG_HINT = /\bred\b.*\bsquare\b|\bsquare\b.*\bred\b|\bbanana\s+(?:42|forty[ -]two)\b/i;
 
 // --------------------------------------------------------------------------- //
 // Hang detection: wrap any await; a timeout is recorded as a hang, never a throw.
@@ -243,13 +243,13 @@ async function phaseB() {
     const img = fs.readFileSync(IMG);
     const up = await guard("imgUpload", 20000, () => H.uploadAttachment(page, sid, img, { name: "omni_test.png", type: "image/png" }));
     console.log(`  B image upload -> HTTP ${up?.status} ${up?.body || ""}`);
-    if (!up || up.status >= 300 || up.status === 0) rep.hardFails.push(`image upload failed (HTTP ${up?.status})`);
+    if (up?.status !== 200) rep.hardFails.push(`image upload failed (HTTP ${up?.status})`);
     await H.sleep(1200);
     const beforeImg = (await H.readMessages(page)).length;
     const rImg = await guard("imgAsk", 30000, () => H.turn(page, "I just shared an image with you. Describe exactly what is in it.", "B_img")) || { botSpoke: false };
     const ackImg = (rImg.domBot || rImg.botAsr || "").trim();
     const descImg = await guard("imgDesc", 50000, () => waitDescription(page, ackImg, beforeImg));
-    const imgOk = !!rImg.botSpoke && !!descImg && IMG_HINT.test(descImg);
+    const imgOk = up?.status === 200 && !!rImg.botSpoke && !!descImg && IMG_HINT.test(descImg);
     rep.turns.push({ ...rImg, i: OMNI_VOICE.length + 1, kind: "image", botSpoke: !!rImg.botSpoke, description: (descImg || "").slice(0, 220), described: imgOk });
     if (!imgOk) rep.hardFails.push("image not described (vision path)");
     console.log(`  B image describe -> ${imgOk ? "DESCRIBED ✓" : "NOT matched ✗"} | "${(descImg || "").slice(0, 90)}"`);
