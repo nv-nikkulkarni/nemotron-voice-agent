@@ -119,11 +119,20 @@ unfinished report displays **RUNNING**; completed phases alone do not establish
 that all requested phases passed. The architecture check also writes
 `A-architecture.png`.
 
+Phase D checks literal code words from other sessions. Its raw pass does not
+require an exact echo of each authored code word. Review input audio,
+application transcripts, and replies separately to assess speech-recognition
+fidelity.
+
 Phase C checks the capture endpoint, configured store, and bounded pending
 backlog. It does not prove that a particular archive reached NGC. Correlate
 consented session IDs with archive storage separately. This suite does not replace
 the repeated-tool matrix, capture lifecycle matrix, pronunciation listening,
 robustness tests, or other release gates. It does not promote a deployment.
+
+The [October 04 comprehensive dev report](reports/COMPREHENSIVE_DEV_2026-10-04.md)
+records the completed four-phase run, raw failures, separate input-fidelity
+findings, capture readback, and repository-check gaps.
 
 ## Pre-Session Configuration Checks
 

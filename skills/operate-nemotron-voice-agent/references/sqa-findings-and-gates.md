@@ -99,6 +99,11 @@ console errors fail the phase. The capture-status check establishes endpoint,
 store, and backlog health; verify per-session NGC archives separately. These
 scripted phases do not replace the other blocking release gates below.
 
+Phase D detects literal code words from other sessions; it does not require an
+exact echo of the authored code. Its raw smoke-test pass does not establish
+speech-recognition fidelity. Review source audio and application transcripts
+separately.
+
 The `captured-sessions` launcher runs `captured_session_regressions.mjs` against 2 source
 sessions:
 
