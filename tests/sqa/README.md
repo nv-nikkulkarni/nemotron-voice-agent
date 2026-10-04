@@ -89,6 +89,12 @@ Versioned qualification summaries live in `reports/`; older completed runs live 
 The [October 05 backend history dev report](reports/BACKEND_HISTORY_DEV_2026-10-05.md)
 records the configurable Generic user-turn window, deployment identities,
 focused voice checks, and qualification limits.
+The [October 05 backend history staging report](reports/BACKEND_HISTORY_STAGING_2026-10-05.md)
+records isolated NVCF/Astra staging, the H200 placement, dynamic filler, exact
+artifact/control-plane identities, and failed or incomplete qualification gates.
+The [comprehensive Astra staging report](reports/COMPREHENSIVE_ASTRA_STAGING_2026-10-05.md)
+tracks the separate four-phase run, raw outcomes, speech/capture evidence, and
+qualification limits.
 
 ## Comprehensive Dev Checks
 
@@ -115,6 +121,12 @@ example selection; it does not require dismissing a configuration dialog.
 Unexpected console errors, bad HTTP responses, WebSocket closures, and guarded
 wait timeouts fail the applicable phase.
 
+Omni image and webcam descriptions must identify whole-word **red** and
+**square**, in either order, or **BANANA 42** / **banana forty two** from the
+controlled fixture. An acknowledgement such as “the image you shared” is
+insufficient. The uploaded-image check separately requires HTTP `200`; a spoken
+reply cannot substitute for successful upload.
+
 `comprehensive_report.json` preserves each full harness turn record, including
 application transcripts, independent bot recognition, audio paths, and timing.
 `comprehensive_summary.md` contains phase outcomes and the per-tool table.
@@ -122,6 +134,12 @@ Both files update after every completed phase and again at completion. An
 unfinished report displays **RUNNING**; completed phases alone do not establish
 that all requested phases passed. The architecture check also writes
 `A-architecture.png`.
+
+Stock answer checks require a numeric quote with USD/dollars/`$`, or a
+“trading at” / “priced at” number. Earlier fixtures can match “price” in progress
+speech without a numeric quote; preserve their raw result and supplementary
+semantic failure separately. A fixture match and audible response alone do not
+establish complete semantic or acoustic acceptance.
 
 Phase D checks literal code words from other sessions. Its raw pass does not
 require an exact echo of each authored code word. Review input audio,
