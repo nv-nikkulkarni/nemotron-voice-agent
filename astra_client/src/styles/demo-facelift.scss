@@ -240,3 +240,93 @@
     &, *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   }
 }
+
+// Launch controls carry the same glow as the assistant cards.
+.clean-app .startview__actions .btn-secondary {
+  --action-accent: #76b900;
+  position: relative; isolation: isolate; overflow: hidden;
+  transition: transform 220ms var(--ease-spring), border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+  &[data-tour="prompts"] { --action-accent: #22d3ee; }
+  &::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(110deg, transparent 20%, rgba(255, 255, 255, 0.18) 50%, transparent 80%);
+    transform: translateX(-140%); transition: transform 600ms ease;
+  }
+  &:focus-visible:not(:disabled) {
+    border-color: var(--action-accent);
+    box-shadow: 0 0 24px color-mix(in srgb, var(--action-accent) 25%, transparent);
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .clean-app .startview__actions .btn-secondary:hover:not(:disabled) {
+    color: var(--text-primary); border-color: var(--action-accent);
+    background: color-mix(in srgb, var(--action-accent) 13%, #171a20);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 24px color-mix(in srgb, var(--action-accent) 25%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    transform: translateY(-3px) scale(1.025);
+    &::after { transform: translateX(140%); }
+  }
+}
+.clean-app .startview__actions .btn-secondary:active:not(:disabled) { transform: translateY(0) scale(0.98); }
+.prompt-studio-card__head > div { min-width: 0; }
+.clean-app .prompt-studio-card__expand {
+  flex-shrink: 0; margin-left: auto; min-height: 36px; padding: 6px 10px;
+  font-size: 11px; white-space: nowrap; color: #a3e635; border-color: rgba(118, 185, 0, 0.35);
+}
+
+.expanded-prompt-editor {
+  --editor-accent: #a3e635;
+  width: min(1440px, calc(100vw - 48px)); height: calc(100dvh - 48px);
+  max-width: none; max-height: none; margin: auto; padding: 28px;
+  color: var(--text-primary); border: 1px solid color-mix(in srgb, var(--editor-accent) 35%, transparent); border-radius: 22px;
+  background: radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--editor-accent) 8%, transparent), transparent 55%), #11151d;
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.55), 0 0 50px color-mix(in srgb, var(--editor-accent) 7%, transparent);
+  overflow: hidden;
+  &[open] { display: flex; flex-direction: column; gap: 20px; }
+  &--backend { --editor-accent: #22d3ee; }
+  &::backdrop { background: rgba(4, 7, 12, 0.82); backdrop-filter: blur(12px); }
+  :is(button, textarea):focus-visible { outline: 2px solid var(--editor-accent); outline-offset: 3px; }
+  .btn-primary, .btn-secondary { min-height: 44px; border-radius: var(--radius-full); }
+  .studio-eyebrow { color: var(--editor-accent); }
+}
+.expanded-prompt-editor__head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-shrink: 0;
+  h2 { font-family: var(--font-grotesk); font-size: 28px; font-weight: 500; letter-spacing: -0.025em; line-height: 1.2; }
+  .icon-btn { flex-shrink: 0; }
+}
+.expanded-prompt-editor__example { color: var(--text-muted); font-size: 12px; margin-top: 8px; }
+.expanded-prompt-editor__toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0;
+  > p { color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+}
+.expanded-prompt-editor__text-size {
+  display: flex; align-items: center; gap: 10px; color: var(--text-muted); font-size: 11px;
+  button { min-width: 36px; min-height: 36px; padding: 5px; border: 1px solid var(--border-default); border-radius: 8px; background: rgba(255, 255, 255, 0.04); color: var(--text-primary); cursor: pointer; &:hover:not(:disabled) { border-color: var(--editor-accent); } &:disabled { opacity: 0.4; cursor: not-allowed; } }
+  output { min-width: 34px; font-family: var(--font-mono); text-align: center; }
+}
+.expanded-prompt-editor__input {
+  flex: 1; min-height: 0; width: 100%; padding: 22px 24px; resize: none; overscroll-behavior: contain;
+  font-family: var(--font-mono); line-height: 1.7; tab-size: 2; color: var(--text-primary);
+  background: rgba(8, 12, 19, 0.85); border: 1px solid var(--border-default); border-radius: 14px;
+  &:focus { border-color: var(--editor-accent); }
+  &:disabled { opacity: 0.6; }
+}
+.expanded-prompt-editor__foot { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+.expanded-prompt-editor__count { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+@media (max-width: 700px) {
+  .expanded-prompt-editor { width: calc(100vw - 20px); height: calc(100dvh - 20px); padding: 18px; &[open] { gap: 14px; } }
+  .expanded-prompt-editor__head h2 { font-size: 23px; }
+  .expanded-prompt-editor__input { padding: 16px; }
+  .expanded-prompt-editor__foot { flex-wrap: wrap; gap: 10px; .btn-primary { margin-left: auto; } }
+  .expanded-prompt-editor__count { flex-basis: 100%; order: 1; margin-left: 0; text-align: right; }
+}
+@media (max-width: 480px) {
+  .prompt-studio-card__head { flex-wrap: wrap; }
+  .clean-app .prompt-studio-card__expand { margin-left: 48px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .clean-app .startview__actions .btn-secondary:hover:not(:disabled) { transform: none; }
+  .clean-app .startview__actions .btn-secondary::after { display: none; }
+  .expanded-prompt-editor, .expanded-prompt-editor::backdrop {
+    &, *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+}

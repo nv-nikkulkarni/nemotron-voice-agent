@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: BSD-2-Clause
+import { useState } from "react";
+import { ExpandedPromptEditor } from "./ExpandedPromptEditor";
 import { useConnectionState } from "../../hooks/useConnectionState";
 import { useApp } from "../../context/useApp";
 
 export function PromptPage({ onClose }: Readonly<{ onClose: () => void }>) {
   const app = useApp();
+  const [expanded, setExpanded] = useState<"frontend" | "backend" | null>(null);
   const { isConnected, isConnecting } = useConnectionState();
   const active = isConnected || isConnecting || app.promptsLoading;
   const frontend = app.selectedPrompt?.content ?? "";
@@ -19,7 +22,9 @@ export function PromptPage({ onClose }: Readonly<{ onClose: () => void }>) {
       {app.promptsLoading && <p role="status" className="set-hint">Loading system prompt defaults…</p>}
       <div className="prompt-studio__grid">
         <section className="prompt-studio-card" aria-label="Frontend instructions">
-          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">01</span><div><h3>The conversational voice</h3><p>Set the tone, personality, and spoken responses.</p></div></div>
+          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">01</span><div><h3>The conversational voice</h3><p>Set the tone, personality, and spoken responses.</p></div>
+            <button type="button" className="btn-secondary prompt-studio-card__expand" disabled={active} aria-label="Expand frontend editor" onClick={() => setExpanded("frontend")}>Expand editor <span aria-hidden="true">↗</span></button>
+          </div>
           <label className="set-field"><span id="frontend-prompt-label" className="set-field__label">Frontend system prompt · spoken responses</span>
             <textarea disabled={active} className="set-textarea" rows={12} maxLength={32000} aria-labelledby="frontend-prompt-label" value={app.promptOverride || frontend}
               onChange={(event) => app.setPromptOverride(event.target.value === frontend ? "" : event.target.value)} />
@@ -27,7 +32,9 @@ export function PromptPage({ onClose }: Readonly<{ onClose: () => void }>) {
           <button disabled={active} className="btn-ghost" onClick={() => app.setPromptOverride("")}>Restore frontend default</button>
         </section>
         {backend && <section className="prompt-studio-card" aria-label="Backend instructions">
-          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">02</span><div><h3>The planning brain</h3><p>Guide reasoning, decisions, and tool use.</p></div></div>
+          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">02</span><div><h3>The planning brain</h3><p>Guide reasoning, decisions, and tool use.</p></div>
+            <button type="button" className="btn-secondary prompt-studio-card__expand" disabled={active} aria-label="Expand backend editor" onClick={() => setExpanded("backend")}>Expand editor <span aria-hidden="true">↗</span></button>
+          </div>
           <label className="set-field"><span id="backend-prompt-label" className="set-field__label">Backend system prompt · planning and tools</span>
             <textarea disabled={active} className="set-textarea" rows={12} maxLength={32000} aria-labelledby="backend-prompt-label" value={app.backendPromptOverride || backend}
               onChange={(event) => app.setBackendPromptOverride(event.target.value === backend ? "" : event.target.value)} />
@@ -44,6 +51,21 @@ export function PromptPage({ onClose }: Readonly<{ onClose: () => void }>) {
           <p className="set-hint">Persistent instructions remain when you restore a default prompt. Tool permissions and model roles are configured separately.</p>
         </section>
       </div>
+      {expanded && <ExpandedPromptEditor
+        role={expanded}
+        example={app.selectedExample?.label ?? "Voice agent"}
+        value={expanded === "frontend" ? app.promptOverride || frontend : app.backendPromptOverride || backend}
+        disabled={active}
+        onChange={(value) => {
+          if (expanded === "frontend") app.setPromptOverride(value === frontend ? "" : value);
+          else app.setBackendPromptOverride(value === backend ? "" : value);
+        }}
+        onRestore={() => {
+          if (expanded === "frontend") app.setPromptOverride("");
+          else app.setBackendPromptOverride("");
+        }}
+        onClose={() => setExpanded(null)}
+      />}
     </section>
   );
 }

@@ -80,9 +80,10 @@ change from bypassing the deployment configuration.
 The landing page uses a centered gradient wordmark, moving aurora background,
 and translucent cards. The example cards, launch controls, voice gallery, and
 prompt editor adapt to narrower windows. Selected example and voice cards show
-a visible selection state. Use **Tab** to move through controls; keyboard focus
-has a visible outline. Decorative animations and interface transitions respect
-your system's reduced-motion preference.
+a visible selection state. Hover over **Configure** or **Prompts** for a glow
+and shine effect. Use **Tab** to move through controls; keyboard focus has a
+visible outline. Decorative animations and interface transitions respect your
+system's reduced-motion preference.
 
 ## Prepare Prompts and Voices
 
@@ -94,7 +95,15 @@ append to both roles, including your edited prompts. Reloads and restoring
 either default preserve these instructions; clear their field to remove them.
 Changes apply to the next session. Open the editor with **Prompts** beside
 **Configure** in the launch bar, or **Edit prompts** inside the configuration
-popup. Select **Back to setup** to return. Its fields and restore buttons are
+popup. Select **Back to setup** to return.
+
+Select **Expand editor** on either role card to open a large dialog for that
+prompt. The dialog uses wrapped monospace text and lets you choose a text size
+from 14 to 22 pixels in 2-pixel steps. Edits save to the same browser
+overrides as the compact fields. **Restore frontend default** or
+**Restore backend default** resets that role. **Done** or **Escape** closes
+the dialog and returns focus to **Expand editor**. Each role accepts up to
+32,000 characters. Prompt editing, expansion, and restoring defaults are
 disabled during an active session and while catalog defaults load. Opening
 **Settings** or **Pipeline info** keeps the prompt editor underneath; close
 the overlay to return. Unedited sessions use the displayed catalog

@@ -21,6 +21,17 @@ available, **Backend system prompt** for planning. Frontend/Backend Agent and
 Omni Subagents expose their Thinker prompt in this editor. Other Omni agent
 prompts remain in `agent_prompts:` in the example's `prompts.yaml`.
 
+For more room, select **Expand editor** on either role card. The dialog fills
+most of the window and wraps the prompt in a monospace editor. Select a text
+size from 14 to 22 pixels in 2-pixel steps to suit your display. Edits save
+immediately to the same browser overrides as the compact fields; there is
+no separate save step. **Restore frontend default** or
+**Restore backend default** resets only the open role. Select **Done** or
+press **Escape** to close the dialog and return focus to **Expand editor**.
+Expansion and editing are disabled under the same session and loading
+conditions as the compact editor. Both sizes retain the 32,000-character
+limit. Expanding a role does not change **Persistent instructions**.
+
 An unedited Astra session uses the selected frontend catalog prompt shown in
 the editor, including its native examples. The client sends its catalog key
 without substituting a separate demo prompt. Your saved edits replace that
