@@ -65,6 +65,7 @@ function AppInner() {
   const [tour, setTour] = useState<Tour>(null);
   const handleLiveChange = useCallback((live: boolean) => {
     if (live) setTour(null);
+    else setOverlay(null);
   }, []);
 
   const client = useMemo(() => {

@@ -91,6 +91,7 @@ const captureChoices = new WeakMap();
 export async function selectExample(page, { example = "generic", model = "lightning", tts, tools, reasoning, consent = false } = {}) {
   const isOmni = /omni/i.test(example);
   const back = page.getByRole("button", {name:"Back to setup",exact:true});
+  await page.locator(".example-card").first().or(back).first().waitFor({timeout:30000});
   if(await back.isVisible().catch(()=>false)) await back.click();
   await page.locator('.example-card').first().waitFor({timeout:30000});
   const skipTour = page.getByRole('button',{name:/skip tour/i});

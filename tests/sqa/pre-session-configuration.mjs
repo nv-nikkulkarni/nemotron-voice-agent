@@ -132,6 +132,13 @@ try {
   await H.shot(page, `${H.OUT}/voices-mobile.png`);
   assert(await page.locator(".agent-studio").evaluate((panel) => panel.scrollWidth <= panel.clientWidth));
   await page.getByRole("button", { name: "Back to setup", exact: true }).click();
+  await page.mouse.move(0, 0);
+  await launch.scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => {
+    const buttons = [...document.querySelectorAll(".startview__actions .btn-secondary")];
+    return buttons.length === 3 && buttons.every(button => Number(getComputedStyle(button).opacity) > 0.99)
+      && Math.max(...buttons.map(button => button.getBoundingClientRect().y)) - Math.min(...buttons.map(button => button.getBoundingClientRect().y)) < 2;
+  }, null, { timeout: 5000 });
   await H.shot(page, `${H.OUT}/launch-mobile.png`);
   const configure = await launch.getByRole("button", { name: "Voice", exact: true }).boundingBox();
   const prompts = await launch.getByRole("button", { name: "Prompts", exact: true }).boundingBox();

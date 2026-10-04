@@ -148,10 +148,12 @@ try {
       const info=page.getByRole('dialog',{name:'Pipeline info',exact:true});await info.getByRole('heading',{name:'Voice configuration',exact:true}).waitFor();
       await info.getByRole('button',{name:'Close',exact:true}).last().click();
       const sessionId=await page.locator('.conv-session-id code').innerText();
+      if(!consent) await page.getByRole('button',{name:'Audio settings',exact:true}).click();
       const captureWait=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/session-capture'&&response.request().method()==='POST');
       if(consent) await page.getByRole('button',{name:'End',exact:true}).click();
       else await page.evaluate(()=>window.__studioSockets.forEach(socket=>{if(socket.readyState===WebSocket.OPEN) socket.close(4001,'studio-reconnect-test');}));
       await page.getByRole('dialog',{name:consent?'Session ended':'Session interrupted',exact:true}).waitFor();
+      await page.getByRole('dialog',{name:'Settings',exact:true}).waitFor({state:'detached'});
       const capture=await captureWait;const body=capture.request().postDataJSON();assert.equal(capture.status(),200);assert.equal(body.consent,consent);
       if(!consent) assert(!body.transcript);
       report.sessions.push({example,sessionId,consent,audibleWelcome:true,captureAcknowledged:true,hintsDurationMs});
