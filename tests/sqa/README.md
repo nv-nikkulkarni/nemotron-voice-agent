@@ -86,6 +86,10 @@ evidence.
 Versioned qualification summaries live in `reports/`; older completed runs live in
 `reports/archive/`.
 
+The [October 05 backend history dev report](reports/BACKEND_HISTORY_DEV_2026-10-05.md)
+records the configurable Generic user-turn window, deployment identities,
+focused voice checks, and qualification limits.
+
 ## Comprehensive Dev Checks
 
 Run all four phases against the target UI from the repository root:
