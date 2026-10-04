@@ -133,6 +133,9 @@ robustness tests, or other release gates. It does not promote a deployment.
 The [October 04 comprehensive dev report](reports/COMPREHENSIVE_DEV_2026-10-04.md)
 records the completed four-phase run, raw failures, separate input-fidelity
 findings, capture readback, and repository-check gaps.
+The [web-search root cause analysis](reports/WEB_SEARCH_RCA_DEV_2026-10-04.md)
+records the original planner clarification, a controlled transcript comparison,
+and current Sonar Pro provider verification.
 
 ## Pre-Session Configuration Checks
 
