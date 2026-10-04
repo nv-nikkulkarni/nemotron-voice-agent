@@ -134,7 +134,9 @@ The suite checks the settings dialog at widths of 1,440, 1,024, 768, 390, and
 feedback, explicit **Save settings**, persistence across reloads, and cancellation
 of an unapplied draft. Omni exposes all four role cards, with advanced top-k
 controls that can override its greedy default. The landing launch bar keeps its
-four actions; **LLM settings** opens from **Tools** before connecting.
+four actions; **LLM settings** opens from **Tools** before connecting. During
+both live sessions, the suite checks that **LLM**, **Agent configuration**,
+**Audio settings**, and **End** fit within the 390- and 320-pixel viewports.
 
 During separate Generic and Omni sessions, the suite checks saved settings in
 the submitted session configuration. It then opens **LLM** in the conversation
@@ -163,6 +165,10 @@ multimodal requests, including all four Omni roles, and confirm that an
 in-flight request keeps its snapshot while a later request receives the update.
 The browser suite checks real Generic and Omni speech; it does not exercise
 every uploaded-media or webcam inference path.
+
+The [LLM Settings dev qualification report](reports/LLM_SETTINGS_DEV_2026-10-04.md)
+records exact artifact identities, targeted spoken checks, and remaining release
+gates.
 
 ## Voice Studio Acceptance Checks
 
