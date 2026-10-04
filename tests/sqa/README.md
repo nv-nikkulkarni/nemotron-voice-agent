@@ -28,7 +28,7 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 | `voice-studio.mjs` | Responsive studios, capture-dialog cancellation without microphone acquisition, IPA persistence and assistant isolation, real previews, optional zero-shot sample, Generic/Omni welcomes, capture choices, brief header hints, and reconnect permission. |
 | `converse.mjs` | Real multi-turn **spoken** conversations (generic + omni); verifies each turn via ASR + DOM, tools, latency, dialogue context. |
 | `concurrent.mjs` | N isolated sessions at once; distinct session IDs, all connect + hear greeting, 0 errors. |
-| `comprehensive.mjs` | Full Generic tool, Omni media/webcam, UI lifecycle, and mixed eight-session qualification. |
+| `comprehensive.mjs` | Seven Generic tools, Omni voice/media/webcam, UI lifecycle, and eight mixed sessions; retains per-turn evidence and phase checkpoints. |
 | `captured_session_regressions.mjs` | Real-audio replays of captured NVCF/Astra sessions `52f301234e8c` and `499162cb3960`, covering private narration and stale dynamic answers. |
 | `repeated_expect_tool_matrix.mjs` | Repeated live-data delegation with independent bot ASR, grounded-result waits, silence checks, and cross-session leakage checks. |
 | `prod_remediation_corner_cases.mjs` | API failures, cancellation, bounded multi-tool speech, and isolated safety/grounding probes. |
@@ -62,6 +62,7 @@ export SQA_KEY=sk-...                 # inference-hub key
 export SQA_BASE=http://localhost:7862 # default
 ./sqa.sh functional
 ./sqa.sh converse both     # or: generic | omni
+./sqa.sh comprehensive all # or: A | B | C | D
 ./sqa.sh demo-feedback
 ./sqa.sh pre-session-configuration
 ./sqa.sh voice-studio
@@ -84,6 +85,45 @@ a stable external identifier. A later phase or rerun does not overwrite earlier
 evidence.
 Versioned qualification summaries live in `reports/`; older completed runs live in
 `reports/archive/`.
+
+## Comprehensive Dev Checks
+
+Run all four phases against the target UI from the repository root:
+
+```bash
+SQA_BASE=http://localhost:7880 bash tests/sqa/sqa.sh comprehensive all
+```
+
+Supply `SQA_KEY` through your environment. Use `A`, `B`, `C`, or `D` instead of
+`all` to run one phase. Give each invocation a separate output directory.
+The suite covers these scripted checks:
+
+| Phase | Scope |
+| --- | --- |
+| A | 17 Generic Lightning turns, the exact seven-tool server catalog, native tool calls, repeated weather and stock requests, and a loaded Generic architecture image. |
+| B | 13 Omni voice turns, one uploaded-image description, and one description of controlled JPEG webcam frames. |
+| C | Generic-to-Omni switching, pre-session prompt editing and submission after restart, the configuration inspector, and a consented session with capture status checks. |
+| D | Eight simultaneous Generic/Omni sessions, two spoken turns each, unique session IDs, audible responses, and checks for another session's code word. |
+
+The harness waits for the welcome to settle before speaking, including the
+consented capture session. **Prompts** opens directly from the launch bar after
+example selection; it does not require dismissing a configuration dialog.
+Unexpected console errors, bad HTTP responses, WebSocket closures, and guarded
+wait timeouts fail the applicable phase.
+
+`comprehensive_report.json` preserves each full harness turn record, including
+application transcripts, independent bot recognition, audio paths, and timing.
+`comprehensive_summary.md` contains phase outcomes and the per-tool table.
+Both files update after every completed phase and again at completion. An
+unfinished report displays **RUNNING**; completed phases alone do not establish
+that all requested phases passed. The architecture check also writes
+`A-architecture.png`.
+
+Phase C checks the capture endpoint, configured store, and bounded pending
+backlog. It does not prove that a particular archive reached NGC. Correlate
+consented session IDs with archive storage separately. This suite does not replace
+the repeated-tool matrix, capture lifecycle matrix, pronunciation listening,
+robustness tests, or other release gates. It does not promote a deployment.
 
 ## Pre-Session Configuration Checks
 

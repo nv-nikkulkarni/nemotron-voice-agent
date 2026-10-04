@@ -82,10 +82,22 @@ Each turn should record:
 
 The comprehensive suite phases are:
 
-- A: Generic Frontend/Backend, all five internal capabilities.
-- B: Omni voice, attachment, and webcam.
+- A: 17 Generic Frontend/Backend turns covering all seven server-owned tools,
+  repeated live-data calls, and the rendered architecture image.
+- B: 13 Omni voice turns, an image attachment, and controlled JPEG webcam frames.
 - C: UI settings, lifecycle, prompt submission, and capture status.
-- D: eight simultaneous mixed sessions.
+- D: eight simultaneous mixed sessions, two spoken turns each, and code-word isolation checks.
+
+Run `bash tests/sqa/sqa.sh comprehensive all` from the repository root. Select
+`A`, `B`, `C`, or `D` for one phase. The exact Generic catalog includes
+`get_weather`, `get_stock_price`, `get_current_time`, `show_architecture`,
+`web_search`, `calculate_bmi`, and `generate_random_number`.
+
+The comprehensive JSON preserves full harness turn records. JSON and Markdown
+reports checkpoint after each phase and record completion separately. Unexpected
+console errors fail the phase. The capture-status check establishes endpoint,
+store, and backlog health; verify per-session NGC archives separately. These
+scripted phases do not replace the other blocking release gates below.
 
 The `captured-sessions` launcher runs `captured_session_regressions.mjs` against 2 source
 sessions:

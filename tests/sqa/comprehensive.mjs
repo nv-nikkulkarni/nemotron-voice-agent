@@ -3,8 +3,8 @@
 //
 // Comprehensive end-to-end SQA suite for the Astra staging web UI, driving the
 // REAL browser + REAL voice pipeline (PulseAudio virtmic in, Riva/app ASR + a
-// WebAudio level tap out). It adapts to the NEW example-card → configuration
-// POPUP flow (ExampleConfigModal / .ex-config).
+// WebAudio level tap out). It uses the example cards, pre-session Tools, Voice,
+// and Prompts pages, and the capture-consent dialog.
 //
 // Phases:
 //   A. GENERIC (Lightning), >=15 turns — exercises EVERY current tool with spoken queries
@@ -56,6 +56,8 @@ const TOOL_TURNS = [
   { tool: "web_search", label: "Web search", text: "Search the web for the latest news about artificial intelligence.", want: /ai|artificial|model|news|research|company|announc|\w{4,}/i },
   { tool: "calculate_bmi", label: "BMI", text: "What's my BMI if I'm 70 kilos and 1.75 meters?", want: /22\.9|22 point 9|twenty.?two|\bbmi\b|normal|healthy/i },
   { tool: "generate_random_number", label: "Random number", text: "Give me a random number between one and one hundred.", want: /\d|number/i },
+  { tool: "get_current_time", label: "Current time", text: "What is the current time in Tokyo?", want: /\d|o.clock|a\.?m\.?|p\.?m\.?|time|tokyo/i },
+  { tool: "show_architecture", label: "Architecture", text: "Show me your architecture.", want: /architecture|diagram|design/i, architecture: "generic" },
 ];
 const CHAT_TURNS = [
   { text: "Introduce yourself in one short sentence.", want: /nemotron|assistant|nvidia|help|hi|hello/i },
@@ -106,16 +108,16 @@ async function phaseA() {
       CHAT_TURNS[0], CHAT_TURNS[1],
       TOOL_TURNS[0], TOOL_TURNS[1], TOOL_TURNS[2], TOOL_TURNS[3],
       CHAT_TURNS[2],
-      TOOL_TURNS[4],
+      TOOL_TURNS[4], TOOL_TURNS[5], TOOL_TURNS[6],
       CHAT_TURNS[3], CHAT_TURNS[4],
       TOOL_TURNS[0], // second weather to confirm repeat tool-calling
       CHAT_TURNS[0], CHAT_TURNS[1], CHAT_TURNS[2], CHAT_TURNS[5],
-    ]; // 15 turns
+    ]; // 17 turns, including all seven server-owned tools
     for (let i = 0; i < seq.length; i++) {
       const t = seq[i];
       const mark = await H.toolWatchMark(page);
       const before = (await H.readMessages(page)).length;
-      const r = await guard(`turnA${i + 1}`, 75000, () => H.turn(
+      const r = await guard(`turnA${i + 1}`, 110000, () => H.turn(
         page, t.text, `A_t${i + 1}`, {
           micDevice: slot.micSink,
           spkDevice: slot.spkSink,
@@ -133,7 +135,19 @@ async function phaseA() {
       const answered = !!r.botSpoke && (t.want ? t.want.test(answer) : true)
         && !(t.notWant?.test(answer));
       if (!r.inputReceived) rep.hardFails.push(`turn ${i + 1}: no application user transcript within 8 seconds`);
-      const tr = { i: i + 1, text: t.text, tool: t.tool || null, fired, botSpoke: !!r.botSpoke, answer: answer.slice(0, 140), called, answered, latencyS: r.latencyS ?? null };
+      const tr = { ...r, i: i + 1, text: t.text, tool: t.tool || null, fired, botSpoke: !!r.botSpoke, answer: answer.slice(0, 140), called, answered, latencyS: r.latencyS ?? null };
+      if (t.architecture) {
+        const image = page.locator(".architecture-presentation img");
+        try {
+          await image.waitFor({ state: "visible", timeout: 5000 });
+          tr.architectureRendered = (await image.getAttribute("src")).endsWith(`/${t.architecture}.svg`)
+            && await image.evaluate((img) => img.complete && img.naturalWidth > 0);
+          await H.shot(page, `${H.OUT}/A-architecture.png`);
+        } catch { tr.architectureRendered = false; }
+        if (!tr.architectureRendered) rep.hardFails.push(`turn ${i + 1}: architecture image did not render`);
+        const close = page.getByRole("button", { name: "Close image" });
+        if (await close.isVisible()) await close.click();
+      }
       rep.turns.push(tr);
       if (!r.botSpoke) rep.hardFails.push(`turn ${i + 1}: bot silent`);
       if (!called) rep.hardFails.push(t.tool
@@ -217,7 +231,8 @@ async function phaseB() {
       const r = await guard(`turnB${i + 1}`, 110000, () => H.turn(page, spec.text, `B_v${i + 1}`, { settle: true, settleStableMs: 20000 })) || { botSpoke: false };
       const answer = (r.domBot || r.botAsr || "").trim();
       const answered = !!r.botSpoke && spec.want.test(answer) && !(spec.notWant?.test(answer));
-      rep.turns.push({ i: i + 1, kind: "voice", text: spec.text, botSpoke: !!r.botSpoke, answered, answer: answer.slice(0, 120), botAsrError: r.botAsrError || "", latencyS: r.latencyS ?? null });
+      rep.turns.push({ ...r, i: i + 1, kind: "voice", text: spec.text, botSpoke: !!r.botSpoke, answered, answer: answer.slice(0, 120), botAsrError: r.botAsrError || "", latencyS: r.latencyS ?? null });
+      if (!r.inputReceived) rep.hardFails.push(`voice turn ${i + 1}: no application user transcript within 8 seconds`);
       if (!r.botSpoke) rep.hardFails.push(`voice turn ${i + 1}: bot silent`);
       if (!answered) rep.hardFails.push(`voice turn ${i + 1}: response did not satisfy the answer oracle`);
       if (r.botAsrError) rep.warns.push(`voice turn ${i + 1}: independent bot ASR failed (${r.botAsrError.slice(0, 100)})`);
@@ -235,7 +250,7 @@ async function phaseB() {
     const ackImg = (rImg.domBot || rImg.botAsr || "").trim();
     const descImg = await guard("imgDesc", 50000, () => waitDescription(page, ackImg, beforeImg));
     const imgOk = !!rImg.botSpoke && !!descImg && IMG_HINT.test(descImg);
-    rep.turns.push({ i: OMNI_VOICE.length + 1, kind: "image", botSpoke: !!rImg.botSpoke, description: (descImg || "").slice(0, 220), described: imgOk });
+    rep.turns.push({ ...rImg, i: OMNI_VOICE.length + 1, kind: "image", botSpoke: !!rImg.botSpoke, description: (descImg || "").slice(0, 220), described: imgOk });
     if (!imgOk) rep.hardFails.push("image not described (vision path)");
     console.log(`  B image describe -> ${imgOk ? "DESCRIBED ✓" : "NOT matched ✗"} | "${(descImg || "").slice(0, 90)}"`);
 
@@ -258,7 +273,7 @@ async function phaseB() {
     const ackCam = (rCam.domBot || rCam.botAsr || "").trim();
     const descCam = await guard("webcamDesc", 50000, () => waitDescription(page, ackCam, beforeCam));
     const camOk = !!rCam.botSpoke && !!descCam && IMG_HINT.test(descCam);
-    rep.turns.push({ i: OMNI_VOICE.length + 2, kind: "webcam", botSpoke: !!rCam.botSpoke, description: (descCam || "").slice(0, 220), described: camOk });
+    rep.turns.push({ ...rCam, i: OMNI_VOICE.length + 2, kind: "webcam", botSpoke: !!rCam.botSpoke, description: (descCam || "").slice(0, 220), described: camOk });
     if (!camOk) rep.hardFails.push("webcam frame not described with bot audio (vision path)");
     console.log(`  B webcam describe -> ${camOk ? "DESCRIBED ✓" : "not matched"} | "${(descCam || "").slice(0, 90)}"`);
 
@@ -276,7 +291,7 @@ const PROMPT_MARKER = "PINEAPPLE";
 
 async function phaseC() {
   const sig = H.newSignals(), hangs = [], guard = makeGuard(hangs);
-  const rep = { phase: "C", name: "UI features", checks: [], hangs, hardFails: [], warns: [] };
+  const rep = { phase: "C", name: "UI features", checks: [], turns: [], hangs, hardFails: [], warns: [] };
   const add = (name, pass, note = "") => { rep.checks.push({ name, pass, note }); if (!pass) rep.hardFails.push(`${name}${note ? " — " + note : ""}`); console.log(`  C ${pass ? "PASS" : "FAIL"} ${name}${note ? " — " + note : ""}`); };
   const browser = await H.launchBrowser({ headless: false });
   try {
@@ -303,7 +318,7 @@ async function phaseC() {
       throw new Error("generic welcome did not settle");
     }
     const genSid = await H.sessionId(page);
-    await guard("C1.turn", 45000, () => H.turn(page, "Say hello in one short sentence.", "C_gen"));
+    rep.turns.push({ step: "C1", ...await guard("C1.turn", 45000, () => H.turn(page, "Say hello in one short sentence.", "C_gen")) });
 
     // C2. End generic, immediately switch to omni and start (clean transition, no hang).
     await guard("C2.end", 20000, () => H.endConversation(page));
@@ -317,13 +332,13 @@ async function phaseC() {
       throw new Error("switched Omni welcome did not settle");
     }
     const c2turn = await guard("C2.turn", 45000, () => H.turn(page, "Count from one to three.", "C_omni")) || {};
+    rep.turns.push({ step: "C2", ...c2turn });
     add("omni responds after switch", !!c2turn.botSpoke);
     await guard("C2.end", 20000, () => H.endConversation(page));
     await guard("C2.dismiss2", 8000, () => H.dismissFeedback(page));
 
     // C3. Choose Generic before editing its per-example prompt on the launch page.
     await guard("C3.select", 15000, () => H.selectExample(page, { example: "generic", model: "lightning", tts: "magpie" }));
-    await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await guard("C3.openPrompts", 10000, () => page.locator(".startview__launch").getByRole("button", { name: "Prompts", exact: true }).click());
     await page.locator(".prompt-studio textarea").first().waitFor();
     add("pre-session prompts page opens", new URL(page.url()).pathname === "/prompts");
@@ -348,6 +363,7 @@ async function phaseC() {
       throw new Error("restarted Generic welcome did not settle");
     }
     const c4turn = await guard("C4.turn", 45000, () => H.turn(page, "Please tell me your name in one sentence.", "C_prompt")) || {};
+    rep.turns.push({ step: "C4", ...c4turn });
     const promptText = `${c4turn.domBot || ""} ${c4turn.botAsr || ""}`.toLowerCase();
     const promptFollowed = promptText.includes(PROMPT_MARKER.toLowerCase());
     rep.checks.push({ name: "model follows prompt marker", pass: promptFollowed, note: "reply=\"" + (c4turn.domBot || c4turn.botAsr || "").slice(0, 80) + "\"" });
@@ -367,8 +383,10 @@ async function phaseC() {
     const capSid = await H.sessionId(page);
     rep.captureSessionId = capSid; // status() no longer exposes per-session file listings to correlate against; kept for manual cross-reference against server logs
     if (c6?.connected) {
-      await H.sleep(1500);
-      await guard("C6.turn", 45000, () => H.turn(page, "This is a consented test session, thank you.", "C_cap"));
+      if (!(await guard("C6.welcome", 50000, () => H.waitForSettledWelcome(page)))) {
+        throw new Error("consented Generic welcome did not settle");
+      }
+      rep.turns.push({ step: "C6", ...await guard("C6.turn", 45000, () => H.turn(page, "This is a consented test session, thank you.", "C_cap")) });
       await guard("C6.end2", 25000, () => H.endConversation(page));
       await guard("C6.dismiss2", 8000, () => H.dismissFeedback(page));
       await H.sleep(3000); // give the background capture task time to write/tar
@@ -437,7 +455,7 @@ async function oneStream(i) {
         micDevice: slot.micSink,
         monitor: slot.spkMonitor,
       })) || {};
-      r.turns.push({ botSpoke: !!t.botSpoke, domUser: (t.domUser || "").slice(0, 60), domBot: (t.domBot || "").slice(0, 80) });
+      r.turns.push({ ...t, botSpoke: !!t.botSpoke, domUser: t.domUser || "", domBot: t.domBot || "" });
     }
     r.botSpoke = r.turns.every((t) => t.botSpoke);
     // Cross-talk check: this session's bot text must not contain another user's token.
@@ -481,7 +499,7 @@ function finish(rep, sig, browser) {
     const frame = sig.consoleErrors.find((e) => /Unknown frame kind|Failed to deserialize/i.test(e));
     if (frame) rep.hardFails.push(`console(frame): ${frame.slice(0, 80)}`);
     const other = sig.consoleErrors.filter((e) => !/Unknown frame kind|Failed to deserialize/i.test(e));
-    if (other.length) rep.warns.push(`${other.length} console error(s): ${other[0].slice(0, 80)}`);
+    if (other.length) rep.hardFails.push(`${other.length} console error(s): ${other[0].slice(0, 80)}`);
     if (sig.badResponses.length) rep.hardFails.push(`${sig.badResponses.length} HTTP>=400: ${sig.badResponses[0]}`);
     if (sig.wsClosures.length) rep.hardFails.push(`bad WS close: ${sig.wsClosures[0]}`);
     if ((rep.hangs?.length || 0) > 0) rep.hardFails.push(`${rep.hangs.length} hang(s): ${rep.hangs[0]}`);
@@ -511,7 +529,7 @@ function writeReport(out) {
   const md = [];
   md.push(`# Comprehensive SQA report`, "");
   md.push(`- base: ${out.base}`, `- started: ${out.startedAt}`, `- finished: ${out.finishedAt}`, "");
-  md.push(`## Result: ${out.pass ? "PASS ✅" : "FAIL ❌"}`, "");
+  md.push(`## Result: ${out.finishedAt ? (out.pass ? "PASS ✅" : "FAIL ❌") : "RUNNING"}`, "");
   md.push(`| Phase | Name | Result | Hard fails | Warns |`, `|---|---|---|---|---|`);
   for (const p of out.phases)
     md.push(`| ${p.phase} | ${p.name} | ${p.pass ? "PASS" : "FAIL"} | ${(p.hardFails || []).join("; ") || "-"} | ${(p.warns || []).join("; ") || "-"} |`);
@@ -529,10 +547,10 @@ function writeReport(out) {
   const out = { runId: H.RUN_ID, phaseSelection: which, base: H.BASE, startedAt: new Date().toISOString(), phases: [] };
   console.log(`\n##### COMPREHENSIVE SQA vs ${H.BASE} (phases: ${which}) #####`);
 
-  if (run("A")) { console.log(`\n===== PHASE A: Generic (Lightning) tool exercise =====`); out.phases.push(await phaseA()); }
-  if (run("B")) { console.log(`\n===== PHASE B: Omni voice + image + webcam =====`); out.phases.push(await phaseB()); }
-  if (run("C")) { console.log(`\n===== PHASE C: UI features =====`); out.phases.push(await phaseC()); }
-  if (run("D")) { out.phases.push(await phaseD(8)); }
+  if (run("A")) { console.log(`\n===== PHASE A: Generic (Lightning) tool exercise =====`); out.phases.push(await phaseA()); writeReport(out); }
+  if (run("B")) { console.log(`\n===== PHASE B: Omni voice + image + webcam =====`); out.phases.push(await phaseB()); writeReport(out); }
+  if (run("C")) { console.log(`\n===== PHASE C: UI features =====`); out.phases.push(await phaseC()); writeReport(out); }
+  if (run("D")) { out.phases.push(await phaseD(8)); writeReport(out); }
 
   out.finishedAt = new Date().toISOString();
   out.pass = out.phases.every((p) => p.pass);
