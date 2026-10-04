@@ -25,6 +25,8 @@ async function save() {await dialog.getByRole('button',{name:'Save settings',exa
 async function fit() {
   const bounds=await dialog.boundingBox();const width=page.viewportSize().width;
   assert(bounds.x>=0&&bounds.x+bounds.width<=width+1);
+  assert(Math.abs(bounds.x-(width-bounds.width)/2)<=2,'Model dialog must be centered horizontally');
+  assert(Math.abs(bounds.y-(page.viewportSize().height-bounds.height)/2)<=2,'Model dialog must be centered vertically');
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   assert(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1));
 }
@@ -96,7 +98,8 @@ try {
   for(const [example,mode] of [['Generic Frontend/Backend','generic-frontend-backend-agent'],['Nemotron Omni','omni-assistant-subagents']]) {
     await page.locator('.example-card').filter({hasText:example}).click();await H.waitForDeploymentReady(page);
     assert((await H.startConversation(page,{timeoutMs:60000})).connected);
-    await page.locator('.conv-live').waitFor({timeout:60000});await H.waitListening(page,{timeoutMs:60000});
+    await page.locator('.conv-live').waitFor({timeout:60000});
+    assert(await H.waitForSettledWelcome(page),'Welcome must finish before testing user speech');
     const sid=await H.sessionId(page);assert(sid);
     assert.equal(configs.at(-1).pipeline_mode,mode);
     assert.equal(configs.at(-1).llm_settings[mode=== 'generic-frontend-backend-agent' ? 'frontend' : 'speaker'].temperature,mode=== 'generic-frontend-backend-agent' ? 0.1 : 0.2);
@@ -114,18 +117,25 @@ try {
     });
     const acoustics=await detectAudibleWav(turn.wav);
     const tools=await H.toolWatchSince(page,toolMark);
+    const session={mode,sid,settingsAcknowledged:true,resetAcknowledged:false,settingsRemovedAfterEnd:false,tools,turn,acoustics};
+    report.sessions.push(session);
     if(mode==='generic-frontend-backend-agent') assert(tools.includes('get_current_time'),'Generic must exercise the updated backend planner');
     assert(turn.inputReceived&&turn.domUser,'Actual user speech must reach the model');
+    assert(mode==='generic-frontend-backend-agent'?/current time.*Tokyo/i.test(turn.domUser):/say hello.*one sentence/i.test(turn.domUser),'Application ASR must preserve the test request');
     assert(turn.domBot&&acoustics.audible,'Actual model response must be spoken');
     assert(!turn.botAsrError,turn.botAsrError);
     await liveSettings();
     await dialog.getByRole('button',{name:'Reset all',exact:true}).click();await apply();
     assert.equal(await input(role,'Temperature').inputValue(),mode==='generic-frontend-backend-agent'?'0':'0.7');
     await close();await end(sid);
-    report.sessions.push({mode,sid,settingsAcknowledged:true,resetAcknowledged:true,settingsRemovedAfterEnd:true,tools,turn,acoustics});
+    session.resetAcknowledged=true;session.settingsRemovedAfterEnd=true;
   }
   assert.equal(signals.consoleErrors.length,0,JSON.stringify(signals.consoleErrors));
-  assert.equal(signals.failedRequests.length,0,JSON.stringify(signals.failedRequests));
+  // Closing or navigating away from the dialog intentionally aborts its catalog GET.
+  // Keep those diagnostics while requiring every session operation to succeed.
+  report.cancelledCatalogRequests=signals.failedRequests.filter(value=>/^GET .*\/api\/llm-settings\?.* :: net::ERR_ABORTED$/.test(value));
+  const failedOperations=signals.failedRequests.filter(value=>!report.cancelledCatalogRequests.includes(value));
+  assert.equal(failedOperations.length,0,JSON.stringify(failedOperations));
   report.checks.push({name:'two-real-spoken-sessions-live-apply-reset-and-cleanup',pass:true});
 } catch(error) {
   report.hardFails.push(String(error?.stack||error));

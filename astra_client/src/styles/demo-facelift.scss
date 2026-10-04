@@ -424,13 +424,14 @@
 /* Per-model controls retain the studio glass and aurora palette. */
 .llm-trigger { padding: 7px 11px; font-size: 12px; display: flex; align-items: center; gap: 6px; }
 .llm-setup-trigger { margin: 0 0 16px; }
-.llm-dialog { width: min(980px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); padding: 0; color: var(--text-primary, #edf3ee); border: 1px solid rgba(180, 224, 154, .24); border-radius: 24px; background: linear-gradient(145deg, rgba(31, 41, 32, .98), rgba(18, 21, 29, .99)); box-shadow: 0 30px 110px #0009; }
+.llm-dialog { margin: auto; width: min(980px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); padding: 0; color: var(--text-primary, #edf3ee); border: 1px solid rgba(180, 224, 154, .24); border-radius: 24px; background: linear-gradient(145deg, rgba(31, 41, 32, .98), rgba(18, 21, 29, .99)); box-shadow: 0 30px 110px #0009; }
 .llm-dialog::backdrop { background: #080e0aad; backdrop-filter: blur(8px); }
 .llm-dialog__head { display: flex; justify-content: space-between; align-items: flex-start; padding: 24px 28px 18px; border-bottom: 1px solid #ffffff12; }
 .llm-dialog__head h2 { margin: 0 0 6px; font-family: var(--font-grotesk); font-size: 28px; font-weight: 500; }
 .llm-dialog__head p { margin: 0; color: #b4c2b8; font-size: 13px; }
 .llm-dialog__body { padding: 20px 28px; max-height: calc(100dvh - 255px); overflow-y: auto; overscroll-behavior: contain; }
 .llm-lead { color: #bac8be; font-size: 14px; line-height: 1.6; margin: 0 0 20px; }
+.llm-dialog .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .llm-roles { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 18px; }
 .llm-role { border: 1px solid #ffffff14; border-radius: 18px; padding: 20px; background: linear-gradient(130deg, #96ca7421, #afa2e50a 80%); }
 .llm-role__head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 20px; }

@@ -138,13 +138,18 @@ four actions; **LLM settings** opens from **Tools** before connecting.
 
 During separate Generic and Omni sessions, the suite checks saved settings in
 the submitted session configuration. It then opens **LLM** in the conversation
-header, applies new values, verifies a successful PUT and current revision, and
-speaks to the real agent. The Generic turn asks for the current time in Tokyo;
-the Omni turn requests a brief greeting. Input transcription, a visible reply,
-audible response audio, and independent bot speech recognition must succeed.
+header, applies new values, and verifies a successful PUT and current revision.
+It waits for the welcome to finish before speaking to the real agent. The
+Generic turn asks for the current time in Tokyo and requires a native
+`get_current_time` call through the updated backend planner. The Omni turn
+requests a brief greeting. Application speech recognition must preserve the
+intended request. A visible reply, audible response audio, and independent bot
+speech recognition must succeed.
 **Reset all** must restore defaults after applying. After **End**, the live
 settings endpoint must return HTTP `404`. Reports and screenshots are written
-under `SQA_OUT`, including `llm-settings-report.json`.
+under `SQA_OUT`, including `llm-settings-report.json`. Failed-turn evidence is
+retained. Catalog GETs intentionally canceled while closing or navigating away
+from the dialog are recorded separately; failed session operations fail the suite.
 
 The backend request-boundary checks live in `tests/unit/test_llm_settings.py`:
 
