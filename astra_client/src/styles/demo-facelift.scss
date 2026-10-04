@@ -466,3 +466,8 @@
   .llm-dialog__foot > span { flex-basis: 100%; order: 3; text-align: center; }
   .llm-trigger { padding: 6px 8px; gap: 4px; }
 }
+
+@media (max-width: 360px) {
+  .clean-topbar { flex-wrap: wrap; }
+  .clean-topbar__actions { flex-basis: 100%; justify-content: flex-end; }
+}

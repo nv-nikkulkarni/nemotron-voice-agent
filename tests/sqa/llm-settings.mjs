@@ -111,6 +111,14 @@ try {
     const fetched=await (await page.request.get(`${H.BASE}/api/sessions/${sid}/llm-settings`)).json();
     assert.equal(fetched.settings[mode==='generic-frontend-backend-agent'?'frontend':'speaker'].temperature,0.15);
     await H.shot(page,`${H.OUT}/live-${mode}.png`);await close();
+    for(const width of [390,320]) {
+      await page.setViewportSize({width,height:844});
+      const controls=await page.locator('.clean-topbar button').evaluateAll(elements=>elements.map(element=>{const bounds=element.getBoundingClientRect();return {name:element.getAttribute('aria-label')||element.textContent.trim(),left:bounds.left,right:bounds.right};}));
+      assert(controls.every(control=>control.left>=0&&control.right<=width),'Every conversation control must fit the viewport');
+      await H.shot(page,`${H.OUT}/live-header-${mode}-${width}.png`);
+    }
+    await page.setViewportSize({width:1440,height:1000});
+    report.checks.push({name:`live-header-controls-${mode}`,pass:true});
     await H.installToolWatch(page);const toolMark=await H.toolWatchMark(page);
     const turn=await H.turn(page,mode==='generic-frontend-backend-agent'?'What is the current time in Tokyo?':'Please say hello in one sentence.',`llm-${mode}`,{
       micDevice:slot.micSink,spkDevice:slot.spkSink,monitor:slot.spkMonitor,settle:true,
