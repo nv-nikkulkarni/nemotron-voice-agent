@@ -4,6 +4,11 @@
 // Keep the demo visual identity alongside the clearer, responsive setup layouts.
 .clean-app {
   height: 100dvh;
+}
+// <dialog>s are portaled to <body>, outside .clean-app, so they need the same
+// button, font, and focus treatment explicitly.
+:is(.clean-app, .capture-consent, .llm-dialog, .expanded-prompt-editor) {
+  font-family: var(--font-sans);
 
   .btn-primary, .btn-secondary, .btn-ghost {
     min-height: 44px;
@@ -30,6 +35,7 @@
     outline-offset: 4px;
   }
 }
+:is(.capture-consent, .llm-dialog) :is(button, input, select, textarea) { font-family: inherit; }
 
 .clean-topbar {
   flex-shrink: 0;
@@ -396,9 +402,9 @@
   &::before, &::after { content: ""; position: absolute; top: -5px; width: 8px; height: 8px; transform: rotate(45deg); border-top: 1px solid rgba(163, 230, 53, 0.24); border-left: 1px solid rgba(163, 230, 53, 0.24); background: #11181e; }
   &::before { right: 16px; } &::after { right: 60px; }
 }
-.capture-consent { width: min(560px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); padding: 30px; margin: auto; overflow: auto; color: var(--text-primary); background: radial-gradient(ellipse at 0% 0%, rgba(118, 185, 0, 0.09), transparent 70%), #11151d; border: 1px solid rgba(118, 185, 0, 0.3); border-radius: 22px; box-shadow: 0 24px 100px rgba(0, 0, 0, 0.6);
-  &::backdrop { background: rgba(4, 7, 12, 0.76); backdrop-filter: blur(8px); }
-  h2 { font-family: var(--font-grotesk); font-size: 27px; font-weight: 500; line-height: 1.2; margin-bottom: 18px; }
+.capture-consent { width: min(560px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); padding: 30px; margin: auto; overflow: auto; color: var(--text-primary); background: linear-gradient(145deg, rgba(31, 41, 32, .98), rgba(18, 21, 29, .99)); border: 1px solid rgba(180, 224, 154, .24); border-radius: 24px; box-shadow: 0 30px 110px #0009;
+  &::backdrop { background: #080e0aad; backdrop-filter: blur(8px); }
+  h2 { font-family: var(--font-grotesk); font-size: 28px; font-weight: 500; line-height: 1.2; margin-bottom: 18px; }
   > p:not(.studio-eyebrow) { font-size: 13px; line-height: 1.7; color: var(--text-secondary); }
   .capture-consent__note { font-size: 11px !important; color: var(--text-muted) !important; margin: 12px 0 22px; }
   .studio-toggle { border: 1px solid var(--border-subtle); border-radius: 12px; padding: 14px; }
@@ -476,3 +482,39 @@
   .clean-topbar { flex-wrap: wrap; }
   .clean-topbar__actions { flex-basis: 100%; justify-content: flex-end; }
 }
+
+/* ── LLM settings: sliders ───────────────────────────────────────────────── */
+.llm-field__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.llm-field__row > span { color: #e2ece1; font-size: 13px; font-weight: 500; }
+.llm-field .llm-field__number { width: 96px; padding: 6px 8px; font-size: 13px; text-align: right; }
+.llm-field__slider { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; margin: 6px 0 0; border-radius: 999px; padding: 0; border: 0; cursor: pointer;
+  background: linear-gradient(90deg, var(--nvidia-green) var(--fill, 0%), #ffffff1c var(--fill, 0%)); }
+.llm-field__slider::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #e9f7d0; border: 2px solid var(--nvidia-green); box-shadow: 0 0 12px rgba(118, 185, 0, .45); }
+.llm-field__slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #e9f7d0; border: 2px solid var(--nvidia-green); }
+.llm-field__scale { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; color: #8fa196; }
+.llm-trigger--dock { margin-left: 12px; }
+
+/* ── Conversation dock: mic + LLM settings, centered ─────────────────────── */
+.conv-live__dock { display: flex; align-items: center; justify-content: center; }
+.conv-live__dock .llm-trigger--dock { min-height: 52px; padding: 10px 20px; font-family: var(--font-grotesk); font-size: var(--text-sm); }
+
+/* ── Event log console ───────────────────────────────────────────────────── */
+.event-log { flex: 0 0 280px; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid rgba(118, 185, 0, 0.16); background: rgba(10, 11, 14, 0.55); font-family: var(--font-sans); }
+.event-log--collapsed { flex-basis: 44px; }
+.event-log__toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 14px; background: none; border: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); color: #a3d94e; font: 600 10px/1 var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; cursor: pointer; }
+.event-log--collapsed .event-log__toggle { flex-direction: column; border-bottom: 0; padding: 14px 0; }
+.event-log--collapsed .event-log__title { writing-mode: vertical-rl; }
+.event-log__count { background: rgba(118, 185, 0, 0.2); border-radius: 999px; padding: 2px 6px; font-size: 10px; }
+.event-log__body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.event-log__bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; font-size: 11px; color: var(--text-muted); border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+.event-log__bar select, .event-log__bar button { margin-left: 6px; background: rgba(255, 255, 255, 0.05); color: var(--text-primary); border: 1px solid var(--border-default); border-radius: 8px; font: inherit; padding: 2px 6px; cursor: pointer; }
+.event-log__bar > button { margin-left: 0; }
+.event-log__list { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 14px calc(var(--space-6) + 56px); font-family: var(--font-mono); font-size: 11px; line-height: 1.5; }
+.event-log__empty { color: var(--text-muted); font-family: var(--font-sans); }
+.event-log__row { display: flex; gap: 8px; margin: 0 0 6px; color: var(--text-secondary); }
+.event-log__row time { flex: none; color: #6f7f75; }
+.event-log__row--tool span { color: #a3e635; }
+.event-log__row--barge-in span { color: #fbbf24; }
+.event-log__row--agent span { color: #22d3ee; }
+.event-log__row--bot span { color: var(--text-primary); }
+@media (max-width: 900px) { .event-log { position: absolute; right: 0; top: 0; bottom: 0; z-index: 20; backdrop-filter: blur(10px); } .event-log--collapsed { background: transparent; } }

@@ -7,7 +7,7 @@
 import { useApp } from "../../context/useApp";
 
 export function PipelineInfo({ onClose }: Readonly<{ onClose: () => void }>) {
-  const { selectedExample, backendHistoryTurnLimit, selectedASR, selectedLLM, selectedTTS, selectedVoiceId, tools, selectedTools, selectedPrompt, promptOverride, prompts, backendPromptOverride, persistentPrompt, pronunciationOverrides, voiceSample, useVoiceSample, storeConsent, recordSession } = useApp();
+  const { selectedExample, backendHistoryTurnLimit, selectedASR, selectedLLM, selectedTTS, selectedVoiceId, tools, selectedTools, selectedPrompt, promptOverride, prompts, backendPromptOverride, persistentPrompt, pronunciationOverrides, voiceSample, useVoiceSample, storeConsent } = useApp();
   const slots = new Set(selectedExample?.slots ?? []);
   const activeTools = tools.filter((t) => selectedTools.includes(t.name));
   const backendPrompt = backendPromptOverride || prompts.find(prompt => prompt.role === "backend")?.content;
@@ -58,7 +58,7 @@ export function PipelineInfo({ onClose }: Readonly<{ onClose: () => void }>) {
             <p className="set-hint">{ipaSupported ? "Deployed IPA defaults plus your pronunciation fixes." : "Engine pronunciation; IPA fixes are inactive."}</p>
             {ipaSupported && Object.keys(pronunciationOverrides).length > 0 && <div className="pi-tools">{Object.entries(pronunciationOverrides).map(([word, ipa]) => <div className="pi-tool" key={word}><code>{word}</code><span>{ipa}</span></div>)}</div>}
           </section>
-          <section className="set-section"><h3 className="set-section__title">Session capture choice</h3><p className="set-hint">Quality-review capture: {storeConsent ? "Allowed" : "Declined"}. Browser download recording: {recordSession ? "Enabled" : "Disabled"}.</p></section>
+          <section className="set-section"><h3 className="set-section__title">Session capture choice</h3><p className="set-hint">Quality-review capture: {storeConsent ? "Allowed" : "Declined"}.</p></section>
         </div>
 
         <div className="page-panel__foot">

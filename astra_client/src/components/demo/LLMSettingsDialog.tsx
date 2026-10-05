@@ -67,10 +67,20 @@ export function LLMSettingsDialog({onClose}: Readonly<{onClose: () => void}>) {
     const spec = SAMPLING_FIELDS[name];
     const value = draft[role.key]?.[name] ?? role.defaults[name];
     const valid = validSamplingValue(name, value);
-    return <label key={name} className="llm-field">
-      <span>{spec.label}</span><input type="number" aria-label={`${role.label} ${spec.label}`} aria-invalid={!valid} min={spec.min} max={spec.max} step="any" inputMode={name === "max_tokens" || name === "top_k" ? "numeric" : "decimal"} value={Number.isNaN(value) ? "" : value} onChange={event => update(role.key, name, event.target.value === "" ? NaN : Number(event.target.value))} />
+    const integer = name === "max_tokens" || name === "top_k";
+    const label = `${role.label} ${spec.label}`;
+    const set = (next: number) => update(role.key, name, next);
+    // Sliders cover the valid range; the paired number box allows exact entry.
+    const sliderValue = Number.isFinite(value) ? Math.min(spec.max, Math.max(spec.min, value)) : spec.min;
+    return <div key={name} className="llm-field">
+      <div className="llm-field__row">
+        <span id={`${role.key}-${name}-label`}>{spec.label}</span>
+        <input type="number" className="llm-field__number" aria-label={`${label} value`} aria-invalid={!valid} min={spec.min} max={spec.max} step={integer ? 1 : "any"} inputMode={integer ? "numeric" : "decimal"} value={Number.isNaN(value) ? "" : value} onChange={event => set(event.target.value === "" ? NaN : Number(event.target.value))} />
+      </div>
+      <input type="range" className="llm-field__slider" aria-labelledby={`${role.key}-${name}-label`} min={spec.min} max={spec.max} step={spec.step} value={sliderValue} style={{["--fill" as string]: `${((sliderValue - spec.min) / (spec.max - spec.min)) * 100}%`}} onChange={event => set(integer ? (name === "top_k" && Number(event.target.value) === 0 ? 1 : Math.round(Number(event.target.value))) : Number((Math.round(Number(event.target.value) / spec.step) * spec.step).toFixed(6)))} />
+      <div className="llm-field__scale" aria-hidden="true"><span>{spec.min}</span><span>{spec.max}</span></div>
       <small>{valid ? spec.description : `Enter ${name === "top_k" ? "−1 or an integer from 1 to 1,000" : `a ${name === "max_tokens" ? "whole " : ""}number from ${spec.min} to ${spec.max}`}.`}</small>
-    </label>;
+    </div>;
   };
   return createPortal(<dialog ref={dialog} className="llm-dialog" aria-labelledby="llm-title" onCancel={event => {event.preventDefault(); if (!pending) onClose();}}>
     <div className="llm-dialog__head"><div><p className="studio-eyebrow">MODEL CONTROLS</p><h2 id="llm-title">LLM settings</h2><p>{app.selectedExample?.label}</p></div><button type="button" className="icon-btn" aria-label="Close LLM settings" disabled={pending} onClick={onClose}>×</button></div>

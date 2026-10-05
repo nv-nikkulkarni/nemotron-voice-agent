@@ -140,7 +140,6 @@ function AppInner() {
             onHome={() => navigate("main")}
             onSettings={() => setOverlay("settings")}
             onPipeline={() => setOverlay("pipeline")}
-            onLLM={() => setOverlay("llm")}
             onTour={() => {
               navigate("main");
               setTour("introduction");
@@ -148,7 +147,7 @@ function AppInner() {
           />
           <main className="clean-main">
             {view === "prompts" ? <PromptPage onClose={() => navigate("main")} /> : view === "voice" ? <VoicePage onClose={() => navigate("main")} /> : view === "tools" ? <ToolsPage onClose={() => navigate("main")} onLLM={() => setOverlay("llm")} /> : (
-              <><ConversationStage onLiveChange={handleLiveChange} onPrompts={() => navigate("prompts")} onTools={() => navigate("tools")} onVoice={() => navigate("voice")} /><ArchitecturePresentation /></>
+              <><ConversationStage onLiveChange={handleLiveChange} onPrompts={() => navigate("prompts")} onTools={() => navigate("tools")} onVoice={() => navigate("voice")} onLLM={() => setOverlay("llm")} /><ArchitecturePresentation /></>
             )}
           </main>
           {view === "main" && <SessionControls />}

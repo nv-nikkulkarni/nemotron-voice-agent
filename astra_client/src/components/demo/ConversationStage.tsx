@@ -12,6 +12,7 @@ import type { DeploymentOption } from "../../api";
 import { ConversationPanel } from "../content/ConversationPanel";
 import { WebcamVisionPanel } from "../WebcamVisionPanel";
 import { MicButton } from "./MicButton";
+import { EventLog } from "./EventLog";
 
 interface ExampleMeta {
   accent: string;
@@ -177,7 +178,7 @@ function StartView({ connecting, onPrompts, onTools, onVoice }: Readonly<{ conne
   );
 }
 
-function ConversationLive() {
+function ConversationLive({ onLLM }: Readonly<{ onLLM: () => void }>) {
   const { selectedExample, currentSessionId } = useApp();
   const webcam = selectedExample?.capabilities?.includes("webcam") ?? false;
   return (
@@ -195,6 +196,7 @@ function ConversationLive() {
       <div className="conv-live__main">
         <ConversationPanel />
       </div>
+      <EventLog />
       {webcam && currentSessionId && (
         <aside className="conv-live__webcam">
           <p className="conv-live__webcam-label">Webcam vision</p>
@@ -203,12 +205,13 @@ function ConversationLive() {
       )}
       <div className="conv-live__dock">
         <MicButton />
+        <button type="button" className="btn-secondary llm-trigger llm-trigger--dock" data-tour="llm" onClick={onLLM} title="LLM settings" aria-label="LLM settings"><span aria-hidden="true">☷</span> LLM settings</button>
       </div>
     </div>
   );
 }
 
-export function ConversationStage({ onLiveChange, onPrompts, onTools, onVoice }: Readonly<{ onLiveChange?: (live: boolean) => void } & SetupNavigation>) {
+export function ConversationStage({ onLiveChange, onPrompts, onTools, onVoice, onLLM }: Readonly<{ onLiveChange?: (live: boolean) => void; onLLM: () => void } & SetupNavigation>) {
   const { isConnected, isConnecting } = useConnectionState();
   const { phase } = useSessionLifecycle();
   const live = isConnected && phase === "live";
@@ -218,6 +221,6 @@ export function ConversationStage({ onLiveChange, onPrompts, onTools, onVoice }:
   }, [live, onLiveChange]);
   // Keep the live view mounted through teardown so it doesn't flash back to the
   // landing between disconnect and the thank-you/stopping overlay.
-  if (isConnected || phase === "stopping") return <ConversationLive />;
+  if (isConnected || phase === "stopping") return <ConversationLive onLLM={onLLM} />;
   return <StartView connecting={isConnecting || phase === "starting"} onPrompts={onPrompts} onTools={onTools} onVoice={onVoice} />;
 }

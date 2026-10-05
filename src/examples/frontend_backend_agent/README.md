@@ -452,8 +452,8 @@ for voice selection, preview, pronunciation fixes, and compatible reference samp
 The demo speech wrapper adjusts only aligned “Nemotron” timing; refer to the
 [pronunciation boundary](../../../docs/how-to/configure-tts.md#pronunciation-ipa).
 
-Open **LLM settings** from **Tools** before starting, or select **LLM** in the
-conversation header while connected. Generic provides independent Talker and Thinker controls
+Open **LLM settings** from **Tools** before starting, or select **LLM settings**
+beside the microphone button while connected. Generic provides independent Talker and Thinker controls
 for temperature, top-p, maximum tokens, and advanced sampling parameters.
 **Save settings** retains edits for the next session. **Apply to session** updates
 future model requests after acknowledgement; running requests keep their

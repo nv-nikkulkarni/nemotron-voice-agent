@@ -15,10 +15,6 @@ and debugging. Select **Allow and start** or **Continue without saving**.
 Closing the dialog or pressing **Escape** cancels the start. Each new session
 requires a new choice.
 
-**Keep a downloadable recording** creates an optional recording in your
-browser. It is separate from quality-review capture permission. After the
-session ends, use the recording download offered in the session-end dialog.
-
 Server recording depends on the deployment settings below. When session capture
 is enabled, an explicit decline discards the capture after the client reports
 the choice. This applies even when `SESSION_CAPTURE_REQUIRE_CONSENT=false`.

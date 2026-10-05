@@ -12,6 +12,8 @@ backend. The upstream client in `client/` has a separate build.
 - **Dual transport**: WebRTC (recommended) or WebSocket.
 - **Runtime service switching**: add or remove LLM, ASR, and TTS services without redeploying.
 - **Prompt management**: pick a built-in persona or write a custom system prompt.
+- **Event log**: a collapsible console on the right of a live conversation lists
+  tool calls, barge-ins, and turns. It keeps the latest 25, 50, or 100 events.
 - **LLM settings**: tune each model role before starting or apply sampling changes
   to future requests during a conversation.
 - **Voice studio**: choose a speech engine, preview voice cards, upload a
@@ -57,7 +59,6 @@ The dialog asks whether the NVIDIA team can save microphone and assistant
 audio, the transcript, and diagnostic logs for quality review and debugging.
 Select **Allow and start** or **Continue without saving**. Closing the dialog
 or pressing **Escape** cancels the start. Each new conversation asks again.
-**Keep a downloadable recording** is an independent browser recording option.
 
 A live session starts with a compact square `10:00` **TIME LEFT** countdown
 below the session-ID chip at the top right. It uses an absolute deadline and
@@ -146,14 +147,14 @@ Refer to
 
 ## Tune Model Responses
 
-Select **LLM** in the conversation header to open **LLM settings**, or open
+Select **LLM settings** beside the microphone button during a conversation, or open
 **LLM settings** from **Tools** before starting. Generic exposes independent **Frontend · Talker** and
 **Backend · Thinker** controls. Omni Subagents exposes **Speaker**, **Thinker**,
 **Media Analyzer**, and **Webcam** controls for the shared Nemotron Omni model.
 The controls change request parameters; they do not switch model endpoints or
 change reasoning modes.
 
-Adjust temperature, top-p, and maximum output tokens for each role. Advanced
+Drag a slider or type an exact value to adjust temperature, top-p, and maximum output tokens for each role. Advanced
 controls provide top-k, repetition penalty, presence penalty, and frequency
 penalty. Role defaults come from the backend. Top-k `1` restricts
 sampling to the leading candidate, so temperature and top-p have little effect

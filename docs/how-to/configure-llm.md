@@ -168,7 +168,7 @@ Cloud (NVCF) endpoints enable the parsers server-side. **Self-hosted NIM and vLL
 ## LLM Session Controls
 
 The Astra client exposes role-specific large language model (LLM) request
-settings. Select **LLM** in the conversation header to open **LLM settings**,
+settings. Select **LLM settings** beside the microphone button to open it,
 or select **LLM settings** from **Tools** before starting. **Audio settings** remains dedicated to your
 microphone and speaker devices.
 

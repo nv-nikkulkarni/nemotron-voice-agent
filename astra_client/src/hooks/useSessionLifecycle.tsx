@@ -271,8 +271,8 @@ export function SessionLifecycleProvider({ children }: Readonly<{ children: Reac
       recorder.isRecording, recorder.recording, recorder.download, recorder.clear, lastTeardown]);
 
   return <Ctx.Provider value={value}>{children}
-    {pendingStart && <CaptureConsentDialog onClose={() => setPendingStart(null)} onConfirm={(consent, localRecording) => {
-      app.setStoreConsent(consent); app.setRecordSession(localRecording); setPendingStart(null);
+    {pendingStart && <CaptureConsentDialog onClose={() => setPendingStart(null)} onConfirm={consent => {
+      app.setStoreConsent(consent); app.setRecordSession(false); setPendingStart(null);
       void beginSession(pendingStart);
     }} />}
   </Ctx.Provider>;

@@ -37,10 +37,62 @@ export function advanceBotAudioSession(): string {
   return activeBotAudioTrack.advance();
 }
 
+const PREBUFFER_TARGET_MS = 240;
+const PREBUFFER_MAX_WAIT_MS = 350;
+const DEFAULT_PLAYER_SAMPLE_RATE = 22050;
+
+interface PrebufferState {
+  queue: { data: ArrayBuffer | Int16Array; trackId: string }[];
+  queuedMs: number;
+  timer: ReturnType<typeof setTimeout> | null;
+  /** Estimated wall-clock time (ms) at which already-submitted audio finishes. */
+  playEndsAt: number;
+}
+
 export class TurnAwareDailyMediaManager extends DailyMediaManager {
   private readonly botAudioTrack = activeBotAudioTrack;
+  private prebuffer?: PrebufferState;
+  private readonly prebufferSampleRate: number;
+
+  constructor(...args: ConstructorParameters<typeof DailyMediaManager>) {
+    super(...args);
+    const playerSampleRate = args[6];
+    this.prebufferSampleRate = typeof playerSampleRate === "number" && playerSampleRate > 0 ? playerSampleRate : DEFAULT_PLAYER_SAMPLE_RATE;
+  }
+
+  private get state(): PrebufferState {
+    return (this.prebuffer ??= { queue: [], queuedMs: 0, timer: null, playEndsAt: 0 });
+  }
+
+  // The player starts on the first 128-sample block and tears its worklet down on
+  // any underrun, so the first TTS chunks of a turn (which arrive at or below real
+  // time) stutter. Hold the start of each utterance until a small cushion exists.
+  private playerSampleRate(): number {
+    return this.prebufferSampleRate ?? DEFAULT_PLAYER_SAMPLE_RATE;
+  }
+
+  private dropPrebuffer(): void {
+    const state = this.state;
+    if (state.timer) clearTimeout(state.timer);
+    state.timer = null;
+    state.queue = [];
+    state.queuedMs = 0;
+    state.playEndsAt = 0;
+  }
+
+  private flushPrebuffer(): void {
+    const state = this.state;
+    if (state.timer) clearTimeout(state.timer);
+    state.timer = null;
+    const pending = state.queue;
+    state.queue = [];
+    state.playEndsAt = performance.now() + state.queuedMs;
+    state.queuedMs = 0;
+    for (const { data, trackId } of pending) super.bufferBotAudio(data, trackId);
+  }
 
   override async userStartedSpeaking(): Promise<unknown> {
+    this.dropPrebuffer();
     try {
       return await super.userStartedSpeaking();
     } finally {
@@ -51,6 +103,19 @@ export class TurnAwareDailyMediaManager extends DailyMediaManager {
   }
 
   override bufferBotAudio(data: ArrayBuffer | Int16Array): Int16Array | undefined {
-    return super.bufferBotAudio(data, this.botAudioTrack.trackId);
+    const trackId = this.botAudioTrack.trackId;
+    const samples = data instanceof Int16Array ? data.length : data.byteLength / 2;
+    const durationMs = (samples / this.playerSampleRate()) * 1000;
+    const state = this.state;
+    const now = performance.now();
+    if (state.queue.length === 0 && now < state.playEndsAt) {
+      state.playEndsAt += durationMs;
+      return super.bufferBotAudio(data, trackId);
+    }
+    state.queue.push({ data, trackId });
+    state.queuedMs += durationMs;
+    if (state.queuedMs >= PREBUFFER_TARGET_MS) this.flushPrebuffer();
+    else state.timer ??= setTimeout(() => this.flushPrebuffer(), PREBUFFER_MAX_WAIT_MS);
+    return undefined;
   }
 }
