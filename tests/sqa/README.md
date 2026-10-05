@@ -95,6 +95,9 @@ artifact/control-plane identities, and failed or incomplete qualification gates.
 The [comprehensive Astra staging report](reports/COMPREHENSIVE_ASTRA_STAGING_2026-10-05.md)
 tracks the separate four-phase run, raw outcomes, speech/capture evidence, and
 qualification limits.
+The [main Astra staging UI cutover report](reports/MAIN_STAGING_UI_CUTOVER_2026-10-05.md)
+records the main staging cutover, full-browser stock-answer failure, capture
+and protection checks, retained rollback, and qualification limits.
 
 ## Comprehensive Dev Checks
 
