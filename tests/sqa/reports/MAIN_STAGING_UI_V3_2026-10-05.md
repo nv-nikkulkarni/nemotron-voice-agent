@@ -58,9 +58,14 @@ Main staging was later updated, UI-only, in these steps. The backend function an
 | --- | --- | --- | --- |
 | `dev-b5225c3-20261005-arch-button` | `b5225c3` | `sha256:44e244de40210ffd78775b3145a341a85ca4fc9b1925ebb6212dfc5972df63ae` | Bundled Generic and Omni architecture diagrams; **Show architecture** button; spoken requests open the same panel |
 | `dev-84984e5-20261005-studio-refresh` | `84984e5` | `sha256:d005f0f02611d2983858695f5414cf019d9316e81a68a202b1651776432814c3` | Backend-history text below the slider; pronunciation rows-per-page and Previous/Next paging; Voice and Prompt studio restyle; diagram fitted to its panel |
-| `dev-99b5702-20261005-studio-refresh` (serving) | `99b5702` | `sha256:4edae83fa5289476f86afdb05d4f5b353c69183f829918e122ff9fd813929859` | Tools page restyled to match; build timestamp `2026-10-05T11:06:54Z`; Argo Healthy/Synced at `b737da4ae0a8` |
+| `dev-99b5702-20261005-studio-refresh` | `99b5702` | `sha256:4edae83fa5289476f86afdb05d4f5b353c69183f829918e122ff9fd813929859` | Tools page restyled to match; build timestamp `2026-10-05T11:06:54Z`; Argo Healthy/Synced at `b737da4ae0a8` |
 
-Verified on the serving build: `architecture-image` (button and spoken request in both examples), `voice-studio`,
+| `dev-da8ee12-20261005-eventlog-tab` (serving) | `da8ee12` | `sha256:f0d9abfebeba7e67029e8bbcb2f378a5ff9915c23fad943050b29b596d0afef4` | Collapsed event log is a small tab clear of the timer and session chip; one-time "Click the latency button to expand" hint; build timestamp `2026-10-05T12:14:33Z`; Argo Healthy/Synced at `008897b6dc93` |
+
+Verified on `dev-99b5702`: `architecture-image` (button and spoken request in both examples), `voice-studio`,
 `pre-session-configuration`, and a browser probe that pages through all 214 pronunciation rules and checks the history text sits below the slider.
 The comprehensive A–D, `llm-settings`, `functional`, and `feature-effect` results above were taken on earlier builds and were not re-run on this one.
 Rollback tags: `dev-b5225c3-…`, `dev-9c89334-20261005-zeroshot-default`, and the earlier tags listed above.
+
+On `dev-da8ee12`, a browser probe confirmed the hint shows under the latency chip, disappears when the chip is clicked
+(which opens the breakdown), and the collapsed tab does not intersect the timer or session chip. The suites above were not re-run on this build.
