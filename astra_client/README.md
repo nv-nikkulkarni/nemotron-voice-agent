@@ -17,7 +17,8 @@ backend. The upstream client in `client/` has a separate build.
 - **Show architecture**: a button beside the microphone opens the architecture diagram for the
   selected example. Asking the agent to show its architecture opens the same panel.
 - **Event log**: a collapsible console on the right of a live conversation lists
-  tool calls, barge-ins, and turns. It keeps the latest 25, 50, or 100 events.
+  tool calls, barge-ins, and turns. It keeps the latest 25, 50, or 100 events. Collapsed, it shrinks to a small tab
+  below the timer. A short, self-dismissing hint points to the latency button when it first becomes clickable.
 - **LLM settings**: tune each model role before starting or apply sampling changes
   to future requests during a conversation.
 - **Voice studio**: choose a speech engine, preview voice cards, upload a

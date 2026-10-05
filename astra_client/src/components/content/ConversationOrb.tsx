@@ -60,6 +60,7 @@ export function ConversationOrb() {
   const [agentBreakdown, setAgentBreakdown] = useState<AgentStageMetricSnapshot | null>(null);
   const [agentMetricOffsets, setAgentMetricOffsets] = useState<Record<string, number>>({});
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [latencyHintGone, setLatencyHintGone] = useState(false);
   const turnOriginRef = useRef<number | null>(null);
   const clientFirstAudioRecordedRef = useRef(false);
   // Tool the model just chose to call (from the server `tool-call` message). Shown in a
@@ -182,6 +183,12 @@ export function ConversationOrb() {
   const timeline = buildAgentTimeline(agentBreakdown, agentMetricOffsets, firstAudioMs);
   const timelineMaxMs = timelineDomainMs(timeline.maxMs);
   const hasBreakdown = hasAgentBreakdown || pipelineRows.length > 0;
+  // A quiet one-time hint once the latency chip becomes clickable; it also fades by CSS.
+  useEffect(() => {
+    if (!hasBreakdown) return;
+    const timer = window.setTimeout(() => setLatencyHintGone(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, [hasBreakdown]);
 
   const renderTimelineStage = (stage: AgentTimelineStage) => {
     const left = Math.min(100, (stage.startMs / timelineMaxMs) * 100);
@@ -232,12 +239,13 @@ export function ConversationOrb() {
         data-tour="conversation-latency"
         aria-label="Conversation latency"
       >
+        <span className="conv-latency__anchor">
         <button
           type="button"
           className="conv-latency__btn"
           disabled={!hasBreakdown}
           aria-expanded={showBreakdown}
-          onClick={() => setShowBreakdown((v) => !v)}
+          onClick={() => { setLatencyHintGone(true); setShowBreakdown((v) => !v); }}
           title={hasBreakdown ? "Click for the latency breakdown" : "Time from user silence to first audible bot audio"}
         >
           <span className="conv-latency__label">
@@ -245,6 +253,10 @@ export function ConversationOrb() {
           </span>
           <span className="conv-latency__value">{firstAudioMs != null ? `${(firstAudioMs / 1000).toFixed(2)}s` : "—"}</span>
         </button>
+        {hasBreakdown && !latencyHintGone && !showBreakdown && (
+          <span className="conv-latency__hint" role="status">Click the latency button to expand</span>
+        )}
+        </span>
 
         {showBreakdown && hasBreakdown && (
           <div className="lat-breakdown" role="dialog" aria-label="Latency breakdown timeline">

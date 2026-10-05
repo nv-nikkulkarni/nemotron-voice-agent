@@ -503,9 +503,10 @@
 /* ── Event log console ───────────────────────────────────────────────────── */
 // Clear the fixed session-ID chip and TIME LEFT timer that overlay the top right.
 .event-log { flex: 0 0 280px; min-height: 0; display: flex; flex-direction: column; padding-top: 120px; border-left: 1px solid rgba(118, 185, 0, 0.16); background: rgba(10, 11, 14, 0.55); font-family: var(--font-sans); }
-.event-log--collapsed { flex-basis: 44px; }
+// Collapsed: no reserved column. A small tab sits below the session chip and timer.
+.event-log--collapsed { flex: 0 0 0; padding-top: 0; border-left: 0; background: transparent; position: relative; overflow: visible; }
 .event-log__toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 14px; background: none; border: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); color: #a3d94e; font: 600 10px/1 var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; cursor: pointer; }
-.event-log--collapsed .event-log__toggle { flex-direction: column; border-bottom: 0; padding: 14px 0; }
+.event-log--collapsed .event-log__toggle { position: absolute; top: 210px; right: 0; z-index: 25; width: auto; flex-direction: column; gap: 10px; padding: 12px 8px; border: 1px solid rgba(118, 185, 0, 0.28); border-right: 0; border-radius: 12px 0 0 12px; background: rgba(10, 11, 14, 0.88); backdrop-filter: blur(8px); }
 .event-log--collapsed .event-log__title { writing-mode: vertical-rl; }
 .event-log__count { background: rgba(118, 185, 0, 0.2); border-radius: 999px; padding: 2px 6px; font-size: 10px; }
 .event-log__body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -567,3 +568,12 @@
 .prompt-studio-card--persistent { --studio-accent: #a3e635; --studio-accent-2: #22d3ee; }
 .prompt-studio-card__head h3 { font-size: 19px; }
 .prompt-studio-card__expand { font-size: 12px; }
+
+/* ── Latency hint bubble ─────────────────────────────────────────────────── */
+.conv-latency__anchor { position: relative; display: inline-block; }
+.conv-latency__hint { position: absolute; z-index: 15; top: calc(100% + 10px); left: 50%; transform: translateX(-50%); width: max-content; max-width: 260px; padding: 6px 12px; border-radius: 999px; pointer-events: none;
+  font-family: var(--font-sans); font-size: 11px; color: var(--text-secondary); background: rgba(10, 11, 14, 0.86); border: 1px solid rgba(163, 230, 53, 0.28); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  animation: latency-hint 8s ease both;
+  &::before { content: ""; position: absolute; top: -5px; left: 50%; width: 8px; height: 8px; transform: translateX(-50%) rotate(45deg); background: rgba(10, 11, 14, 0.95); border-top: 1px solid rgba(163, 230, 53, 0.28); border-left: 1px solid rgba(163, 230, 53, 0.28); } }
+@keyframes latency-hint { 0% { opacity: 0; transform: translate(-50%, -4px); } 8%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .conv-latency__hint { animation: none; } }
