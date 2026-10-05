@@ -530,9 +530,10 @@
 .pronunciation-pager__nav { display: flex; align-items: center; gap: 10px; .btn-ghost { padding: 6px 12px; font-size: 12px; border: 1px solid var(--border-default); border-radius: 999px; } .btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; } }
 
 /* ── Voice and Prompt studios: accent, type, and icon refresh ────────────── */
+.agent-studio--tools { --studio-accent: #22d3ee; --studio-accent-2: #a3e635; --studio-accent-soft: rgba(34, 211, 238, 0.1); }
 .agent-studio--voice { --studio-accent: #a78bfa; --studio-accent-2: #f0abfc; --studio-accent-soft: rgba(167, 139, 250, 0.12); }
 .prompt-studio { --studio-accent: #a3e635; --studio-accent-2: #22d3ee; --studio-accent-soft: rgba(163, 230, 53, 0.1); }
-:is(.agent-studio--voice, .prompt-studio) {
+:is(.agent-studio--voice, .agent-studio--tools, .prompt-studio) {
   .studio-eyebrow { display: inline-flex; align-items: center; gap: 8px; color: var(--studio-accent); letter-spacing: 0.22em; font-size: 11px; }
   .studio-eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--studio-accent); box-shadow: 0 0 10px var(--studio-accent); }
   h2 { font-family: var(--font-display); font-size: clamp(24px, 2.8vw, 34px); font-weight: 600; letter-spacing: -0.03em; line-height: 1.18;
@@ -540,12 +541,12 @@
   .agent-studio__lead, .prompt-studio__lead { font-size: 14px; color: var(--text-secondary); }
   h3 { font-family: var(--font-grotesk); font-weight: 600; letter-spacing: -0.015em; }
 }
-.agent-studio--voice .studio-section, .prompt-studio-card {
+.agent-studio--voice .studio-section, .agent-studio--tools .studio-section, .prompt-studio-card {
   position: relative; transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
   &::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; border-radius: 20px 20px 0 0; background: linear-gradient(90deg, var(--studio-accent), var(--studio-accent-2), transparent 75%); opacity: 0.75; }
   &:hover { border-color: color-mix(in srgb, var(--studio-accent) 45%, transparent); box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28), 0 0 28px var(--studio-accent-soft); }
 }
-.agent-studio--voice .studio-section__number, .prompt-studio-card__number {
+.agent-studio--voice .studio-section__number, .agent-studio--tools .studio-section__number, .prompt-studio-card__number {
   width: 42px; height: 42px; font-family: var(--font-grotesk); font-size: 20px; line-height: 1; color: var(--studio-accent);
   border-color: color-mix(in srgb, var(--studio-accent) 40%, transparent);
   background: linear-gradient(135deg, var(--studio-accent-soft), transparent);
