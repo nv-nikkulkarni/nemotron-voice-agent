@@ -18,7 +18,7 @@ export function VoicePage({ onClose }: Readonly<{ onClose: () => void }>) {
     <p className="agent-studio__lead">Choose a voice, create a character, and fine-tune pronunciation. Listen before your next conversation.</p>
     {locked && <p role="status" className="set-hint">Voice configuration is locked during a conversation.</p>}
     <section className="studio-section" aria-labelledby="speech-engine-heading">
-      <div className="studio-section__head"><span className="studio-section__number" aria-hidden="true">01</span><div><h3 id="speech-engine-heading">Speech engine</h3><p>Choose how your agent creates speech.</p></div></div>
+      <div className="studio-section__head"><span className="studio-section__number" aria-hidden="true">〰</span><div><h3 id="speech-engine-heading">Speech engine</h3><p>Choose how your agent creates speech.</p></div></div>
       {app.ttsLoading && <p role="status">Loading speech engines…</p>}
       <fieldset className="speech-engines" disabled={locked || busy || app.ttsLoading}>
         <legend className="sr-only">Speech engine</legend>
@@ -32,7 +32,7 @@ export function VoicePage({ onClose }: Readonly<{ onClose: () => void }>) {
       {!app.ttsLoading && !app.ttsServices.length && <p className="set-hint">This example has no configurable speech engine.</p>}
     </section>
     {!!app.ttsServices.length && <section className="studio-section" aria-labelledby="speaking-voice-heading">
-      <div className="studio-section__head"><span className="studio-section__number" aria-hidden="true">02</span><div><h3 id="speaking-voice-heading">Speaking voice</h3><p>Explore presets or bring your own character.</p></div></div>
+      <div className="studio-section__head"><span className="studio-section__number" aria-hidden="true">♪</span><div><h3 id="speaking-voice-heading">Speaking voice</h3><p>Explore presets or bring your own character.</p></div></div>
       <VoiceStudio key={app.selectedTTSId} onBusyChange={setBusy} />
     </section>}
     {!!app.ttsServices.length && <PronunciationEditor busy={busy} />}

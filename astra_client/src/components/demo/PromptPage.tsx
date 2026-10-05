@@ -28,7 +28,7 @@ export function PromptPage({ onClose }: Readonly<{ onClose: () => void }>) {
       {app.promptsLoading && <p role="status" className="set-hint">Loading system prompt defaults…</p>}
       <div className="prompt-studio__grid">
         <section className="prompt-studio-card" aria-label={omni ? "Speaker instructions" : "Frontend instructions"}>
-          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">01</span><div><h3>{omni ? "Speaker" : "The conversational voice"}</h3><p>{omni ? "Understand speech, coordinate workers, and shape spoken replies." : "Set the tone, personality, and spoken responses."}</p></div>
+          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">❝</span><div><h3>{omni ? "Speaker" : "The conversational voice"}</h3><p>{omni ? "Understand speech, coordinate workers, and shape spoken replies." : "Set the tone, personality, and spoken responses."}</p></div>
             <button type="button" className="btn-secondary prompt-studio-card__expand" disabled={active} aria-label={`Expand ${frontendName} editor`} onClick={() => setExpanded("frontend")}>Expand editor <span aria-hidden="true">↗</span></button>
           </div>
           <label className="set-field"><span id="frontend-prompt-label" className="set-field__label">{frontendLabel}</span>
@@ -38,7 +38,7 @@ export function PromptPage({ onClose }: Readonly<{ onClose: () => void }>) {
           <button disabled={active} className="btn-ghost" onClick={() => app.setPromptOverride("")}>Restore {frontendName.toLowerCase()} default</button>
         </section>
         {backend && <section className="prompt-studio-card" aria-label={omni ? "Thinker instructions" : "Backend instructions"}>
-          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">02</span><div><h3>{omni ? "Thinker" : "The planning brain"}</h3><p>{omni ? "Guide deliberate reasoning when a difficult turn is handed off." : "Guide reasoning, decisions, and tool use."}</p></div>
+          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">◈</span><div><h3>{omni ? "Thinker" : "The planning brain"}</h3><p>{omni ? "Guide deliberate reasoning when a difficult turn is handed off." : "Guide reasoning, decisions, and tool use."}</p></div>
             <button type="button" className="btn-secondary prompt-studio-card__expand" disabled={active} aria-label={`Expand ${backendName} editor`} onClick={() => setExpanded("backend")}>Expand editor <span aria-hidden="true">↗</span></button>
           </div>
           <label className="set-field"><span id="backend-prompt-label" className="set-field__label">{backendLabel}</span>
@@ -48,7 +48,7 @@ export function PromptPage({ onClose }: Readonly<{ onClose: () => void }>) {
           <button disabled={active} className="btn-ghost" onClick={() => app.setBackendPromptOverride("")}>Restore {backendName.toLowerCase()} default</button>
         </section>}
         <section className="prompt-studio-card prompt-studio-card--persistent" aria-label="Persistent instructions">
-          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">+</span><div><h3>Your standing instructions</h3><p>Keep your preferences across prompt edits and demos.</p></div><span className="prompt-studio-card__badge">Always appended</span></div>
+          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">✚</span><div><h3>Your standing instructions</h3><p>Keep your preferences across prompt edits and demos.</p></div><span className="prompt-studio-card__badge">Always appended</span></div>
           <label className="set-field"><span id="persistent-prompt-label" className="set-field__label">{omni ? "Persistent instructions · appended to Speaker and Thinker prompts" : "Persistent instructions · appended to both prompts"}</span>
             <textarea disabled={active} className="set-textarea" rows={5} maxLength={32000} aria-labelledby="persistent-prompt-label" value={app.persistentPrompt}
               placeholder="Your demo persona, tone, or standing preferences"

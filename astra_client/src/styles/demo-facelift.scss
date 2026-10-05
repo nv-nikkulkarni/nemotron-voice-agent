@@ -375,11 +375,14 @@
   input { margin-top: 3px; accent-color: #a3e635; }
   small { display: block; margin-top: 5px; font-size: 11px; line-height: 1.6; color: var(--text-muted); }
 }
-.backend-history-control { flex-wrap: wrap; align-items: center;
-  > span { flex: 1 1 260px; }
-  input[type="range"] { flex: 1 1 180px; width: 100%; max-width: 320px; min-height: 28px; cursor: pointer; }
+.backend-history-control { display: flex; flex-direction: column; gap: 10px; max-width: 560px;
+  input[type="range"] { width: 100%; min-height: 28px; cursor: pointer; accent-color: #a3e635; }
   input:disabled { cursor: not-allowed; opacity: 0.6; }
+  small { font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
+  .set-hint { margin: 0; }
 }
+.backend-history-control__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-family: var(--font-grotesk); font-size: 15px; font-weight: 500; }
+.backend-history-control__value { font-family: var(--font-mono); font-size: 12px; color: #a3e635; background: rgba(163, 230, 53, 0.08); border: 1px solid rgba(163, 230, 53, 0.25); border-radius: 999px; padding: 3px 12px; }
 .pronunciation-form { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) auto; align-items: end; gap: 12px; margin: 22px 0 16px; }
 .pronunciation-form__ipa, .pronunciation-rule__ipa { font-family: var(--font-mono); }
 .pronunciation-search { margin-top: 22px; max-width: 540px; }
@@ -518,3 +521,48 @@
 .event-log__row--agent span { color: #22d3ee; }
 .event-log__row--bot span { color: var(--text-primary); }
 @media (max-width: 900px) { .event-log { position: absolute; right: 0; top: 0; bottom: 0; z-index: 20; backdrop-filter: blur(10px); } .event-log--collapsed { background: transparent; } }
+
+/* ── Pronunciation list pager ────────────────────────────────────────────── */
+.pronunciation-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; margin: 4px 0 8px; font-size: 12px; color: var(--text-secondary); }
+.pronunciation-pager__size { display: flex; align-items: center; gap: 8px; }
+.pronunciation-pager select { background: rgba(255, 255, 255, 0.05); color: var(--text-primary); border: 1px solid var(--border-default); border-radius: 8px; font: inherit; padding: 4px 8px; cursor: pointer; }
+.pronunciation-pager__range { font-family: var(--font-mono); color: #c4b5fd; }
+.pronunciation-pager__nav { display: flex; align-items: center; gap: 10px; .btn-ghost { padding: 6px 12px; font-size: 12px; border: 1px solid var(--border-default); border-radius: 999px; } .btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; } }
+
+/* ── Voice and Prompt studios: accent, type, and icon refresh ────────────── */
+.agent-studio--voice { --studio-accent: #a78bfa; --studio-accent-2: #f0abfc; --studio-accent-soft: rgba(167, 139, 250, 0.12); }
+.prompt-studio { --studio-accent: #a3e635; --studio-accent-2: #22d3ee; --studio-accent-soft: rgba(163, 230, 53, 0.1); }
+:is(.agent-studio--voice, .prompt-studio) {
+  .studio-eyebrow { display: inline-flex; align-items: center; gap: 8px; color: var(--studio-accent); letter-spacing: 0.22em; font-size: 11px; }
+  .studio-eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--studio-accent); box-shadow: 0 0 10px var(--studio-accent); }
+  h2 { font-family: var(--font-display); font-size: clamp(24px, 2.8vw, 34px); font-weight: 600; letter-spacing: -0.03em; line-height: 1.18;
+    background: linear-gradient(100deg, #ffffff 15%, var(--studio-accent-2) 85%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .agent-studio__lead, .prompt-studio__lead { font-size: 14px; color: var(--text-secondary); }
+  h3 { font-family: var(--font-grotesk); font-weight: 600; letter-spacing: -0.015em; }
+}
+.agent-studio--voice .studio-section, .prompt-studio-card {
+  position: relative; transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+  &::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; border-radius: 20px 20px 0 0; background: linear-gradient(90deg, var(--studio-accent), var(--studio-accent-2), transparent 75%); opacity: 0.75; }
+  &:hover { border-color: color-mix(in srgb, var(--studio-accent) 45%, transparent); box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28), 0 0 28px var(--studio-accent-soft); }
+}
+.agent-studio--voice .studio-section__number, .prompt-studio-card__number {
+  width: 42px; height: 42px; font-family: var(--font-grotesk); font-size: 20px; line-height: 1; color: var(--studio-accent);
+  border-color: color-mix(in srgb, var(--studio-accent) 40%, transparent);
+  background: linear-gradient(135deg, var(--studio-accent-soft), transparent);
+  box-shadow: 0 0 16px var(--studio-accent-soft);
+}
+.speech-engine { &--selected { background: linear-gradient(120deg, rgba(139, 92, 246, 0.16), rgba(240, 171, 252, 0.05)); box-shadow: 0 0 28px rgba(139, 92, 246, 0.18); }
+  &:hover { transform: translateY(-2px); } }
+.speech-engine__symbol { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: rgba(167, 139, 250, 0.1); font-size: 22px; flex-shrink: 0; }
+.speech-engine__state { font-weight: 600; letter-spacing: 0.04em; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(167, 139, 250, 0.3); }
+.speech-engine--selected .speech-engine__state { background: rgba(167, 139, 250, 0.18); color: #ede9fe; }
+.pronunciation-rule { transition: background 150ms ease; &:nth-child(even) { background: rgba(255, 255, 255, 0.02); } &:hover { background: rgba(167, 139, 250, 0.08); } }
+.pronunciation-rule strong { font-family: var(--font-grotesk); font-size: 14px; }
+.pronunciation-rule__ipa { display: inline-block; flex: 1; font-size: 15px; letter-spacing: 0.02em; }
+.pronunciation-rule--custom small { color: #c4b5fd; }
+.prompt-studio .set-textarea { font-family: var(--font-mono); font-size: 12px; line-height: 1.75; background: #0b1215; transition: border-color 160ms ease, box-shadow 160ms ease;
+  &:focus { outline: none; border-color: var(--studio-accent); box-shadow: 0 0 0 3px var(--studio-accent-soft); } }
+.prompt-studio-card:nth-child(2):not(.prompt-studio-card--persistent) { --studio-accent: #22d3ee; --studio-accent-2: #a78bfa; --studio-accent-soft: rgba(34, 211, 238, 0.1); }
+.prompt-studio-card--persistent { --studio-accent: #a3e635; --studio-accent-2: #22d3ee; }
+.prompt-studio-card__head h3 { font-size: 19px; }
+.prompt-studio-card__expand { font-size: 12px; }

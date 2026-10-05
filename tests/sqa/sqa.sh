@@ -38,6 +38,8 @@ declare -A CMD=(
   [voice-studio]="env SQA_LIVE=true node voice-studio.mjs"
   [demo-feedback]="node demo-feedback.mjs"
   [feature-effect]="node feature_effect.mjs"
+  [slider-effect]="node slider_effect.mjs"
+  [architecture-image]="node architecture_image.mjs"
   [converse]="node converse.mjs ${1:-both}"
   [comprehensive]="node comprehensive.mjs ${1:-all}"
   [captured-sessions]="node captured_session_regressions.mjs"

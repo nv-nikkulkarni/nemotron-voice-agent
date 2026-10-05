@@ -28,10 +28,12 @@ export function ToolsPage({ onClose, onLLM }: Readonly<{ onClose: () => void; on
     </section>
     {generic && <section className="studio-section">
       <div className="studio-section__head"><span className="studio-section__number" aria-hidden="true">03</span><div><h3>Conversation context</h3><p>Give the backend recent exchanges to understand follow-up requests.</p></div></div>
-      <label className="studio-toggle backend-history-control"><span>Backend history<small>{app.backendHistoryTurnLimit} user {app.backendHistoryTurnLimit === 1 ? "turn" : "turns"}, including the current request and associated replies. Applies to your next conversation.</small></span>
+      <div className="backend-history-control">
+        <div className="backend-history-control__row"><span id="backend-history-label">Backend history</span><output className="backend-history-control__value" aria-live="polite">{app.backendHistoryTurnLimit} {app.backendHistoryTurnLimit === 1 ? "turn" : "turns"}</output></div>
         <input type="range" aria-label="Backend history turns" min={1} max={app.selectedExample?.backendHistory?.maxTurnLimit ?? 20} step={1} disabled={locked || !app.selectedExample?.backendHistory} value={app.backendHistoryTurnLimit} onChange={event => app.setBackendHistoryTurnLimit(Number(event.target.value))} />
-      </label>
-      <p className="set-hint">Only this session’s conversation is shared. Long histories use a bounded size budget.</p>
+        <small>{app.backendHistoryTurnLimit} user {app.backendHistoryTurnLimit === 1 ? "turn" : "turns"}, including the current request and associated replies. Applies to your next conversation.</small>
+        <p className="set-hint">Only this session’s conversation is shared. Long histories use a bounded size budget.</p>
+      </div>
     </section>}
   </section>;
 }

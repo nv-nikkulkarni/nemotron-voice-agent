@@ -1,5 +1,5 @@
 
 .prompt-studio { width: min(1100px, 100%); margin: 0 auto; padding: 24px; height: 100%; overflow-y: auto; }
 .prompt-studio .set-textarea { width: 100%; min-height: 130px; }
-.architecture-presentation { position: absolute; z-index: 30; inset: 10% 8%; padding: 20px; background: #111820; border: 1px solid #43556b; border-radius: 18px; overflow: auto; }
-.architecture-presentation img { width: 100%; }
+.architecture-presentation { position: absolute; z-index: 30; inset: 10% 8% 14%; padding: 20px; background: #111820; border: 1px solid #43556b; border-radius: 18px; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.architecture-presentation img { width: 100%; flex: 1 1 auto; min-height: 0; object-fit: contain; }

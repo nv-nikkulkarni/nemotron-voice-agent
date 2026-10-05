@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 import { useRef, useState, type FormEvent } from "react";
+
+const PAGE_SIZES = [8, 16, 32, 64] as const;
 import { usePronunciationDefaults } from "../../api";
 import { useApp } from "../../context/useApp";
 import { useConnectionState } from "../../hooks/useConnectionState";
@@ -12,6 +14,8 @@ export function PronunciationEditor({ busy }: Readonly<{ busy: boolean }>) {
   const [word, setWord] = useState("");
   const [ipa, setIpa] = useState("");
   const [search, setSearch] = useState("");
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
+  const [page, setPage] = useState(0);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const ipaInput = useRef<HTMLInputElement>(null);
@@ -28,7 +32,10 @@ export function PronunciationEditor({ busy }: Readonly<{ busy: boolean }>) {
     const priority = (key: string) => key === "Nemotron" ? 0 : customKey(key) ? 1 : 2;
     return priority(left)-priority(right) || left.localeCompare(right);
   }).filter(([key,value]) => `${key} ${value}`.toLowerCase().includes(search.trim().toLowerCase()));
-  const visible = search.trim() ? entries : entries.slice(0,8);
+  const pageCount = Math.max(1, Math.ceil(entries.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const visible = entries.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const firstShown = entries.length ? currentPage * pageSize + 1 : 0;
   const save = (event: FormEvent) => {
     event.preventDefault(); setError(""); setMessage("");
     const grapheme = word.trim();
@@ -49,7 +56,7 @@ export function PronunciationEditor({ busy }: Readonly<{ busy: boolean }>) {
     setMessage(`Restored pronunciation for ${key}.`);setError("");
   };
   return <section className="studio-section pronunciation-studio" aria-labelledby="pronunciation-heading">
-    <div className="studio-section__head"><span className="studio-section__number" aria-hidden="true">03</span><div><h3 id="pronunciation-heading">Pronunciation fixes</h3><p>Set the sounds for names and words using the International Phonetic Alphabet (IPA).</p></div></div>
+    <div className="studio-section__head"><span className="studio-section__number" aria-hidden="true">ɑ</span><div><h3 id="pronunciation-heading">Pronunciation fixes</h3><p>Set the sounds for names and words using the International Phonetic Alphabet (IPA).</p></div></div>
     <p className="set-hint">Your rules save in this browser for this assistant and apply to voice previews and new conversations. Removing a custom rule restores the deployed default.</p>
     {!supported && <p role="status" className="set-hint">IPA rules require a Magpie engine. Your saved rules remain available when you switch back.</p>}
     {isLoading && <p role="status">Loading pronunciation defaults…</p>}
@@ -62,7 +69,7 @@ export function PronunciationEditor({ busy }: Readonly<{ busy: boolean }>) {
     {error && <p role="alert" className="ex-config__error">{error}</p>}
     {message && <p role="status" className="set-hint">{message}</p>}
     {!!Object.keys(merged).length && <>
-      <label className="set-field pronunciation-search"><span className="set-field__label">Find a pronunciation</span><input type="search" className="set-select" value={search} placeholder="Search deployed defaults and your fixes" onChange={event=>setSearch(event.target.value)} /></label>
+      <label className="set-field pronunciation-search"><span className="set-field__label">Find a pronunciation</span><input type="search" className="set-select" value={search} placeholder="Search deployed defaults and your fixes" onChange={event=>{setSearch(event.target.value);setPage(0);}} /></label>
       <div className="pronunciation-list" role="list" aria-label="Pronunciation rules">
         {visible.map(([key,value])=><div className={`pronunciation-rule ${customKey(key) ? "pronunciation-rule--custom" : ""}`} key={key} role="listitem">
           <div><strong>{key}</strong><small>{customKey(key) ? "Your fix" : "Deployed default"}</small></div><span className="pronunciation-rule__ipa">{value}</span>
@@ -71,7 +78,19 @@ export function PronunciationEditor({ busy }: Readonly<{ busy: boolean }>) {
         </div>)}
         {!visible.length && <p role="status" className="set-hint">No matching pronunciation rules.</p>}
       </div>
-      <p className="set-hint">Showing {visible.length} of {entries.length} matching rules. {search.trim() ? "" : "Search to find more deployed defaults."} {Object.keys(overrides).length} / 50 custom fixes.</p>
+      <div className="pronunciation-pager" role="group" aria-label="Pronunciation list pages">
+        <label className="pronunciation-pager__size">Rows per page
+          <select value={pageSize} onChange={event=>{setPageSize(Number(event.target.value));setPage(0);}}>
+            {PAGE_SIZES.map(size=><option key={size} value={size}>{size}</option>)}
+          </select></label>
+        <span className="pronunciation-pager__range" role="status">{firstShown}–{firstShown + visible.length - (visible.length ? 1 : 0)} of {entries.length}</span>
+        <div className="pronunciation-pager__nav">
+          <button type="button" className="btn-ghost" disabled={currentPage === 0} onClick={()=>setPage(currentPage-1)}>‹ Previous</button>
+          <span>Page {currentPage + 1} of {pageCount}</span>
+          <button type="button" className="btn-ghost" disabled={currentPage >= pageCount - 1} onClick={()=>setPage(currentPage+1)}>Next ›</button>
+        </div>
+      </div>
+      <p className="set-hint">{Object.keys(overrides).length} / 50 custom fixes. Use the page controls or search to see every deployed default and your fixes.</p>
     </>}
   </section>;
 }

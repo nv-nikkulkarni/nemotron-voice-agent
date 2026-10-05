@@ -12,6 +12,8 @@ backend. The upstream client in `client/` has a separate build.
 - **Dual transport**: WebRTC (recommended) or WebSocket.
 - **Runtime service switching**: add or remove LLM, ASR, and TTS services without redeploying.
 - **Prompt management**: pick a built-in persona or write a custom system prompt.
+- **Pronunciation list**: browse every deployed default and your own fixes with a rows-per-page
+  selector (8, 16, 32, or 64), Previous/Next paging, and search.
 - **Show architecture**: a button beside the microphone opens the architecture diagram for the
   selected example. Asking the agent to show its architecture opens the same panel.
 - **Event log**: a collapsible console on the right of a live conversation lists
