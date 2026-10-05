@@ -204,7 +204,7 @@ request interface does not support IPA dictionaries. Refer to
 Prompt and sample storage is specific to the browser profile and origin.
 The Generic Frontend/Backend Agent uses the browser IANA timezone for local
 clock requests. Ask to show the architecture in either curated example to
-display its repository-owned SVG alongside the conversation.
+display its architecture diagram alongside the conversation.
 
 ## Inspect Frontend/Backend Latency
 
@@ -334,7 +334,7 @@ The client reads its configuration from the backend (`src/server.py`) and starts
 | `POST /api/session-capture` | Session-end capture decision and consented transcript |
 | `/api/architecture/{generic,omni}.svg` | Repository-owned architecture images |
 
-The Generic architecture presentation displays the UI-bundled `public/architecture-generic.png` (the Frontend / Backend Agent diagram). The UI maps the backend's `/api/architecture/generic.svg` reference to it; the Omni diagram is still served by the backend.
+The architecture presentation displays UI-bundled images: `public/architecture-generic.png` (the Frontend / Backend Agent diagram) and `public/architecture-omni.png` (the Omni Subagents diagram). The UI maps the backend's `/api/architecture/{generic,omni}.svg` references to them.
 | `/api/ice-servers` | STUN/TURN configuration for WebRTC |
 | `/api/webcam-config` | Webcam capture defaults for multimodal examples |
 | `/api/start` | Start a pipeline session |

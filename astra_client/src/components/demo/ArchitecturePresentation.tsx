@@ -4,8 +4,11 @@ import { RTVIEvent } from "@pipecat-ai/client-js";
 import { useRTVIClientEvent } from "@pipecat-ai/client-react";
 import { useApp } from "../../context/useApp";
 
-// The Generic design diagram ships with the UI; the backend still names it generic.svg.
-const BUNDLED_IMAGES: Record<string, string> = { "/api/architecture/generic.svg": "/architecture-generic.png" };
+// The design diagrams ship with the UI; the backend still names them generic.svg and omni.svg.
+const BUNDLED_IMAGES: Record<string, string> = {
+  "/api/architecture/generic.svg": "/architecture-generic.png",
+  "/api/architecture/omni.svg": "/architecture-omni.png",
+};
 
 export function ArchitecturePresentation() {
   const { currentSessionId } = useApp();
