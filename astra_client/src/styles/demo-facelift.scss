@@ -492,10 +492,9 @@
 .llm-field__slider::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #e9f7d0; border: 2px solid var(--nvidia-green); box-shadow: 0 0 12px rgba(118, 185, 0, .45); }
 .llm-field__slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #e9f7d0; border: 2px solid var(--nvidia-green); }
 .llm-field__scale { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; color: #8fa196; }
-.llm-trigger--dock { margin-left: 12px; }
 
 /* ── Conversation dock: mic + LLM settings, centered ─────────────────────── */
-.conv-live__dock { display: flex; align-items: center; justify-content: center; }
+.conv-live__dock { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; width: max-content; max-width: calc(100vw - 24px); }
 .conv-live__dock .llm-trigger--dock { min-height: 52px; padding: 10px 20px; font-family: var(--font-grotesk); font-size: var(--text-sm); }
 
 /* ── Event log console ───────────────────────────────────────────────────── */

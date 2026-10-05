@@ -13,6 +13,7 @@ import { ConversationPanel } from "../content/ConversationPanel";
 import { WebcamVisionPanel } from "../WebcamVisionPanel";
 import { MicButton } from "./MicButton";
 import { EventLog } from "./EventLog";
+import { architectureImageFor, requestArchitecture } from "../../demo/architecture";
 
 interface ExampleMeta {
   accent: string;
@@ -206,6 +207,7 @@ function ConversationLive({ onLLM }: Readonly<{ onLLM: () => void }>) {
       <div className="conv-live__dock">
         <MicButton />
         <button type="button" className="btn-secondary llm-trigger llm-trigger--dock" data-tour="llm" onClick={onLLM} title="LLM settings" aria-label="LLM settings"><span aria-hidden="true">☷</span> LLM settings</button>
+        <button type="button" className="btn-secondary llm-trigger llm-trigger--dock" data-tour="architecture" onClick={() => requestArchitecture(architectureImageFor(selectedExample?.key))} title="Show the architecture diagram" aria-label="Show architecture"><span aria-hidden="true">◇</span> Show architecture</button>
       </div>
     </div>
   );
