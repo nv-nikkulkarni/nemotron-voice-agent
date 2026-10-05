@@ -114,7 +114,6 @@ async function finish(rep) {
 try {
   await page.goto(H.BASE);
   await H.selectExample(page, { consent: true });
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByRole("button", { name: "Prompts", exact: true }).click();
   const editor = page.locator(".prompt-studio textarea");
   await editor.nth(1).waitFor({ state: "visible" });
@@ -130,7 +129,8 @@ try {
   assert.equal(await editor.nth(2).inputValue(), "Use calm, friendly language for this demo.");
   await H.shot(page, `${H.OUT}/prompts.png`);
   await page.getByRole("button", { name: "Back to setup" }).click();
-  await H.selectExample(page, { consent: true });
+  // Zero-shot is the demo default; pin the multilingual engine so the Aria voice is offered.
+  await H.selectExample(page, { consent: true, tts: "magpie" });
   await page.getByRole("button",{name:"Voice",exact:true}).click();
   await voicePreview();
   await page.locator('input[name="tts-voice"][value="Magpie-Multilingual.EN-US.Aria"]').check();
