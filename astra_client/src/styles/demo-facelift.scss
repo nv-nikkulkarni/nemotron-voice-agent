@@ -499,7 +499,8 @@
 .conv-live__dock .llm-trigger--dock { min-height: 52px; padding: 10px 20px; font-family: var(--font-grotesk); font-size: var(--text-sm); }
 
 /* ── Event log console ───────────────────────────────────────────────────── */
-.event-log { flex: 0 0 280px; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid rgba(118, 185, 0, 0.16); background: rgba(10, 11, 14, 0.55); font-family: var(--font-sans); }
+// Clear the fixed session-ID chip and TIME LEFT timer that overlay the top right.
+.event-log { flex: 0 0 280px; min-height: 0; display: flex; flex-direction: column; padding-top: 120px; border-left: 1px solid rgba(118, 185, 0, 0.16); background: rgba(10, 11, 14, 0.55); font-family: var(--font-sans); }
 .event-log--collapsed { flex-basis: 44px; }
 .event-log__toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 14px; background: none; border: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); color: #a3d94e; font: 600 10px/1 var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; cursor: pointer; }
 .event-log--collapsed .event-log__toggle { flex-direction: column; border-bottom: 0; padding: 14px 0; }
