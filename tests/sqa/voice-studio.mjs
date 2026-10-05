@@ -73,7 +73,7 @@ try {
     const dialog=page.getByRole('dialog',{name:'Help improve the conversation?',exact:true});await dialog.waitFor();
     assert(await dialog.getByRole('button',{name:'Continue without saving',exact:true}).isVisible());
     assert(await dialog.getByRole('button',{name:'Allow and start',exact:true}).isVisible());
-    assert(!(await dialog.getByRole('checkbox',{name:/Keep a downloadable recording/}).isChecked()));
+    assert.equal(await dialog.getByRole('checkbox').count(),0,'Consent offers no browser-recording option');
     const bounds=await dialog.boundingBox();assert(bounds.x>=0&&bounds.x+bounds.width<=width+1);await fit(page,`consent-${width}`);
     await page.screenshot({path:`${out}/consent-${width}.png`});
     await page.keyboard.press('Escape');await dialog.waitFor({state:'detached'});

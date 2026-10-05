@@ -105,6 +105,14 @@ function getDefaultServiceId(selectedExample: DeploymentOption | undefined, slot
   return entry && "id" in entry && typeof entry.id === "string" ? entry.id : "";
 }
 
+// The demo prefers Magpie Zero-shot for speech whenever the example offers it; an
+// explicit user choice still wins, and examples without it keep the registry default.
+const PREFERRED_TTS_SUFFIX = "magpie-zeroshot-tts";
+function getPreferredTTSId(selectedExample: DeploymentOption | undefined, catalog: { id: string }[]): string {
+  const zeroShot = catalog.find((service) => service.id === PREFERRED_TTS_SUFFIX || service.id.endsWith(`:${PREFERRED_TTS_SUFFIX}`));
+  return zeroShot?.id ?? getDefaultServiceId(selectedExample, "tts");
+}
+
 function getDefaultPromptKey(selectedExample: DeploymentOption | undefined): string {
   const entry = selectedExample?.defaults?.prompt?.[0];
   return entry && "key" in entry && typeof entry.key === "string" ? entry.key : "";
@@ -515,7 +523,7 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
     loading: ttsLoading,
     customStorageKey: TTS_STORAGE,
     selectionStorageKey: TTS_SELECTION_STORAGE,
-    preferredBuiltInId: getDefaultServiceId(selectedExample, "tts"),
+    preferredBuiltInId: getPreferredTTSId(selectedExample, defaultTTS),
   });
 
   const selectTTS = useCallback((id: string) => {

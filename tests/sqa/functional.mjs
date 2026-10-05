@@ -86,7 +86,7 @@ async function landingChecks(browser) {
     const dialog=page.getByRole("dialog",{name:"Help improve the conversation?",exact:true});
     await dialog.waitFor();
     rec("consent/explicit-choices",(await dialog.getByRole("button",{name:"Allow and start",exact:true}).count())===1&&(await dialog.getByRole("button",{name:"Continue without saving",exact:true}).count())===1);
-    rec("consent/separate-local-recording",await dialog.getByRole("checkbox",{name:/Keep a downloadable recording/}).isVisible());
+    rec("consent/no-browser-recording-option",(await dialog.getByRole("checkbox").count())===0);
     await page.keyboard.press("Escape");
     await dialog.waitFor({state:"detached"});
     rec("consent/cancel-focus",await launch.locator('[data-tour="start"]').evaluate(element=>element===document.activeElement));

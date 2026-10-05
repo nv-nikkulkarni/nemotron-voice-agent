@@ -12,7 +12,7 @@ const {page}=await H.newPage(browser,signals,{viewport:{width:1440,height:1000}}
 const configs=[];
 page.on('request',request=>{if(new URL(request.url()).pathname==='/api/session-config'&&request.method()==='POST') configs.push(request.postDataJSON());});
 const dialog=page.getByRole('dialog',{name:'LLM settings',exact:true});
-const input=(role,name)=>dialog.getByLabel(`${role} ${name}`,{exact:true});
+const input=(role,name)=>dialog.getByLabel(`${role} ${name} value`,{exact:true});
 async function setup(example) {
   await page.locator('.example-card').filter({hasText:example}).click();
   assert(await H.waitForDeploymentReady(page));
