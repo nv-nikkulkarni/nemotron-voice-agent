@@ -95,7 +95,7 @@ async function runTurn(rep, turn, index, inputWav) {
   if (turn.architecture) {
     const image = page.locator(".architecture-presentation img");
     await image.waitFor({ state: "visible", timeout: 5000 });
-    assert((await image.getAttribute("src")).endsWith(`/${turn.architecture}.svg`));
+    assert((await image.getAttribute("src")).endsWith(turn.architecture === "generic" ? "/architecture-generic.png" : `/${turn.architecture}.svg`));
     assert(await image.evaluate((img) => img.complete && img.naturalWidth > 0));
     await H.shot(page, `${H.OUT}/${rep.key}-architecture.png`);
     await page.getByRole("button", { name: "Close image" }).click();

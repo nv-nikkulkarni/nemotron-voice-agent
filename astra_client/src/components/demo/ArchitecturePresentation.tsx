@@ -4,6 +4,9 @@ import { RTVIEvent } from "@pipecat-ai/client-js";
 import { useRTVIClientEvent } from "@pipecat-ai/client-react";
 import { useApp } from "../../context/useApp";
 
+// The Generic design diagram ships with the UI; the backend still names it generic.svg.
+const BUNDLED_IMAGES: Record<string, string> = { "/api/architecture/generic.svg": "/architecture-generic.png" };
+
 export function ArchitecturePresentation() {
   const { currentSessionId } = useApp();
   const [presentation, setPresentation] = useState({ session: "", image: "" });
@@ -11,7 +14,7 @@ export function ArchitecturePresentation() {
   useRTVIClientEvent(RTVIEvent.ServerMessage, useCallback((message: { type?: string; kind?: string; image_url?: string }) => {
     if (message.type === "presentation" && message.kind === "architecture"
       && ["/api/architecture/generic.svg", "/api/architecture/omni.svg"].includes(message.image_url ?? "")) {
-      setPresentation({ session: currentSessionId, image: message.image_url! });
+      setPresentation({ session: currentSessionId, image: BUNDLED_IMAGES[message.image_url!] ?? message.image_url! });
     }
   }, [currentSessionId]));
   return image ? <figure className="architecture-presentation"><img src={image} alt="Current voice agent architecture" />

@@ -333,6 +333,8 @@ The client reads its configuration from the backend (`src/server.py`) and starts
 | `POST /api/tts/preview` | Bounded pre-session voice preview as WAV audio |
 | `POST /api/session-capture` | Session-end capture decision and consented transcript |
 | `/api/architecture/{generic,omni}.svg` | Repository-owned architecture images |
+
+The Generic architecture presentation displays the UI-bundled `public/architecture-generic.png` (the Frontend / Backend Agent diagram). The UI maps the backend's `/api/architecture/generic.svg` reference to it; the Omni diagram is still served by the backend.
 | `/api/ice-servers` | STUN/TURN configuration for WebRTC |
 | `/api/webcam-config` | Webcam capture defaults for multimodal examples |
 | `/api/start` | Start a pipeline session |

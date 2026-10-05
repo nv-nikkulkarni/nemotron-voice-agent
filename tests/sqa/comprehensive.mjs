@@ -142,7 +142,7 @@ async function phaseA() {
         const image = page.locator(".architecture-presentation img");
         try {
           await image.waitFor({ state: "visible", timeout: 5000 });
-          tr.architectureRendered = (await image.getAttribute("src")).endsWith(`/${t.architecture}.svg`)
+          tr.architectureRendered = (await image.getAttribute("src")).endsWith(t.architecture === "generic" ? "/architecture-generic.png" : `/${t.architecture}.svg`)
             && await image.evaluate((img) => img.complete && img.naturalWidth > 0);
           await H.shot(page, `${H.OUT}/A-architecture.png`);
         } catch { tr.architectureRendered = false; }
