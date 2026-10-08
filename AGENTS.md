@@ -35,9 +35,12 @@ deployment profiles when changing shared behavior.
   profiles use `<example>`; local profiles use `<example>/<hardware>`.
   Observability profiles such as `tracing` and `turn` are overlays.
 - Load `.agents/skills/nemotron-voice-agent-deploy/SKILL.md` for deployment or startup troubleshooting.
+- Load `skills/astra-nvcf-voice-agent-deployment/SKILL.md` for NGC artifact
+  publication, NVCF function lifecycle, logs and debugging, Fusion/Vault/Astra
+  deployment, promotion, rollback, cleanup, or deployed-state reporting.
 - Load `skills/operate-nemotron-voice-agent/SKILL.md` for the custom Viking,
-  NVCF, Astra, SQA, Redis, SeaweedFS, session-capture, promotion, rollback,
-  incident, or deployed-project workflow.
+  SQA, Redis, SeaweedFS, session-capture, agent incident, or broader
+  deployed-project workflow.
 - Load `.agents/skills/nemotron-voice-agent-configure-pipeline/SKILL.md` for changes to `.env`,
   `examples_registry.yaml`, prompts, service catalogs, transports, tracing, or
   audio settings.

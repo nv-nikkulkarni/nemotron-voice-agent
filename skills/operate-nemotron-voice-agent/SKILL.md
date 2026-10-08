@@ -43,8 +43,9 @@ function, Astra UI, dedicated speech functions, and last-known versus live-verif
 - For the curated React UI, tour, timer, settings, latency visualization, reconnect,
   feedback, or capture coordinator, read [Astra Client](references/astra-client.md).
 - For builds, Viking, NVCF, Astra, Vault, promotion, rollback, capacity, or deployment
-  status, read [Deployment Flow](references/deployment-flow.md). Also load the installed
-  `fusion` skill before using Fusion or Astra.
+  status, load `skills/astra-nvcf-voice-agent-deployment/SKILL.md`. Use
+  [Deployment Flow](references/deployment-flow.md) for project history, and load the
+  installed `fusion` skill before using Fusion or Astra.
 - For credential names, safe retrieval and injection, NVCF gRPC metadata, NGC artifact
   types, and secret-scan rules, read
   [Credentials and Access](references/credentials-and-access.md).
@@ -177,3 +178,14 @@ State all of the following separately:
 - known blockers and rollback state.
 
 Never use “deployed,” “healthy,” “qualified,” and “production ready” as synonyms.
+
+## Dated Deployment Status
+
+For the October 05 main and isolated staging URLs, H200 backend identities, full main-URL
+A/B/C/D results, remaining stock and speech-fidelity issues, capture evidence, and rollback,
+read the [Current Staging Handoff](../astra-nvcf-voice-agent-deployment/references/current-staging-handoff-2026-10-05.md).
+For subsequent production promotion, production SQA diagnosis, standalone H200 versions,
+and branch consolidation, read the
+[October 08 Deployment Handoff](../astra-nvcf-voice-agent-deployment/references/deployment-handoff-2026-10-08.md).
+Refresh the relevant control plane before a new deployment or status claim. These snapshots
+remain historical and do not replace current user authorization or release qualification.

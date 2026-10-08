@@ -1,0 +1,4 @@
+interface:
+  display_name: "Astra and NVCF Voice Agent Deployment"
+  short_description: "Deploy and debug Voice Agent on Astra and NVCF"
+  default_prompt: "Use $astra-nvcf-voice-agent-deployment to build, publish, deploy, verify, troubleshoot, or promote Nemotron Voice Agent artifacts across NGC, NVCF, and Astra."
