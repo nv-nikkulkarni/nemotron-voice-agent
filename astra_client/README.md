@@ -264,6 +264,10 @@ Older-turn metrics cannot replace rows after the new turn is identified.
 
 ## Session Restart Boundary
 
+Each new voice session starts with the microphone enabled. Muting applies to the
+current session; ending it and starting another conversation clears that mute
+state. Browser and operating-system microphone permissions still apply.
+
 WebSocket audio uses a monotonically increasing bot-track epoch. The client
 advances that epoch before every new connection because the Pipecat audio
 player remembers interrupted track IDs and discards late audio for them. This
@@ -276,10 +280,30 @@ after an involuntary end uses the same permission dialog.
 
 The source SQA oracle in
 [`tests/sqa/test_teardown.mjs`](../tests/sqa/test_teardown.mjs) ends and starts a
-WebSocket session without refreshing the tab. It passes only when the server
-mints a different session ID and the second welcome has both transcript text
-and audible onset. Run this oracle against each target environment before you
-qualify that deployment.
+WebSocket session without refreshing the tab, after muting the first session.
+It passes only when the server mints a different session ID, the second welcome
+has transcript text and audible onset, and the microphone is enabled. A spoken
+follow-up must also produce a user transcript and detected bot audio. Set
+`SQA_INPUT_WAV` to a prerecorded speech WAV to use it for that follow-up;
+otherwise, the harness synthesizes the question. Run this oracle against each
+target environment before you qualify that deployment.
+
+## Troubleshoot Microphone Input
+
+If the agent does not hear you, check microphone permission for the exact UI
+origin. Staging and production have separate origins. In Microsoft Edge, an
+**Allow** setting confirms site permission; it does not establish that the
+selected input device is available or supplying audio.
+
+Open **Audio settings**, select the intended microphone, and check the
+operating-system input level and microphone privacy settings. End the session,
+reload the page, and start another conversation after changing permissions or
+reconnecting a device.
+
+Earlier client builds could retain a muted microphone after you ended a session
+and started another in the same tab. The client now enables microphone input
+before connecting each new session. That restart defect is one possible cause
+of stalled input; it does not identify the cause of every microphone failure.
 
 ## Getting started
 

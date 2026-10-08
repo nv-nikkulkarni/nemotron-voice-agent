@@ -8,7 +8,7 @@
 // override lets the landing page start a prebuilt pipeline without a state race.
 
 import { useCallback, useState } from "react";
-import { usePipecatClient } from "@pipecat-ai/client-react";
+import { usePipecatClient, usePipecatClientMicControl } from "@pipecat-ai/client-react";
 import { useConnectionState } from "./useConnectionState";
 import { useApp } from "../context/useApp";
 import {
@@ -131,6 +131,7 @@ export interface StartOptions {
 
 export function useVoiceSession() {
   const client = usePipecatClient() as StartBotClient | undefined;
+  const { enableMic } = usePipecatClientMicControl();
   const { isConnected, isConnecting } = useConnectionState();
   const app = useApp();
   const [connectionError, setConnectionError] = useState("");
@@ -211,6 +212,11 @@ export function useVoiceSession() {
 
         const config = buildConfig(example, opts.preset);
 
+        // The transport retains its microphone setting after disconnect. A new
+        // session must reacquire audio even when the previous session ended
+        // muted; otherwise Daily waits for a track that was never requested.
+        enableMic(true);
+
         if (app.selectedTransport === "websocket") {
           const sessionId = await createSessionConfig(config);
           const wsProto = globalThis.location.protocol === "https:" ? "wss:" : "ws:";
@@ -239,7 +245,7 @@ export function useVoiceSession() {
         console.error("Connection error:", err);
       }
     },
-    [client, app, buildConfig],
+    [client, app, buildConfig, enableMic],
   );
 
   const disconnect = useCallback(async () => {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 import { useState } from "react";
-import { usePipecatClient } from "@pipecat-ai/client-react";
+import { usePipecatClient, usePipecatClientMicControl } from "@pipecat-ai/client-react";
 import { useConnectionState } from "../hooks/useConnectionState";
 import { useApp } from "../context/useApp";
 import {
@@ -158,6 +158,7 @@ function sessionIdFromWebRTCUrl(url: string): string {
 
 export function Header() {
   const client = usePipecatClient() as StartBotClient | undefined;
+  const { enableMic } = usePipecatClientMicControl();
   const { isConnected, isConnecting } = useConnectionState();
   const {
     selectedExample,
@@ -198,6 +199,9 @@ export function Header() {
           selectedPromptKey,
           selectedSessionLanguage,
         });
+
+        // Starting another session must not inherit the previous session's mute.
+        enableMic(true);
 
         if (selectedTransport === "websocket") {
           const sessionId = await createSessionConfig(config);

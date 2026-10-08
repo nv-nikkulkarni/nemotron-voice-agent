@@ -14,6 +14,10 @@ async function main() {
   const idBefore = await H.sessionId(page);
   const firstWelcomeSettled = conn1.connected && await H.waitForSettledWelcome(page);
 
+  // Regression: ending a muted session must not carry that mute into restart.
+  await page.locator('button[title="Mute microphone"]').click();
+  await page.locator('button[title="Unmute microphone"]').waitFor();
+
   const live = await snap(page);
   // Click End and sample the machine every 40ms until the modal/ended appears.
   const phases = new Set(); let overlaySeen = false; let report = null;
@@ -40,8 +44,13 @@ async function main() {
     .filter((message) => message.role === "bot")
     .map((message) => message.text)
     .join(" ");
+  const microphoneEnabledAfterRestart = await page.locator('button[title="Mute microphone"]').isVisible();
+  const inputAfterRestart = conn2.connected && microphoneEnabledAfterRestart
+    ? await H.turn(page, "What is ten divided by two?", "restart-input", { transcribeBot: false, inputWav: process.env.SQA_INPUT_WAV })
+    : null;
   const pass = Boolean(
     firstWelcomeSettled && secondWelcomeSettled && secondWelcomeSpoke
+    && microphoneEnabledAfterRestart && inputAfterRestart?.inputReceived && inputAfterRestart?.botSpoke
     && idBefore && id2 && id2 !== idBefore && conn2.connected
     && /nemotron|hello|assist you|help you|how can i/i.test(secondWelcomeText)
     && sig.consoleErrors.length === 0 && sig.wsClosures.length === 0
@@ -61,6 +70,8 @@ async function main() {
     secondWelcomeSettled,
     secondWelcomeSpoke,
     secondWelcomeText,
+    microphoneEnabledAfterRestart,
+    inputAfterRestart,
     reconnected: conn2.connected,
     consoleErrors: sig.consoleErrors,
     websocketErrors: sig.wsClosures,
