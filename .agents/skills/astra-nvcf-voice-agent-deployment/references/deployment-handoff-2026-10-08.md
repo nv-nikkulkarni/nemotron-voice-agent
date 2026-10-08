@@ -118,3 +118,60 @@ Old function versions were not deleted in this work. Sharing a function ID does 
 an old version safe to remove: identify consumers, routing, version pinning, and rollback
 requirements first. Unversioned invocation can select an active version; pin the intended
 version when validating a migration. Obtain authorization for exact deletion targets.
+
+## October 08 Microphone Restart UI Rollout
+
+The previous UI retained a disabled microphone after a muted session ended. Restarting
+in the same tab could stall without input audio. Both session-start paths now enable the
+microphone through the React microphone control before connecting. The user's original
+Microsoft Edge profile issue remains unconfirmed; this reproduction does not establish
+that user's exact cause.
+
+Staging received the image first, followed by production using the same artifact:
+
+| Artifact | Identity |
+| --- | --- |
+| Committed source | `ac9bde84a11d8910877a615f54d4304e8d7d134e` |
+| UI image tag | `dev-ac9bde8-20261008-mic-restart` |
+| UI OCI index | `sha256:93b3a6b805aebe747907cb81ccb7a7a38325115d71361a29598bb5eca73160f5` |
+| AMD64 manifest | `sha256:45a0f9f245f5847aaff2082f725ae02ff69d34803a06a51b4e72f9d4872d67d2` |
+| UI build timestamp | `2026-10-08T07:43:44Z` |
+| Served JavaScript | `/assets/index-DkW6FLiG.js` |
+| JavaScript SHA-256 | `b68b0fabf501589f371f8548f6a65889d9e1773ff6fde0fe1fe40a4c1d99ba3d` |
+
+The registry-verified image used a committed archive of Astra client and Docker sources.
+Fresh Fusion exports matched reviewed values; only the image tag and
+`UI_BUILD_TIMESTAMP` changed. Backend routing, Vault references, secrets, ingress, and
+unrelated configuration remained unchanged. No backend function was redeployed.
+
+Staging qualification began at Healthy/Synced revision `1c2376fd6ba5`. Production
+synchronized at `2026-10-08 07:53:08 UTC`; final readback showed both environments
+Healthy/Synced at shared-repository revision `6227ff9024fb`. Public configuration,
+JavaScript and CSS checksums, and health responses matched. All five committed PNGs
+matched served bytes in both environments.
+
+All four focused live checks passed without browser route interception:
+
+| Environment | Check | Result |
+| --- | --- | --- |
+| Main staging | Committed muted-restart regression | PASS: new session ID, enabled microphone, settled welcomes, second welcome audio, received user input, and bot audio. |
+| Main staging | Fresh Omni session with mute/unmute | PASS: enabled track, received transcript, and bot audio. |
+| Production | Committed muted-restart regression | PASS: new session ID, enabled microphone, settled welcomes, second welcome audio, received user input, and bot audio. |
+| Production | Fresh Omni session with mute/unmute | PASS: toggles changed track state; user input and bot audio received. |
+
+All replies were “Five.” Final restart checks had no console or WebSocket errors;
+production Omni also had no failed requests or bad responses. An interrupted staging
+Omni attempt was replaced by a passing standalone run. That run recorded an aborted
+capture request after teardown, so capture lifecycle remains unqualified.
+
+Chromium used prerecorded input and `--ignore-certificate-errors` after internal trust
+failures. These checks do not qualify normal certificate trust, the user's Edge profile,
+a physical microphone, or all permission paths. The full suite was not rerun; earlier
+failures and open gates remain recorded above.
+
+UI-only rollback exports are `/tmp/nva-astra-mic-rollout-20261008/stg-before.yaml` and
+`/tmp/nva-astra-mic-rollout-20261008/prd-before.yaml`. Both retain tag
+`dev-da8ee12-20261005-eventlog-tab`, timestamp `2026-10-05T12:14:33Z`, and existing
+backend routing. These differ from the earlier pre-routing production backup. Temporary
+exports remain outside Git; verify retained artifacts and routing before rollback.
+No rollback was performed.
