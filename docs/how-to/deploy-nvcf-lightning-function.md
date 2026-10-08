@@ -1,69 +1,78 @@
 # Deploy Standalone Nemotron 3.5 Lightning on NVCF
 
-This runbook describes the isolated NVIDIA Cloud Functions (NVCF) deployment
-of Nemotron 3.5 Lightning. The function exposes the model's OpenAI-compatible
-chat-completions API. It does not include the voice application, automatic
-speech recognition (ASR), text-to-speech (TTS), Redis, SeaweedFS, or Astra UI.
-
-The standalone function is independent of the main `nemotron-voice-agent`
-function. Creating, deploying, updating, or removing this function does not
-change the main function or its Astra deployment.
+Deploy Nemotron 3.5 Lightning as an independent NVIDIA Cloud Functions (NVCF)
+container function. It exposes an OpenAI-compatible chat-completions endpoint.
+The standalone branch uses image deployments for Lightning and the speech
+services; it does not contain a Helm chart or require an Astra UI deployment.
 
 ## Deployment Contract
 
-The function uses the existing voice-agent chart templates with a deployment
-override. It does not require a second chart package.
+Use [the standalone manifest](../../deploy/nvcf/standalone.yaml) as the source
+of desired settings. The manifest is an operator reference, not an executable
+deployment command or proof that the live deployment matches it.
+
+The desired Lightning contract is:
 
 | Item | Value |
 | --- | --- |
-| NVCF function | `nva-nemotron-3-5-lightning` |
+| Function name | `nva-nemotron-3-5-lightning` |
 | Function ID | `9e6b5886-1474-4108-80d6-0cff9ba41fab` |
-| Function version ID | `f419f631-bc0f-4d0e-90e8-0cbf70de5181` |
-| Deployment ID | `09f84b02-7ac3-499e-a025-78a571b38663` |
-| Backend | `nvcf-dgxc-k8s-oci-nrt-prd12-1` |
-| Allocation | One `OCI.GPU.H100_1x`; minimum/maximum instances `1/1`; maximum request concurrency `8` |
-| Live instance | `sr-da8de044-a83f-407f-b8fb-b7ad57729378-miniservice` |
-| NGC Helm chart | `0491162300748285/nemotron-voice-agent:0.1.139` |
-| Helm service | `nemotron-lightning` |
-| Helm override | `nvcf_helm/values-lightning-standalone.yaml` |
-| NIM image | `nvcr.io/0491162300748285/nemotron-lightning-selfcontained:2.0.9-variant` |
-| Image digest | `sha256:67294eff48e39459267c01bdbd0fd37adcd01b76b6c022464884c775f7492e91` |
-| HTTP service port | `8000` |
-| Inference route | `/v1/chat/completions` |
-| Health route | `/v1/health/ready` |
-| Health contract | HTTP `200` on port `8000`, with a `10`-second timeout |
-| API body format | `CUSTOM` |
+| Image repository | `nvcr.io/0491162300748285/nvcf-nemotron-lightning` |
+| Base image | `nemotron-lightning-selfcontained:2.0.9-variant` |
+| Base digest | `sha256:67294eff48e39459267c01bdbd0fd37adcd01b76b6c022464884c775f7492e91` |
+| Backend | `nvcf-dgxc-k8s-oci-nrt-prd6-1` |
+| Instance type | `OCI.GPU.H200_2x` |
+| Minimum / maximum instances | `0` / `1` |
+| Maximum request concurrency | `50` |
+| Served model | `nvidia/nemotron-3.5-lightning-30b-a3b` |
+| Inference route / port | `/v1/chat/completions` / `8000` |
+| Health contract | HTTP `200` at `/v1/health/ready` on `8000`, timeout `PT10S` |
 
-The override enables only `llmLightning`, scales the application deployment to
-zero, and disables every unrelated model, state, capture, tracing, and
-prewarming component. It also enables the real NIM readiness endpoint, rather
-than treating a running container as a ready model.
+Maximum request concurrency is an admission limit. Setting it to `50` does
+not demonstrate acceptable latency or throughput for 50 simultaneous requests.
+The earlier chart-based H200 version required approximately six minutes to
+start; a 250-second invocation window expired before readiness. Minimum zero
+retains that cold-start risk. Keeping an instance warm requires a separate
+capacity decision.
 
-The Lightning container enables automatic tool choice with the `qwen3_coder`
-tool-call parser and uses the `nemotron_v3` reasoning parser. The NIM chooses
-its model profile, key-value cache, and model-length settings from its own
-defaults.
+## Secure Image Startup
 
-## Credential Boundary
+[The Lightning Dockerfile](../../docker/Dockerfile.nvcf-lightning-nim) derives
+from the pinned self-contained NIM image and installs the
+[shared secret-aware entrypoint](../../docker/nvcf-speech-nim-entrypoint.sh).
+It reads `NGC_API_KEY` from `/var/secrets/secrets.json`, accepts a legacy
+`NVIDIA_API_KEY` secret as fallback, and exports the credential to the NIM
+process without printing it. Missing credentials fail startup. Supply the
+complete secret set for every new function version; versions do not inherit it.
 
-The function version has one secret named `NVIDIA_API_KEY`. The Helm NIM
-startup helper reads it from `/var/secrets/secrets.json`, exports it to the NIM
-process, and uses it to retrieve model artifacts. Supply this secret again for
-every replacement function version because NVCF does not inherit secrets.
+Keep model-download credentials separate from invocation credentials. Do not
+place either value in an image layer, a normal container environment setting,
+Git, reports, or browser JavaScript.
 
-Do not place the value in the Helm override, an image layer, Git, a report, or
-a shell transcript. The standalone function does not need the voice-agent tool
-credentials, session-capture credential, or Astra Vault values.
+## Build and Publish
 
-The caller also needs an invocation-capable NVIDIA API key. Keep that caller
-credential separate from the function-version model-download secret. The
-examples below name the caller credential `NVCF_API_KEY` to make this
-separation explicit.
+Build from a clean committed source archive. Replace `<source-sha>` and `<tag>`
+with immutable identities:
 
-## Create a Replacement Function Version
+```bash
+docker build --platform linux/amd64 \
+  -f docker/Dockerfile.nvcf-lightning-nim \
+  --label org.opencontainers.image.revision=<source-sha> \
+  -t nvcr.io/0491162300748285/nvcf-nemotron-lightning:<tag> .
 
-Create a replacement version only when the image, route contract, or function
-configuration changes. Read the model-download key without printing it:
+docker push nvcr.io/0491162300748285/nvcf-nemotron-lightning:<tag>
+ngc registry image info \
+  0491162300748285/nvcf-nemotron-lightning:<tag> --format_type json
+```
+
+Verify the final image platform, secret-aware entrypoint, effective user,
+configuration, and history. Record the registry digest before creating a
+function version. Do not publish or reuse the main voice-agent image repository.
+
+## Create an Image-Based Replacement
+
+Inspect the installed CLI help before using these examples. Read the download
+credential without printing it, and avoid shell tracing:
 
 ```bash
 read -rsp "NVIDIA model-download key: " NVCF_MODEL_KEY
@@ -73,8 +82,7 @@ ngc cloud-function function create \
   9e6b5886-1474-4108-80d6-0cff9ba41fab \
   --org 0491162300748285 \
   --name nva-nemotron-3-5-lightning \
-  --helm-chart 0491162300748285/nemotron-voice-agent:0.1.139 \
-  --helm-chart-service nemotron-lightning \
+  --container-image 0491162300748285/nvcf-nemotron-lightning:<tag> \
   --inference-url /v1/chat/completions \
   --inference-port 8000 \
   --health-uri /v1/health/ready \
@@ -84,144 +92,79 @@ ngc cloud-function function create \
   --health-timeout PT10S \
   --api-body-format CUSTOM \
   --function-type DEFAULT \
-  --secret "NVIDIA_API_KEY:${NVCF_MODEL_KEY}"
+  --container-environment-variable NIM_HTTP_API_PORT:8000 \
+  --container-environment-variable 'NIM_PASSTHROUGH_ARGS:--served-model-name nvidia/nemotron-3.5-lightning-30b-a3b --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser nemotron_v3' \
+  --secret "NGC_API_KEY:${NVCF_MODEL_KEY}"
 
 unset NVCF_MODEL_KEY
 ```
 
-The positional function ID creates a new version of the standalone function.
-Omit it only when you intentionally create a different function identity.
+The positional function ID retains the service identity and creates a new
+version. Record the returned version ID. Command arguments can be visible to
+local process inspection; use an approved operator host and protect captured
+output from function-creation commands.
 
-## Deploy the Lightning-Only Workload
-
-Apply the checked-in override when you deploy the function version. Without
-`-f nvcf_helm/values-lightning-standalone.yaml`, NVCF uses the chart's normal
-voice-agent values and deploys the wrong workload.
+Deploy the new version with the manifest's desired shape and admission limit:
 
 ```bash
 ngc cloud-function function deploy create \
-  9e6b5886-1474-4108-80d6-0cff9ba41fab:<version-id> \
+  9e6b5886-1474-4108-80d6-0cff9ba41fab:<new-version-id> \
   --org 0491162300748285 \
-  --configuration-file nvcf_helm/values-lightning-standalone.yaml \
   --deployment-specification \
-    <backend>:H100:OCI.GPU.H100_1x:1:1:<max-request-concurrency>
+    nvcf-dgxc-k8s-oci-nrt-prd6-1:H200:OCI.GPU.H200_2x:0:1:50
 ```
 
-The deployment uses one H100 and keeps one minimum and one maximum instance.
-Record the selected backend, request-concurrency limit, and deployment ID in
-the qualification evidence. Do not copy those values from another function
-without checking current NVCF capacity and the expected load.
+For an existing image-based deployment, use `deploy update` with the same
+specification. A deployment update can interrupt active requests. Changing a
+chart-backed function to a container image requires a new function version;
+updating only its deployment does not change that version's artifact type.
 
-## Invoke the Endpoint
+## Invoke and Verify
 
-Use the function-specific invocation host and include both NVCF authentication
-headers. The `function-id` header is a route identifier, not a credential. The
-examples use `nvidia/nemotron-3.5-lightning`, the expected short model alias.
-An authorized inference smoke has not yet confirmed that alias. Treat it as
-provisional, and update the examples if the deployed NIM advertises a different
-served model name.
+Use a server-side invocation credential and the actual served model ID. Pin the
+replacement version during migration checks so other active versions cannot
+supply the response:
 
 ```bash
 export NVCF_FUNCTION_ID=9e6b5886-1474-4108-80d6-0cff9ba41fab
-export NVCF_API_KEY=<invocation-capable-api-key>
+export NVCF_VERSION_ID=<new-version-id>
+read -rsp "NVCF invocation key: " NVCF_API_KEY
+echo
 
 curl --fail-with-body --silent --show-error \
   "https://${NVCF_FUNCTION_ID}.invocation.api.nvcf.nvidia.com/v1/chat/completions" \
   -H "Authorization: Bearer ${NVCF_API_KEY}" \
   -H "function-id: ${NVCF_FUNCTION_ID}" \
+  -H "function-version-id: ${NVCF_VERSION_ID}" \
   -H "Content-Type: application/json" \
   --data '{
-    "model": "nvidia/nemotron-3.5-lightning",
+    "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
     "messages": [{"role": "user", "content": "Reply with only: ready"}],
     "temperature": 0,
     "max_tokens": 16,
     "stream": false,
     "chat_template_kwargs": {"enable_thinking": false}
   }'
+
+unset NVCF_API_KEY
 ```
 
-You can use the same endpoint through the OpenAI Python client:
+Require model readiness, nonempty buffered text, a complete streaming response,
+and valid native tool arguments. Verify thinking-disabled output separately.
+Record the version, deployment, digest, health response, and redacted request
+results. `ACTIVE` alone does not qualify inference, load, or cold-start recovery.
 
-```python
-import os
+### Dated Validation Boundary
 
-from openai import OpenAI
+The earlier chart-based H200 version `3c0e625b-9e61-4314-a48a-826e3911f441`
+completed buffered and streaming requests after startup. Those results do not
+qualify the replacement image. On October 08, image
+`2.0.9-variant-nvcf-8601c1e` was built from source
+`8601c1ec850dd36c724bb148110a583b715f3f00`. Synthetic mounted-secret startup
+passed in the actual image as user `nim`; image configuration and history
+credential-pattern checks passed. Registry publication, a new version ID,
+deployment readback, and replacement inference smokes remain pending.
 
-function_id = os.environ["NVCF_FUNCTION_ID"]
-client = OpenAI(
-    api_key=os.environ["NVCF_API_KEY"],
-    base_url=f"https://{function_id}.invocation.api.nvcf.nvidia.com/v1",
-    default_headers={"function-id": function_id},
-)
-
-response = client.chat.completions.create(
-    model="nvidia/nemotron-3.5-lightning",
-    messages=[{"role": "user", "content": "Reply with only: ready"}],
-    temperature=0,
-    max_tokens=16,
-    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-)
-print(response.choices[0].message.content)
-```
-
-Do not put an invocation key in browser JavaScript. Use a trusted server-side
-proxy when a browser application needs the endpoint.
-
-## Verify and Qualify
-
-NVCF `ACTIVE` proves that the platform accepted the deployment and that the
-configured health gate passed. It does not prove response quality, tool-call
-behavior, concurrency, latency, or sustained availability.
-
-### Current Validation Record
-
-On September 18, 2026, the deployment reported `ACTIVE` and `RUNNING` on
-`OCI.GPU.H100_1x`. NVCF reported instance
-`sr-da8de044-a83f-407f-b8fb-b7ad57729378-miniservice` and pod
-`mini-service-nemotron-voice-agent-llm-lightning-588fcf6c444zxjn`. A process
-inspection found both `/opt/nim/start_server.sh` and
-`python -m nim_llm.start_server`.
-
-This is control-plane, health, and process evidence only. An attempt to call
-the public inference route with the NGC control-plane credential returned
-`HTTP 401`, as expected for that credential boundary. No authorized NVCF
-invocation key was available during this deployment task. Therefore, the
-following checks remain pending:
-
-- Non-streaming and streaming chat completion.
-- The served model identifier.
-- OpenAI-compatible tool calling and reasoning separation.
-- Concurrency, latency, and sustained-availability qualification.
-
-Complete these checks before you describe the endpoint as qualified:
-
-1. Confirm the deployment reports `ACTIVE` and one instance is ready.
-2. Send a real non-streaming chat-completion request and require nonempty text.
-3. Send a streaming request and require a complete token stream.
-4. Send a request with an OpenAI-compatible tool schema and verify the model
-   returns a valid tool call when appropriate.
-5. Confirm reasoning is absent from user-visible content when thinking is
-   disabled.
-6. Run the intended concurrency and latency test for the endpoint's expected
-   traffic profile.
-7. Save the function, version, deployment, image digest, request shape, and
-   redacted results in the deployment evidence.
-
-Inspect the control-plane and instance state with these commands:
-
-```bash
-ngc cloud-function function info \
-  9e6b5886-1474-4108-80d6-0cff9ba41fab:<version-id> \
-  --org 0491162300748285 --format_type json
-
-ngc cloud-function function deploy info \
-  9e6b5886-1474-4108-80d6-0cff9ba41fab:<version-id> \
-  --org 0491162300748285 --format_type json
-
-ngc cloud-function function instance list \
-  9e6b5886-1474-4108-80d6-0cff9ba41fab:<version-id> \
-  --org 0491162300748285 --format_type json
-```
-
-Remove or replace only the standalone function version. Do not use the main
-voice-agent function ID in any standalone lifecycle command.
+Remove only explicitly authorized old standalone versions after checking
+consumers, version pins, and rollback needs. Preserve the function ID, its
+replacement, and the main voice-agent function and Astra deployment.

@@ -1,51 +1,49 @@
 # Deploy Standalone Speech NIM Functions on NVCF
 
-This runbook records the container-based NVCF deployment pattern for the
-standalone speech services used by Nemotron Voice Agent. These functions are
-independent of the Helm-managed speech NIMs inside the main
-`nemotron-voice-agent` function.
+Deploy automatic speech recognition (ASR), Magpie text-to-speech (TTS), and
+Chatterbox TTS as independent image-based NVIDIA Cloud Functions (NVCF)
+services. These functions are separate from the main voice-agent deployment.
+Use [the standalone manifest](../../deploy/nvcf/standalone.yaml) for desired
+settings; this operator reference does not apply changes automatically.
 
-## Current standalone functions
+## H200 Deployment Settings
 
-The following versions were created on September 8, 2026 and deployed to one
-H100 each in `nvcf-dgxc-k8s-oci-nrt-prd12-1`. Each deployment has minimum and
-maximum replicas `1/1` and maximum request concurrency `8`.
+The H200 migration retained function IDs and introduced these version IDs:
 
-| Service | NIM version | Function ID | Version ID | Deployment ID | Wrapper image digest | Status |
-| --- | --- | --- | --- | --- | --- | --- |
-| Nemotron ASR Streaming | `1.3.1` | `4155ae85-73e1-4936-b47f-87b9de165651` | `f553be4a-9400-4509-bdfa-cb1d9d4005bd` | `467848f2-c59e-46ce-be10-58654d102216` | `sha256:eaaca80ddb8b25833beab90d8cdbe6b3059ff04e4dcedd52e1ea7d36f8a1cd93` | ACTIVE |
-| Magpie TTS Multilingual | `1.10.0` | `500bfea0-ba3d-4158-8276-1d04daedfdcd` | `3b5f8003-a937-4da5-8844-a3520be74e67` | `f77a6c18-31cf-4fc2-9bd9-5dea66746887` | `sha256:1eb3dcb09d80cec49ab2d696053add8caf1ba1ed95f1f258307d1c53ec7ebded` | ACTIVE |
-| Chatterbox TTS Multilingual | `1.1.0` | `8d3eb462-afcb-46d7-80ca-4e8b6c6fd20e` | `1c2642fb-1191-4449-9c8a-3159d2868d99` | `6b5509af-ca6d-45a8-8ebc-73e51b2c3c62` | `sha256:b00e4d2420dc44c04cc4a941f1abaaacc9db059319bc1e1f3e466c6ddbd1227f` | ACTIVE |
+| Service | Function ID | H200 Version ID | Image Tag | Instances Min / Max | NIM Selector |
+| --- | --- | --- | --- | --- | --- |
+| ASR Streaming | `4155ae85-73e1-4936-b47f-87b9de165651` | `60249949-64e4-4180-92cf-6297677f7495` | `1.3.1-nvcf-5b0df78` | `1` / `2` | `type=en-US,mode=str` |
+| Magpie | `500bfea0-ba3d-4158-8276-1d04daedfdcd` | `e839491c-8742-4a67-ba55-471f429aa2d0` | `1.10.0-nvcf-5b0df78` | `1` / `2` | `batch_size=32` |
+| Chatterbox | `8d3eb462-afcb-46d7-80ca-4e8b6c6fd20e` | `510f9d44-d6e3-490a-b626-f515f1f4dfc2` | `1.1.0-nvcf-5b0df78` | `0` / `2` | `batch_size=8` |
 
-All three functions expose NVIDIA Speech gRPC on port `50051`. NVCF uses the
-standard gRPC health service on that same port. The ASR function selects
-`type=en-US,mode=str`; both TTS functions select `batch_size=8`.
+Each desired deployment uses `OCI.GPU.H200_1x` in
+`nvcf-dgxc-k8s-oci-nrt-prd6-1`, with maximum request concurrency `50`.
+This admission limit is separate from the NIM batch profile and does not prove
+50 concurrent requests meet a latency or throughput target. Chatterbox's
+minimum zero permits scale-to-zero and cold-start delays.
 
-> ACTIVE is a control-plane and health-gate result. The service-key credential
-> used for deployment cannot invoke NVCF or read instance logs. A functional
-> ASR/TTS request still requires a personal NVIDIA `nvapi` credential and is
-> not claimed by this record. No SQA suite was run for these standalone
-> functions.
+All services expose Speech gRPC on port `50051`, use the standard gRPC health
+service, and set `NIM_HTTP_API_PORT=9000`. Their image repositories are
+`nvcf-nemotron-asr-streaming`, `nvcf-magpie-tts-multilingual`, and
+`nvcf-chatterbox-tts-multilingual` under organization `0491162300748285`.
 
-## Why the wrapper image exists
+## Secure Wrapper Startup
 
-NVCF function secrets arrive in `/var/secrets/secrets.json`, while Speech NIM
-expects `NGC_API_KEY` in the process environment. The shared wrapper
-[`docker/nvcf-speech-nim-entrypoint.sh`](../../docker/nvcf-speech-nim-entrypoint.sh)
-reads only `NGC_API_KEY` (with a legacy `NVIDIA_API_KEY` fallback), exports it
-without logging its value, fails closed when no credential is present, and
-then executes `/opt/nim/start_server.sh` as the upstream non-root `nvs:1000`
-user. The wrapper is added by
-[`docker/Dockerfile.nvcf-speech-nim`](../../docker/Dockerfile.nvcf-speech-nim).
+[The shared wrapper](../../docker/nvcf-speech-nim-entrypoint.sh) reads only
+`NGC_API_KEY` from `/var/secrets/secrets.json`, with a legacy `NVIDIA_API_KEY`
+fallback. It exports the credential without printing it, fails when no key is
+available, and executes `/opt/nim/start_server.sh`. The
+[speech Dockerfile](../../docker/Dockerfile.nvcf-speech-nim) preserves the
+upstream non-root `nvs:1000` user.
 
-Do not pass the NGC credential as a normal container environment variable and
-do not bake it into an image layer. Create every function version with an
-individual NVCF secret named `NGC_API_KEY`.
+Create each function version with an individual secret named `NGC_API_KEY`.
+Versions do not inherit secrets. Do not bake keys into image layers or pass
+them as ordinary container environment settings. Invocation credentials are
+separate from model-download credentials.
 
-## Build and publish
+## Build and Publish
 
-Use a distinct private image repository for each NIM. Replace `<source-sha>`
-and `<tag>` with immutable values.
+Use a distinct private image repository per NIM and immutable source/tag values:
 
 ```bash
 docker build --platform linux/amd64 \
@@ -58,73 +56,93 @@ docker push nvcr.io/<org>/<private-repository>:<tag>
 ngc registry image info <org>/<private-repository>:<tag> --format_type json
 ```
 
-Before publication, verify the final image remains `linux/amd64`, runs as
-`nvs:1000`, uses `/opt/nva/bin/nvcf-speech-nim-entrypoint.sh`, and contains no
-credential-shaped value in its configuration or history.
+Verify `linux/amd64`, user `nvs:1000`, the secret-aware entrypoint, and image
+configuration/history without exposing credentials. Record the registry digest.
 
-## Create and deploy
+## Create and Deploy
 
-The gRPC function shape is the same for ASR and TTS. NVCF derives the gRPC
-health configuration from `/grpc` and port `50051`; do not add an HTTP health
-URI. Read the key into a shell variable without printing it.
+Check installed CLI help first. NVCF derives gRPC health configuration from
+`/grpc` and port `50051`; do not substitute an HTTP health URI. For a
+replacement, supply the existing function ID and every required secret:
 
 ```bash
-key=$(awk -F'= *' '/^apikey/ {print $2; exit}' "$HOME/.ngc/config")
-test -n "$key"
+read -rsp "NVIDIA model-download key: " NVCF_MODEL_KEY
+echo
 
-ngc cloud-function function create --org <org> \
+ngc cloud-function function create <function-id> --org 0491162300748285 \
   --name <function-name> \
-  --container-image <org>/<private-repository>:<tag> \
+  --container-image 0491162300748285/<private-repository>:<tag> \
   --inference-url /grpc \
   --inference-port 50051 \
   --api-body-format CUSTOM \
   --function-type DEFAULT \
   --container-environment-variable NIM_HTTP_API_PORT:9000 \
   --container-environment-variable NIM_GRPC_API_PORT:50051 \
-  --container-environment-variable NIM_TAGS_SELECTOR:<selector> \
-  --secret "NGC_API_KEY:${key}" \
-  --format_type json
+  --container-environment-variable 'NIM_TAGS_SELECTOR:<selector>' \
+  --secret "NGC_API_KEY:${NVCF_MODEL_KEY}"
 
-ngc cloud-function function deploy create <function-id>:<version-id> \
-  --org <org> \
+unset NVCF_MODEL_KEY
+
+ngc cloud-function function deploy create <function-id>:<new-version-id> \
+  --org 0491162300748285 \
   --deployment-specification \
-    nvcf-dgxc-k8s-oci-nrt-prd12-1:H100:OCI.GPU.H100_1x:1:1:8 \
-  --format_type json
+    nvcf-dgxc-k8s-oci-nrt-prd6-1:H200:OCI.GPU.H200_1x:<min>:2:50
 ```
 
-Use `type=en-US,mode=str` for Nemotron ASR Streaming and `batch_size=8` for
-Magpie or Chatterbox. Function versions do not inherit secrets, so supply the
-secret again whenever a new version is created.
+Use the service's selector and minimum from the table. Omit the positional
+function ID only when creating a separate function identity. Protect creation
+output and use an approved host: secret arguments can appear in local process
+inspection even when shell history contains only variable names.
 
-## Verify
+To change an existing H200 deployment's admission limit, retain its version,
+backend, instance shape, and instance limits:
 
-First confirm deployment and instance readiness:
+```bash
+ngc cloud-function function deploy update <function-id>:<version-id> \
+  --org 0491162300748285 \
+  --deployment-specification \
+    nvcf-dgxc-k8s-oci-nrt-prd6-1:H200:OCI.GPU.H200_1x:<min>:2:50
+```
+
+A deployment update can interrupt active requests. Read back effective settings
+and recheck inference after the update.
+
+## Verify and Record Evidence
+
+Confirm deployment and instance readiness, keeping secret-bearing metadata out
+of captured output:
 
 ```bash
 ngc cloud-function function deploy info <function-id>:<version-id> \
-  --org <org> --format_type json
+  --org 0491162300748285 --format_type json
 ngc cloud-function function instance list <function-id>:<version-id> \
-  --org <org> --format_type json
+  --org 0491162300748285 --format_type json
 ```
 
-Then use a personal NVIDIA API key to send a real Riva gRPC request through
-`grpc.nvcf.nvidia.com:443`, with the function ID in NVCF routing metadata.
-For ASR, transcribe a known WAV and compare the text. For each TTS function,
-synthesize a fixed sentence and verify that at least one non-empty audio chunk
-is returned. Do not call the deployment function qualified until these smokes
-and the required performance or SQA gates pass.
+Send real Riva gRPC requests through `grpc.nvcf.nvidia.com:443` with invocation
+authorization and the intended function/version routing metadata. Transcribe a
+known WAV for ASR. For TTS, synthesize a fixed sentence and require nonempty
+audio. Check cold-start recovery and load separately; a working single request
+and NVCF `ACTIVE` do not qualify a 50-request workload.
 
-## Source and security provenance
+### Dated Validation Boundary
 
-- Local source branch: `dev/nikkulkarni/nvcf-speech-nim-functions`
-- Wrapper source commit: `5b0df789568829ea5280cceb5fa336bb49d1b6b0`
-- Focused wrapper tests: 4 passed
-- Changed-file pre-commit checks: passed
-- Image configuration and history credential-pattern checks: passed
-- NGC vulnerability scan state at publication: `NOT_SCANNED`
-- Secret value persistence: none in Git, image configuration, image history,
-  or this document
+The three H200 versions above previously passed real request smokes. The
+September 08 H100 deployments, batch-eight Magpie settings, and local-only
+branch status are historical. The source branch is now
+`dev/nikkulkarni/nvcf-standalone-functions`, rebased onto upstream `develop`.
+On October 08, deployment updates were accepted with concurrency `50` and
+`ACTIVE` state, retaining the listed version IDs and instance settings. ASR
+startup selected profile `rmir-en-us-bs128-26.07.6` (batch 128) under its unchanged
+`type=en-US,mode=str` selector; Magpie selected batch 32 and Chatterbox batch 8.
+Post-update version-pinned ASR returned “What is ten divided by two?” in
+1.06 seconds. Magpie returned 13 audio chunks totaling 104,448 bytes in
+1.14 seconds. Chatterbox requests returned `DEADLINE_EXCEEDED` while the gateway
+could not establish a worker link. Metadata reported `STARTING`, and startup
+logs at `2026-10-08 08:36:16 UTC` showed the batch-eight RMIR profile downloading.
+Chatterbox inference qualification remains pending during startup. No
+50-request concurrency qualification is claimed.
 
-The branch is intentionally local until its export to a named remote is
-explicitly authorized. The existing main NVCF function and Astra deployment
-were not modified by this operation.
+Preserve the main voice-agent and Astra deployments. Delete only explicitly
+authorized old standalone versions after confirming consumers and rollback
+needs; retain each function ID and its serving replacement.
