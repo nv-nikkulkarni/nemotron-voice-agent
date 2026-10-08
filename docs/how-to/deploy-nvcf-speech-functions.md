@@ -140,8 +140,12 @@ Post-update version-pinned ASR returned “What is ten divided by two?” in
 1.14 seconds. Chatterbox requests returned `DEADLINE_EXCEEDED` while the gateway
 could not establish a worker link. Metadata reported `STARTING`, and startup
 logs at `2026-10-08 08:36:16 UTC` showed the batch-eight RMIR profile downloading.
-Chatterbox inference qualification remains pending during startup. No
-50-request concurrency qualification is claimed.
+A later version-pinned Chatterbox smoke passed after startup, returning four
+audio chunks totaling 99,226 bytes in 1.62 seconds. All three services therefore
+passed post-update single-request smokes. Final readback reported each version
+`ACTIVE`, with a container image and no Helm chart, concurrency `50`, and the
+listed minimum/maximum instance settings. One running instance per service
+was observed. No 50-request concurrency qualification is claimed.
 
 Preserve the main voice-agent and Astra deployments. Delete only explicitly
 authorized old standalone versions after confirming consumers and rollback

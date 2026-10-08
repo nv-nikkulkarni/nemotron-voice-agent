@@ -51,7 +51,9 @@ functions:
   lightning:
     name: nva-nemotron-3-5-lightning
     id: 9e6b5886-1474-4108-80d6-0cff9ba41fab
-    imageRepository: nvcr.io/0491162300748285/nvcf-nemotron-lightning
+    versionId: c0f80de9-bba9-4ad9-b9d3-c8c252c9671a
+    image: nvcr.io/0491162300748285/nvcf-nemotron-lightning:2.0.9-variant-nvcf-8601c1e
+    imageDigest: sha256:cb6148a9973fc98d74ced8db7faf29498774731ec5094d40a4b4eaeb285696db
     model: nvidia/nemotron-3.5-lightning-30b-a3b
     instanceType: OCI.GPU.H200_2x
     minInstances: 0

@@ -17,6 +17,8 @@ The desired Lightning contract is:
 | --- | --- |
 | Function name | `nva-nemotron-3-5-lightning` |
 | Function ID | `9e6b5886-1474-4108-80d6-0cff9ba41fab` |
+| Image-based version ID | `c0f80de9-bba9-4ad9-b9d3-c8c252c9671a` |
+| Deployment ID | `ea6d46b6-59e0-433c-a6eb-34b522449cd4` |
 | Image repository | `nvcr.io/0491162300748285/nvcf-nemotron-lightning` |
 | Base image | `nemotron-lightning-selfcontained:2.0.9-variant` |
 | Base digest | `sha256:67294eff48e39459267c01bdbd0fd37adcd01b76b6c022464884c775f7492e91` |
@@ -162,8 +164,31 @@ qualify the replacement image. On October 08, image
 `2.0.9-variant-nvcf-8601c1e` was built from source
 `8601c1ec850dd36c724bb148110a583b715f3f00`. Synthetic mounted-secret startup
 passed in the actual image as user `nim`; image configuration and history
-credential-pattern checks passed. Registry publication, a new version ID,
-deployment readback, and replacement inference smokes remain pending.
+credential-pattern checks passed. Registry publication verified OCI index
+`sha256:cb6148a9973fc98d74ced8db7faf29498774731ec5094d40a4b4eaeb285696db`
+and AMD64 manifest
+`sha256:f78b3794da7775c5377a3284170982df2c40ad6cc54178cbd257def0b8275970`.
+The image-based replacement version is `c0f80de9-bba9-4ad9-b9d3-c8c252c9671a`,
+with deployment `ea6d46b6-59e0-433c-a6eb-34b522449cd4`. Function metadata
+references the container image and no Helm chart, with only secret name
+`NGC_API_KEY`. Qualification temporarily used minimum one and maximum one H200 2x instance.
+Version-pinned checks passed: readiness HTTP `200`, the exact advertised model
+ID, buffered “ready,” a complete SSE “ready” response ending in `[DONE]`,
+thinking-disabled output, and a native `get_weather` tool call with valid
+`city: Boston` arguments. Startup plus these smokes took 243.9 seconds.
+The final deployment update was accepted as `ACTIVE` with minimum zero,
+maximum one, and concurrency `50` on the same H200 2x shape.
+
+Both prior chart deployments were gracefully undeployed: H200 version
+`3c0e625b-9e61-4314-a48a-826e3911f441` and H100 version
+`f419f631-bc0f-4d0e-90e8-0cbf70de5181`. Their version records were preserved.
+Final readback confirmed that only the image-based version was `ACTIVE`;
+both chart versions were `INACTIVE`. An unversioned invocation returned HTTP
+`200`, advertised model `nvidia/nemotron-3.5-lightning-30b-a3b`, and text “ready.”
+One running instance was observed, with final minimum zero and maximum one.
+Retained chart version records provide a possible redeployment path, not a
+freshly qualified rollback or currently serving standby. No 50-request load,
+sustained availability, or full voice-agent suite qualification is claimed.
 
 Remove only explicitly authorized old standalone versions after checking
 consumers, version pins, and rollback needs. Preserve the function ID, its
