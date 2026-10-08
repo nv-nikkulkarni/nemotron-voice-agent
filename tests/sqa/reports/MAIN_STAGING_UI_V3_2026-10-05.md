@@ -69,3 +69,37 @@ Rollback tags: `dev-b5225c3-…`, `dev-9c89334-20261005-zeroshot-default`, and t
 
 On `dev-da8ee12`, a browser probe confirmed the hint shows under the latency chip, disappears when the chip is clicked
 (which opens the breakdown), and the collapsed tab does not intersect the timer or session chip. The suites above were not re-run on this build.
+
+## 2026-10-08: Backend VAD stop lowered to 0.8 s
+
+The Frontend/Backend Agent's `FRONTEND_BACKEND_VAD_STOP_SECS` default had been raised 0.5 -> 0.8 -> 1.6 -> 2.0 in three commits
+on 2026-10-03 while tuning demo barge-in feedback. A live staging turn showed 2052 ms of end-of-utterance wait inside 2953 ms of
+felt latency. Develop uses 0.2 s with no override. The default was restored to 0.8 s in commit `ee06496`
+(Smart Turn fallback left at 2.0 s). The chart does not template this variable, so the change shipped as a new app image.
+
+| Item | Value |
+| --- | --- |
+| App image | `nemotron-voice-agent:dev-ee06496-20261008-vad-08`, `sha256:970dee41af5819316e74fb0965f80e82d17f9c46315c88d839d4dd2f08b7530e` |
+| Staging function / new version | `fa20412a-4da3-45a1-8057-a076039580e2` / `8ea6bd11-3238-47b8-a152-b562e73b2bef`, deployment `52483ef9-8e9f-4a7a-b0f0-b8784e5b2e2d` |
+| Shape | `H200_8x`, `nvcf-dgxc-k8s-oci-nrt-prd6-1`, min/max 1/1, concurrency 100; chart `0.1.141-dev.20261004.23`, overrides unchanged except `appImage.tag` |
+| Replaced version | `dca45c20-c569-4b86-be50-adde5c3c99a1` (image `dev-84b0a8c-20261005-dynamic-filler`), undeployed gracefully; the version still exists |
+
+Same Tokyo-weather turn, six warm sessions through the main Astra staging URL, split across the two live versions:
+
+| | EOU | Time to first audio | Felt latency |
+| --- | --- | --- | --- |
+| old (VAD 2.0 s) | ~2,052 ms | ~2,810 ms | ~2,950 ms |
+| new (VAD 0.8 s) | ~860 ms | ~1,620 ms | ~1,750 ms |
+
+After the old version was undeployed, three further sessions on the new version gave EOU 852-863 ms, first audio 1,611-1,621 ms, and the tool answered each time.
+Server logs for the new version show `stop_secs=0.8`, the Super thinker, Magpie TTS, no catalog fallbacks, and no errors.
+
+Operational findings:
+
+- The version reported ACTIVE about 13 minutes after the deploy, but its NIMs were still starting. The pod then restarted once
+  (SIGTERM to every process at 10:18:24 UTC, cause not established) and rebuilt TensorRT engines from scratch.
+  Magpie multilingual and zero-shot became ready about 32 minutes after that restart.
+- While Magpie was unreachable, the service catalog fell back to Chatterbox TTS and a Lightning thinker, and one turn stalled 33 s. Do not judge or cut over a fresh
+  deployment on `ACTIVE`; wait for the prewarmer to report every NIM hot and for the Magpie servers to report READY.
+- Rolling back means redeploying `dca45c20`; expect a similar cold start of roughly 30-45 minutes.
+- The Astra pod annotation `nva.nvidia.com/staging-routing-revision` still names `dca45c20`. Routing is by function ID, so it is cosmetic.
