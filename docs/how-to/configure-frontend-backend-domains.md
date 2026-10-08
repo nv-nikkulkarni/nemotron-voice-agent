@@ -17,7 +17,7 @@ The shared Pipecat pipeline separates low-latency conversation from slower task 
 
 The Talker sees only 2 functions. Internal functions, credentials, backend state, and tool results remain behind the domain boundary. The Thinker produces a bounded plan; the implementation does not use a ReAct observe-and-replan loop.
 
-The shared Frontend/Backend Agent pipeline waits `2.0` seconds of
+The shared Frontend/Backend Agent pipeline waits `0.8` seconds of
 voice-activity-detector silence before the local VAD stop event finalizes any
 remaining ASR audio. Native ASR final frames can arrive earlier. Smart Turn
 still decides semantic completion, with a `2.0`-second silence fallback.
