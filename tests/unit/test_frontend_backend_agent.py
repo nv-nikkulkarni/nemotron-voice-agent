@@ -388,27 +388,21 @@ class FrontendBackendPipelineConfigTests(unittest.TestCase):
             {"BOOKING_BACKEND_URL": "http://custom.example:8001", "APP_RUNTIME": ""},
             clear=True,
         ):
-            url = frontend_backend_pipeline._booking_backend_url({"server": "http://booking-server:8001"})
+            url = frontend_backend_pipeline._booking_backend_url()
 
         self.assertEqual(url, "http://custom.example:8001")
 
-    def test_booking_backend_url_rewrites_docker_hostname_for_host_native(self) -> None:
+    def test_booking_backend_url_uses_localhost_for_host_native(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
-            url = frontend_backend_pipeline._booking_backend_url({"server": "http://booking-server:8001"})
+            url = frontend_backend_pipeline._booking_backend_url()
 
         self.assertEqual(url, "http://localhost:8001")
 
-    def test_booking_backend_url_preserves_container_docker_hostname(self) -> None:
+    def test_booking_backend_url_uses_docker_hostname_in_container(self) -> None:
         with patch.dict("os.environ", {"APP_RUNTIME": "container"}, clear=True):
-            url = frontend_backend_pipeline._booking_backend_url({"server": "http://booking-server:8001"})
+            url = frontend_backend_pipeline._booking_backend_url()
 
         self.assertEqual(url, "http://booking-server:8001")
-
-    def test_booking_backend_url_preserves_custom_catalog_url(self) -> None:
-        with patch.dict("os.environ", {}, clear=True):
-            url = frontend_backend_pipeline._booking_backend_url({"server": "http://booking.internal:8001"})
-
-        self.assertEqual(url, "http://booking.internal:8001")
 
 
 class FrontendBackendAgentTests(unittest.IsolatedAsyncioTestCase):
@@ -496,6 +490,15 @@ class FrontendBackendAgentTests(unittest.IsolatedAsyncioTestCase):
             {"today": today.isoformat(), "tomorrow": tomorrow.isoformat()},
         )
         self.assertIsNone(llm.max_tokens)
+
+    def test_prompts_request_only_information_needed_for_flight_search(self) -> None:
+        talker_prompt = frontend_backend_pipeline._load_required_catalog_prompt("talker")
+        thinker_prompt = frontend_backend_pipeline._load_required_catalog_prompt("thinker")
+
+        self.assertIn("never enumerate absent fields", talker_prompt)
+        self.assertIn("Flight search requires only origin, destination, and travel date.", thinker_prompt)
+        self.assertIn("New York maps to JFK and Boston maps to BOS", thinker_prompt)
+        self.assertIn('"params_needed": ["date"]', thinker_prompt)
 
     async def test_thinker_started_is_internal_only_while_response_hint_is_speakable(self) -> None:
         thinker = _make_thinker()
