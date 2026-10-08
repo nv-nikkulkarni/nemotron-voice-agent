@@ -74,3 +74,51 @@ def test_entrypoint_fails_closed_when_key_is_missing(tmp_path: Path):
     assert result.returncode == 78
     assert result.stdout == ""
     assert "NGC_API_KEY is unavailable" in result.stderr
+
+
+def test_entrypoint_forwards_server_arguments_without_logging_secret(tmp_path: Path):
+    """Image startup must preserve NIM arguments and keep the mounted key private."""
+    secret_file = tmp_path / "secrets.json"
+    secret_file.write_text(json.dumps({"NGC_API_KEY": "test-mounted-key"}))
+    start_script = tmp_path / "start-server"
+    start_script.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+    start_script.chmod(0o755)
+    env = os.environ.copy()
+    env.update(
+        {
+            "NVCF_SECRETS_FILE": str(secret_file),
+            "NIM_SERVER_START_SCRIPT": str(start_script),
+            "NGC_API_KEY": "",
+        }
+    )
+    result = subprocess.run(
+        ["/bin/sh", str(ENTRYPOINT), "--port", "8000"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert result.stdout.splitlines() == ["--port", "8000"]
+    assert "test-mounted-key" not in result.stdout + result.stderr
+
+
+def test_entrypoint_reports_missing_start_script_without_disclosing_key(tmp_path: Path):
+    """A broken NIM image must fail closed rather than pass an artificial health gate."""
+    env = os.environ.copy()
+    env.update(
+        {
+            "NGC_API_KEY": "test-inherited-key",
+            "NIM_SERVER_START_SCRIPT": str(tmp_path / "missing"),
+        }
+    )
+    result = subprocess.run(
+        ["/bin/sh", str(ENTRYPOINT)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 69
+    assert "NIM start script is unavailable" in result.stderr
+    assert "test-inherited-key" not in result.stdout + result.stderr

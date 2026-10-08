@@ -1,0 +1,69 @@
+# Image-based standalone functions; credentials are supplied as NVCF version secrets.
+org: "0491162300748285"
+backend: nvcf-dgxc-k8s-oci-nrt-prd6-1
+maxRequestConcurrency: 50
+functions:
+  asr:
+    name: nva-nemotron-asr-streaming
+    id: 4155ae85-73e1-4936-b47f-87b9de165651
+    versionId: 60249949-64e4-4180-92cf-6297677f7495
+    image: nvcr.io/0491162300748285/nvcf-nemotron-asr-streaming:1.3.1-nvcf-5b0df78
+    model: nvidia/nemotron-asr-streaming
+    instanceType: OCI.GPU.H200_1x
+    minInstances: 1
+    maxInstances: 2
+    inferenceUrl: /grpc
+    inferencePort: 50051
+    environment:
+      NIM_HTTP_API_PORT: "9000"
+      NIM_GRPC_API_PORT: "50051"
+      NIM_TAGS_SELECTOR: type=en-US,mode=str
+  magpie:
+    name: nva-magpie-tts-multilingual
+    id: 500bfea0-ba3d-4158-8276-1d04daedfdcd
+    versionId: e839491c-8742-4a67-ba55-471f429aa2d0
+    image: nvcr.io/0491162300748285/nvcf-magpie-tts-multilingual:1.10.0-nvcf-5b0df78
+    model: nvidia/magpie-tts-multilingual
+    instanceType: OCI.GPU.H200_1x
+    minInstances: 1
+    maxInstances: 2
+    inferenceUrl: /grpc
+    inferencePort: 50051
+    environment:
+      NIM_HTTP_API_PORT: "9000"
+      NIM_GRPC_API_PORT: "50051"
+      NIM_TAGS_SELECTOR: batch_size=32
+  chatterbox:
+    name: nva-chatterbox-tts-multilingual
+    id: 8d3eb462-afcb-46d7-80ca-4e8b6c6fd20e
+    versionId: 510f9d44-d6e3-490a-b626-f515f1f4dfc2
+    image: nvcr.io/0491162300748285/nvcf-chatterbox-tts-multilingual:1.1.0-nvcf-5b0df78
+    model: nvidia/chatterbox-tts-multilingual
+    instanceType: OCI.GPU.H200_1x
+    minInstances: 0
+    maxInstances: 2
+    inferenceUrl: /grpc
+    inferencePort: 50051
+    environment:
+      NIM_HTTP_API_PORT: "9000"
+      NIM_GRPC_API_PORT: "50051"
+      NIM_TAGS_SELECTOR: batch_size=8
+  lightning:
+    name: nva-nemotron-3-5-lightning
+    id: 9e6b5886-1474-4108-80d6-0cff9ba41fab
+    imageRepository: nvcr.io/0491162300748285/nvcf-nemotron-lightning
+    model: nvidia/nemotron-3.5-lightning-30b-a3b
+    instanceType: OCI.GPU.H200_2x
+    minInstances: 0
+    maxInstances: 1
+    inferenceUrl: /v1/chat/completions
+    inferencePort: 8000
+    health:
+      uri: /v1/health/ready
+      port: 8000
+      protocol: HTTP
+      expectedStatusCode: 200
+      timeout: PT10S
+    environment:
+      NIM_HTTP_API_PORT: "8000"
+      NIM_PASSTHROUGH_ARGS: --served-model-name nvidia/nemotron-3.5-lightning-30b-a3b --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser nemotron_v3

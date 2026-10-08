@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: BSD-2-Clause
+
+# Retain the exact native-blob NIM mirror used by the qualified chart deployment.
+ARG BASE_IMAGE=nvcr.io/0491162300748285/nemotron-lightning-selfcontained:2.0.9-variant@sha256:67294eff48e39459267c01bdbd0fd37adcd01b76b6c022464884c775f7492e91
+FROM ${BASE_IMAGE}
+
+COPY --chmod=0555 docker/nvcf-speech-nim-entrypoint.sh /opt/nva/bin/nvcf-nim-entrypoint.sh
+
+ENTRYPOINT ["/opt/nva/bin/nvcf-nim-entrypoint.sh"]
+CMD []

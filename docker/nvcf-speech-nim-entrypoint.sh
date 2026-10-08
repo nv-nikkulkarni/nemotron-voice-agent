@@ -28,7 +28,7 @@ if [ -z "${NGC_API_KEY:-}" ]; then
 fi
 
 if [ ! -x "${server_start_script}" ]; then
-    echo "Speech NIM start script is unavailable or not executable: ${server_start_script}" >&2
+    echo "NIM start script is unavailable or not executable: ${server_start_script}" >&2
     exit 69
 fi
 
