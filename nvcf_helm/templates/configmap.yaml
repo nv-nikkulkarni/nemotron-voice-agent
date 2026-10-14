@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-config
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+data:
+  # Service catalog for the in-cluster NIM pods this chart deploys, mounted at
+  # /app/services.yaml. It lists only the self-hosted `server` entries and has no
+  # `nvcf` keys, so the app never falls back to a hosted endpoint
+  # (integrate.api.nvidia.com / inference-api.nvidia.com). Endpoints are the fixed
+  # Service names of this chart. Lightning's model_id is its served model name.
+  services.yaml: |
+    server:
+      llm:
+        nemotron-lightning:
+          name: "Nemotron 3.5 Lightning 30B A3B"
+          model_id: {{ .Values.llmLightning.servedModelName | quote }}
+          base_url: "http://nvidia-llm:8000/v1"
+          health_path: "/v1/health/ready"
+          extra_params: '{"extra_body":{"repetition_penalty":1.05}}'
+          settings: nemotron-nim
+        nemotron-super:
+          name: "Nemotron 3 Super 120B A12B"
+          model_id: "nvidia/nemotron-3-super-120b-a12b"
+          base_url: "http://nemotron-3-super:8000/v1"
+          health_path: "/v1/health/ready"
+          extra_params: '{"extra_body":{"repetition_penalty":1.05}}'
+          settings: nemotron-super
+        nemotron-omni-nvfp4:
+          name: "Nemotron 3 Nano Omni 30B A3B Reasoning"
+          model_id: {{ .Values.omni.servedModelName | quote }}
+          base_url: "http://nvidia-llm-vllm-omni:{{ .Values.omni.port }}/v1"
+          health_path: "/health"
+          extra_params: '{"extra_body":{"top_k":1,"chat_template_kwargs":{"enable_thinking":false},"repetition_penalty":1.05}}'
+          settings: nemotron-omni-nim
+      tts:
+        magpie-multilingual-tts:
+          name: "Magpie TTS Multilingual"
+          server: "magpie-multilingual-tts-service:50051"
+          voice_id: "Magpie-Multilingual.EN-US.Aria"
+          model: "magpie-tts-multilingual"
+          settings: magpie-tts
+        chatterbox-multilingual-tts:
+          name: "Chatterbox TTS Multilingual"
+          server: "chatterbox-tts-service:50051"
+          voice_id: "Chatterbox-Multilingual.en-US.Male"
+          model: "chatterbox-tts-multilingual"
+          max_tts_chunk_chars: 240
+          synthesis_mode: per_sentence
+        magpie-zeroshot-tts:
+          name: "Magpie TTS Zeroshot"
+          server: "magpie-zeroshot-tts-service:50051"
+          voice_id: "Magpie-ZeroShot-Multilingual.Female"
+          model: "magpie-tts-zeroshot"
+          settings: magpie-tts
+          language_code: en-US
+      asr:
+        nemotron-asr-streaming-english:
+          name: "Nemotron ASR Streaming English"
+          server: "nemotron-asr-streaming-english:50052"
+          model: "cache-aware-parakeet-rnnt-multi-asr-streaming-sortformer"
+  # Mounted at /app/examples_registry.yaml inside the app container.
+  # Controls which examples and transports the UI exposes.
+  examples_registry.yaml: |
+    # EXAMPLE_SELECTION env var overrides `selection` at runtime.
+    selection: {{ .Values.app.example }}
+
+    # TRANSPORT_SELECTION env var overrides `transports` at runtime.
+    transports: {{ if .Values.app.transport }}{{ .Values.app.transport }}{{ else }}all{{ end }}
+
+    # Demo exposes exactly two examples. The generic experience has fixed,
+    # separately configured Lightning Talker and Super Thinker roles.
+    examples:
+      generic-frontend-backend-agent:
+        label: Generic Frontend/Backend Assistant
+        domain_profile: generic
+        thinker_prompt: generic_thinker
+        tools:
+          - get_weather
+          - get_stock_price
+          - get_current_time
+          - show_architecture
+          - web_search
+          - calculate_bmi
+          - generate_random_number
+        agent_prompt_keys:
+          - talker
+          - thinker
+          - generic_thinker
+        services:
+          llm: [nemotron-lightning]
+          thinker-llm: [nemotron-super]
+          asr: [nemotron-asr-streaming-english]
+          tts: [magpie-multilingual-tts{{ if .Values.chatterboxTts.enabled }}, chatterbox-multilingual-tts{{ end }}{{ if .Values.zeroShotTts.enabled }}, magpie-zeroshot-tts{{ end }}]
+        categories:
+          thinker-llm: llm
+        settings:
+          llm:
+            nemotron-lightning:
+              enable_thinking: false
+              temperature: 0.0
+              max_tokens: 512
+          thinker-llm:
+            nemotron-super:
+              enable_thinking: true
+              reasoning_budget: 256
+              temperature: 0.0
+              max_tokens: 2048
+        defaults:
+          prompt: [generic_talker]
+        bot: examples.frontend_backend_agent.pipeline:bot
+
+      omni-assistant-subagents:
+        label: Nemotron Omni Assistant Subagents
+        services:
+          llm: [nemotron-omni-nvfp4]
+          tts: [magpie-multilingual-tts{{ if .Values.chatterboxTts.enabled }}, chatterbox-multilingual-tts{{ end }}{{ if .Values.zeroShotTts.enabled }}, magpie-zeroshot-tts{{ end }}]
+        capabilities: [attachments, webcam]
+        defaults:
+          prompt: [omni_subagents_assistant]
+        bot: examples.omni_assistant_subagents.pipeline:bot

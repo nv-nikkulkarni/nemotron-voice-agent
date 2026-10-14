@@ -1,0 +1,81 @@
+{{- if .Values.sessionStore.enabled -}}
+# S3-compatible object store backing session_store (src/session_store/) when
+# sessionStore.enabled -- see the block comment in values.yaml for the full
+# rationale. Plain Deployment, 1 replica, no StatefulSet (mirrors
+# deployment-redis.yaml's reasoning: the session-affinity router's StatefulSet
+# is rejected by NVCF; this sidesteps that failure mode entirely). PVC when
+# persistence.enabled, emptyDir otherwise (the default -- NGC is the durable
+# archive, this is only a staging area).
+#
+# No auth enforced by default (sessionStore.auth.existingSecret unset) -- same
+# posture as redis.enabled's ALLOW_EMPTY_PASSWORD: ClusterIP-only, never
+# exposed outside the cluster network. NOTE: setting auth.existingSecret wires
+# credentials into the APP side (deployment-app.yaml) but does NOT yet make
+# SeaweedFS itself enforce them -- that needs an -s3.config identities file
+# this chart doesn't generate. Tracked as a follow-up if auth enforcement is
+# ever required; today's isolation is network-level (ClusterIP + no ingress).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-seaweedfs
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: session-store
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "nemotron-voice-agent.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: session-store
+  template:
+    metadata:
+      labels:
+        {{- include "nemotron-voice-agent.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: session-store
+    spec:
+      {{- include "nemotron-voice-agent.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: seaweedfs
+          image: {{ .Values.sessionStore.image | quote }}
+          imagePullPolicy: {{ .Values.sessionStore.pullPolicy | default "IfNotPresent" }}
+          args: ["server", "-s3", "-s3.port=8333", "-dir=/data"]
+          ports:
+            - name: s3
+              containerPort: 8333
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          # ~15-20s observed cold start (master+volume+filer+s3 all coming up in one
+          # process) -- initialDelaySeconds + a generous failureThreshold rather than a
+          # long periodSeconds, so a fast-starting instance isn't held back unnecessarily.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: s3
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /
+              port: s3
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 3
+          {{- with .Values.sessionStore.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: data
+          {{- if .Values.sessionStore.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "nemotron-voice-agent.fullname" . }}-session-store
+          {{- else }}
+          emptyDir:
+            {{- with .Values.sessionStore.emptyDirSizeLimit }}
+            sizeLimit: {{ . }}
+            {{- end }}
+          {{- end }}
+{{- end }}

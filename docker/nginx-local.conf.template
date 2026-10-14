@@ -1,0 +1,55 @@
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 7860;
+    server_name localhost;
+
+    # Allow media uploads (omni image/video attachments). Match the backend's
+    # own cap (_MAX_UPLOAD_BYTES = 50 MB in src/server.py); nginx defaults to
+    # 1 MB, which 413s any real screenshot/photo before it reaches the app.
+    client_max_body_size 50m;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # React SPA — client-side routes return index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Local-backend mode: proxy straight to a plain HTTP/WS app origin
+    # (e.g. a kubectl port-forward of the viking cluster's app service).
+    # No NVCF streaming gateway, no function-id, no auth injection — the app
+    # speaks WebSocket directly, so just upgrade the connection through.
+    location = /api/ws {
+        proxy_pass ${BACKEND_ORIGIN};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+
+        # Voice sessions are long-lived
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_connect_timeout 10s;
+    }
+
+    # All other API + health traffic → the same app origin over plain HTTP.
+    location ~ ^/(api|health)(/.*)?$ {
+        proxy_pass ${BACKEND_ORIGIN};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_connect_timeout 10s;
+    }
+
+    # Feedback proxy (written by the entrypoint; empty when unset).
+    include /etc/nginx/snippets/feedback.conf;
+    # (session consent+transcript go to the app's /api/session-capture via the /api rule above)
+}

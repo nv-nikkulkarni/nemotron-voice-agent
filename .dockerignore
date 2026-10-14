@@ -1,0 +1,17 @@
+.git
+**/node_modules
+astra_client/dist
+client/dist
+*.tgz
+*.png
+*.webp
+*.jpg
+*.jpeg
+*.mp4
+tests/sqa/out
+tests/**/out
+**/__pycache__
+**/*.pyc
+.venv
+**/.venv
+.claude

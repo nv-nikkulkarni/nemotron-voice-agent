@@ -1,0 +1,25 @@
+{{- if .Values.tracing.enabled -}}
+# Service name "phoenix" matches the default OTEL_EXPORTER_OTLP_ENDPOINT
+# value ("phoenix:4317") set in app.otel.endpoint.
+apiVersion: v1
+kind: Service
+metadata:
+  name: phoenix
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: phoenix
+spec:
+  type: {{ .Values.tracing.service.type }}
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: phoenix
+  ports:
+    - name: ui
+      port: {{ .Values.tracing.service.uiPort }}
+      targetPort: ui
+      protocol: TCP
+    - name: otlp
+      port: {{ .Values.tracing.service.otlpPort }}
+      targetPort: otlp
+      protocol: TCP
+{{- end }}

@@ -1,0 +1,47 @@
+# OpenShift/Astra-hardened Nemotron-Omni vLLM image.
+#
+# The stock vllm/vllm-openai image + a runtime `pip install vllm[audio]` doesn't
+# work on OpenShift: pods run as an arbitrary non-root UID that can't write the
+# root-owned site-packages (pip fails) and can't traverse /root (0700) for the
+# HF cache. Bake the audio extra at build time and move all caches to writable,
+# traversable paths so `vllm serve` runs directly as a non-root UID.
+#
+# Build:
+#   docker build --platform linux/amd64 -f docker/Dockerfile.omni \
+#     -t nvcr.io/0491162300748285/vllm-omni:v0.20.0-cu130 .
+
+FROM vllm/vllm-openai:v0.20.0-cu130
+
+USER root
+
+# Bake the audio extra (no runtime pip, no PyPI egress needed at start).
+RUN pip install --no-cache-dir "vllm[audio]==0.20.0"
+
+# Caches/config/home in writable, non-root-traversable locations. HF weights go
+# to /cache (backed by the mounted model-cache volume); small build caches to /tmp.
+#
+# USER/LOGNAME: OpenShift runs the pod as an arbitrary UID with no /etc/passwd
+# entry, so torch/vLLM's getpass.getuser() -> pwd.getpwuid() throws
+# "uid not found" and crashes vLLM on import. getpass checks these env vars
+# first, so setting them avoids the getpwuid lookup entirely.
+ENV HOME=/tmp \
+    USER=vllm \
+    LOGNAME=vllm \
+    HF_HOME=/cache/hf \
+    HF_HUB_CACHE=/cache/hf/hub \
+    XDG_CACHE_HOME=/tmp/.cache \
+    XDG_CONFIG_HOME=/tmp/.config \
+    TRITON_CACHE_DIR=/tmp/.triton \
+    NUMBA_CACHE_DIR=/tmp/.numba \
+    OUTLINES_CACHE_DIR=/tmp/.outlines \
+    VLLM_CONFIG_ROOT=/tmp/.vllm
+
+# Group-0 writable so it works under OpenShift's arbitrary UID (gid 0).
+# /etc/passwd group-writable is a backstop so an entrypoint can add a UID entry
+# for anything that calls getpwuid() directly (bypassing getpass env vars).
+RUN mkdir -p /cache /tmp/.cache /tmp/.triton \
+    && chgrp -R 0 /cache /tmp \
+    && chmod -R g=u /cache /tmp \
+    && chmod g=u /etc/passwd
+
+USER 1000

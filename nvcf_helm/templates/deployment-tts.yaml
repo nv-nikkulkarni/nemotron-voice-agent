@@ -1,0 +1,124 @@
+{{- if .Values.tts.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-tts
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: tts
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 7200
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "nemotron-voice-agent.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: tts
+  template:
+    metadata:
+      labels:
+        {{- include "nemotron-voice-agent.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: tts
+    spec:
+      {{- include "nemotron-voice-agent.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - name: nim-tts
+          image: "{{ include "nemotron-voice-agent.ttsImage" . }}"
+          imagePullPolicy: {{ .Values.ttsImage.pullPolicy }}
+          {{- include "nemotron-voice-agent.nimStartCommand" . | nindent 10 }}
+          env:
+            {{- include "nemotron-voice-agent.ngcApiKeyEnv" . | nindent 12 }}
+            - name: NIM_HTTP_API_PORT
+              value: "9000"
+            - name: NIM_GRPC_API_PORT
+              value: "50051"
+            - name: NIM_TAGS_SELECTOR
+              value: {{ .Values.tts.nimTagsSelector | quote }}
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: {{ .Values.tts.gpuDevices | quote }}
+          ports:
+            - name: grpc
+              containerPort: 50051
+              protocol: TCP
+            - name: http
+              containerPort: 9000
+              protocol: TCP
+          # startupProbe: allows up to 3000 s — TTS model initialisation is the
+          # slowest of the three NIMs (60 s × 50 = 3000 s).
+          {{- if .Values.nimReadyImmediate }}
+          # STAGING (nimReadyImmediate): report Ready as soon as the container is running so NVCF
+          # marks the function ACTIVE without waiting for the ~15-20 min model-load / TRT-engine
+          # rebuild (which exceeds NVCF's pod-readiness deadline). NIMs warm ASYNC; liveness is
+          # delayed 40 min so it does not kill the container mid-load.
+          livenessProbe:
+            httpGet:
+              path: /v1/health/ready
+              port: http
+            initialDelaySeconds: 2400
+            periodSeconds: 60
+            timeoutSeconds: 15
+            failureThreshold: 10
+          {{- else }}
+          startupProbe:
+            httpGet:
+              path: /v1/health/ready
+              port: http
+            periodSeconds: 60
+            failureThreshold: 50
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v1/health/ready
+              port: http
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /v1/health/ready
+              port: http
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+          {{- end }}
+          volumeMounts:
+            - name: nim-cache
+              mountPath: /opt/nim/.cache
+            - name: shm
+              mountPath: /dev/shm
+          {{- with .Values.tts.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: nim-cache
+          {{- if .Values.tts.cache.nvcf }}
+          # NVCF: model weights are downloaded at startup into node-ephemeral
+          # storage. No PVC is created.
+          emptyDir:
+            sizeLimit: {{ .Values.tts.cache.size }}
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ include "nemotron-voice-agent.fullname" . }}-tts-cache
+          {{- end }}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.tts.shmSize }}
+      {{- with .Values.tts.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tts.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tts.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
