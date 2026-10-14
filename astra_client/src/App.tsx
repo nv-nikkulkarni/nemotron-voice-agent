@@ -1,0 +1,177 @@
+// SPDX-FileCopyrightText: Copyright (c) 2024–2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: BSD-2-Clause
+
+import { useCallback, useMemo, useState, useEffect, type ComponentProps } from "react";
+import { PipecatClient } from "@pipecat-ai/client-js";
+import { PipecatClientProvider, PipecatClientAudio } from "@pipecat-ai/client-react";
+import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
+import { WebSocketTransport } from "@pipecat-ai/websocket-transport";
+import { TurnAwareDailyMediaManager } from "./demo/turnAwareMediaManager";
+import { SafeProtobufFrameSerializer } from "./demo/safeSerializer";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient, useDeployment, useIceServers } from "./api";
+import { AppProvider } from "./context/AppContext";
+import { useApp } from "./context/useApp";
+import { demoConfig } from "./config";
+import { VoicePage } from "./components/demo/VoicePage";
+import { ToolsPage } from "./components/demo/ToolsPage";
+import { PromptPage } from "./components/demo/PromptPage";
+import { ArchitecturePresentation } from "./components/demo/ArchitecturePresentation";
+import { TopBar } from "./components/demo/TopBar";
+import { ConversationStage } from "./components/demo/ConversationStage";
+import { SettingsPage } from "./components/demo/SettingsPage";
+import { SessionCaptureReporter } from "./demo/SessionCaptureReporter";
+import { LLMSettingsDialog } from "./components/demo/LLMSettingsDialog";
+import { PipelineInfo } from "./components/demo/PipelineInfo";
+import { SessionControls } from "./components/demo/SessionControls";
+import { SessionLifecycleProvider } from "./hooks/useSessionLifecycle";
+import { StoppingOverlayHost } from "./components/demo/StoppingOverlay";
+import { IntroductionTour } from "./components/demo/IntroductionTour";
+// Legacy full app (non-demo builds only).
+import { Header } from "./components/Header";
+import { StatusPanel } from "./components/status-panel";
+import { Sidebar } from "./components/Sidebar";
+import { CenterPanel } from "./components/content";
+
+const EMPTY_ICE_SERVERS: RTCIceServer[] = [];
+const DEFAULT_AUDIO_INPUT_SAMPLE_RATE = 16000;
+const DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE = 22050;
+type ProviderClient = ComponentProps<typeof PipecatClientProvider>["client"];
+type View = "main" | "prompts" | "tools" | "voice";
+function viewFromPath(): View {
+  return location.pathname === "/prompts" ? "prompts" : location.pathname === "/tools" ? "tools" : location.pathname === "/voice" ? "voice" : "main";
+}
+type Overlay = "settings" | "pipeline" | "llm" | null;
+type Tour = "introduction" | null;
+
+function AppInner() {
+  const { selectedTransport } = useApp();
+  const { data: deployment, isFetched: deploymentLoaded } = useDeployment();
+  const { data: iceConfig, isFetched: iceServersLoaded } = useIceServers();
+  const iceServers = iceConfig?.iceServers ?? EMPTY_ICE_SERVERS;
+  const recorderSampleRate = deployment?.audio?.input_sample_rate ?? DEFAULT_AUDIO_INPUT_SAMPLE_RATE;
+  const playerSampleRate = deployment?.audio?.output_sample_rate ?? DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE;
+  const [view, setView] = useState<View>(viewFromPath);
+  const [overlay, setOverlay] = useState<Overlay>(null);
+  const navigate = useCallback((next: View) => {
+    history.pushState({}, "", next === "main" ? "/" : `/${next}`);
+    setOverlay(null);
+    setView(next);
+  }, []);
+  useEffect(() => {
+    const sync = () => { setOverlay(null); setView(viewFromPath()); };
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  const [tour, setTour] = useState<Tour>(null);
+  const handleLiveChange = useCallback((live: boolean) => {
+    if (live) setTour(null);
+    else setOverlay(null);
+  }, []);
+
+  const client = useMemo(() => {
+    if (selectedTransport === "websocket") {
+      if (!deploymentLoaded) return null;
+      const mediaManager = new TurnAwareDailyMediaManager(
+        true,
+        true,
+        undefined,
+        undefined,
+        512,
+        recorderSampleRate,
+        playerSampleRate,
+      );
+      return new PipecatClient({
+        transport: new WebSocketTransport({
+          serializer: new SafeProtobufFrameSerializer(),
+          recorderSampleRate,
+          playerSampleRate,
+          mediaManager,
+        }),
+        enableMic: true,
+        enableCam: false,
+        enableScreenShare: false,
+        callbacks: {
+          onUserStartedSpeaking: () => {
+            void mediaManager.userStartedSpeaking().catch((error: unknown) => {
+              console.warn("Unable to interrupt buffered bot audio", error);
+            });
+          },
+        },
+      });
+    }
+    if (!iceServersLoaded) return null;
+    return new PipecatClient({ transport: new SmallWebRTCTransport({ iceServers }), enableMic: true });
+  }, [
+    deploymentLoaded,
+    iceServers,
+    iceServersLoaded,
+    playerSampleRate,
+    recorderSampleRate,
+    selectedTransport,
+  ]);
+
+  if (!client) {
+    return <div className="h-screen d-flex items-center justify-center">Loading connection…</div>;
+  }
+
+  if (!demoConfig.demoMode) {
+    return (
+      <PipecatClientProvider client={client as unknown as ProviderClient}>
+        <div className="h-screen d-flex flex-col overflow-hidden">
+          <Header />
+          <div className="flex-1 d-flex overflow-hidden">
+            <StatusPanel />
+            <CenterPanel />
+            <Sidebar />
+          </div>
+          <PipecatClientAudio />
+        </div>
+      </PipecatClientProvider>
+    );
+  }
+
+  return (
+    <PipecatClientProvider client={client as unknown as ProviderClient}>
+      <SessionLifecycleProvider>
+        <div className="clean-app">
+          <TopBar
+            conversationView={view === "main"}
+            onHome={() => navigate("main")}
+            onSettings={() => setOverlay("settings")}
+            onPipeline={() => setOverlay("pipeline")}
+            onTour={() => {
+              navigate("main");
+              setTour("introduction");
+            }}
+          />
+          <main className="clean-main">
+            {view === "prompts" ? <PromptPage onClose={() => navigate("main")} /> : view === "voice" ? <VoicePage onClose={() => navigate("main")} /> : view === "tools" ? <ToolsPage onClose={() => navigate("main")} onLLM={() => setOverlay("llm")} /> : (
+              <><ConversationStage onLiveChange={handleLiveChange} onPrompts={() => navigate("prompts")} onTools={() => navigate("tools")} onVoice={() => navigate("voice")} onLLM={() => setOverlay("llm")} /><ArchitecturePresentation /></>
+            )}
+          </main>
+          {view === "main" && <SessionControls />}
+          <PipecatClientAudio />
+          <SessionCaptureReporter />
+        </div>
+        <StoppingOverlayHost />
+        {overlay === "settings" && <SettingsPage onClose={() => setOverlay(null)} />}
+        {overlay === "llm" && <LLMSettingsDialog onClose={() => setOverlay(null)} />}
+        {overlay === "pipeline" && <PipelineInfo onClose={() => setOverlay(null)} />}
+        {tour === "introduction" && <IntroductionTour onClose={() => setTour(null)} />}
+      </SessionLifecycleProvider>
+    </PipecatClientProvider>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppProvider>
+        <AppInner />
+      </AppProvider>
+    </QueryClientProvider>
+  );
+}
+
+export default App;
