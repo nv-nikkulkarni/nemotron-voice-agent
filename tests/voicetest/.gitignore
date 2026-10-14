@@ -1,0 +1,5 @@
+quality_results.json
+
+# exhaustive-suite output (regenerable: 60 WAVs + json + logs)
+results/
+chatterbox_out/

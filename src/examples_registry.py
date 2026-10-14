@@ -41,6 +41,9 @@ class ExampleEntry(TypedDict):
     categories: dict[str, str]
     capabilities: list[str]
     agent_prompt_keys: list[str]
+    domain_profile: str
+    thinker_prompt: str
+    tools: list[str]
     activity_check: ActivityCheckConfig | None
     defaults: dict[str, list[str] | str]
     welcome_message: bool
@@ -281,6 +284,9 @@ def _parse_example(example_id: str, entry: Any) -> ExampleEntry:
         "categories": _parse_categories(example_id, entry, services),
         "capabilities": _parse_str_list(example_id, "capabilities", entry.get("capabilities", [])),
         "agent_prompt_keys": _parse_str_list(example_id, "agent_prompt_keys", entry.get("agent_prompt_keys", [])),
+        "domain_profile": str(entry.get("domain_profile") or "").strip().lower(),
+        "thinker_prompt": str(entry.get("thinker_prompt") or "").strip(),
+        "tools": _parse_str_list(example_id, "tools", entry.get("tools", [])),
         "activity_check": _parse_activity_check(example_id, entry),
         "defaults": _parse_defaults(example_id, entry),
         "welcome_message": welcome_message,
@@ -410,6 +416,7 @@ def metadata(example: EnrichedExample) -> dict:
         "label": example["label"],
         "slots": list(example["services"]),
         "capabilities": example["capabilities"],
+        "domainProfile": example["domain_profile"],
         "default_session_language": _session_language(example),
         "defaults": defaults,
     }

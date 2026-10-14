@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import Any
 
@@ -19,7 +21,6 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.llm_service import LLMService
 
 from examples.omni_assistant.nvidia_omni_multimodal_service import (
-    NvidiaOmniLLMService,
     NvidiaOmniSettings,
     text_message_part,
 )
@@ -39,13 +40,70 @@ from examples.omni_assistant_subagents.subagents.speaker.action_envelope import 
 from examples.omni_assistant_subagents.subagents.speaker.json_stream import JsonStringFieldStreamer
 from examples.omni_assistant_subagents.subagents.speaker.repeat_guard import RepeatGuard, is_affirmation
 from examples.shared.json_parsing import extract_json_object
+from examples.shared.sampling_llm import SamplingOmniLLMService
 from utils import parse_env_float, parse_env_int
 
 _CAPTURE_ESCALATION_COOLDOWN = 3
 _ACTION_CORRECTION_MAX_TOKENS = 2048
+_PENDING_ATTACHMENT_CORRECTION_REASON = (
+    "a pending uploaded attachment request cannot use a non-media action; "
+    "re-evaluate the current transcript against the pending upload"
+)
+_EMPTY_AUDIO_TRANSCRIPT_CORRECTION_REASON = "the attached user audio produced an empty transcript"
+_EMPTY_AUDIO_TRANSCRIPT_CORRECTION = (
+    "The previous attempt left transcript empty even though user audio is attached. Listen to the same audio "
+    "again and return one complete JSON action envelope. Transcribe only what the user said, choose the action "
+    "yourself under the existing rules, and do not answer from webcam state or earlier conversation instead."
+)
+_EMPTY_AUDIO_TRANSCRIPT_FALLBACK = "I didn't catch that clearly. Please say it again."
+_OMNI_TRANSIENT_MAX_ATTEMPTS = 2
+_OMNI_TRANSIENT_RETRY_DELAY_SECONDS = 0.75
+_OMNI_TRANSIENT_STATUS_CODES = frozenset({408, 409, 429, 500, 502, 503, 504})
+_OMNI_TRANSIENT_FALLBACK = "I could not reach the voice model right now. Please try again."
+_ATTACHMENT_REQUEST_WORDS = frozenset({"analyse", "analyze", "describe", "identify", "look", "read", "tell", "what"})
+_ATTACHMENT_REFERENCE_WORDS = frozenset(
+    {"file", "image", "it", "media", "photo", "picture", "sent", "shared", "this", "upload"}
+)
 
 
-class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
+def _chunk_has_raw_content(chunk: ChatCompletionChunk) -> bool:
+    choices = getattr(chunk, "choices", None)
+    if not choices:
+        return False
+    delta = getattr(choices[0], "delta", None)
+    content = getattr(delta, "content", None) if delta is not None else None
+    return bool(isinstance(content, str) and content)
+
+
+def _is_transient_omni_error(exc: Exception) -> bool:
+    """Recognize endpoint capacity/transport failures without masking contract bugs."""
+    messages: list[str] = []
+    current: BaseException | None = exc
+    for _ in range(4):
+        if current is None:
+            break
+        status = getattr(current, "status_code", None)
+        if isinstance(status, int) and status in _OMNI_TRANSIENT_STATUS_CODES:
+            return True
+        messages.append(f"{type(current).__name__}: {current}".casefold())
+        current = current.__cause__ or current.__context__
+    combined = " ".join(messages)
+    return any(
+        marker in combined
+        for marker in (
+            "resourceexhausted",
+            "resource_exhausted",
+            "total request limit",
+            "rate limit",
+            "temporarily unavailable",
+            "apitimeouterror",
+            "apiconnectionerror",
+            "internalservererror",
+        )
+    )
+
+
+class SubagentsSpeakerOmniService(SamplingOmniLLMService):
     """Speaker Omni wrapper that turns each strict-JSON turn into one owned action.
 
     The Speaker uses no tools, so it can afford the forced ``json_object`` response
@@ -68,6 +126,7 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
         thinking_handler: Callable[[str, str], Awaitable[None]] | None = None,
         highres_capture_handler: Callable[[str], Awaitable[None]] | None = None,
         visual_status_provider: Callable[[], str] | None = None,
+        presentation_handler: Callable[[], Awaitable[None]] | None = None,
         **kwargs,
     ) -> None:
         """Configure the wrapper with the per-turn JSON contract from ``prompts.yaml``."""
@@ -78,6 +137,7 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
         self._thinking_handler = thinking_handler
         self._highres_capture_handler = highres_capture_handler
         self._visual_status_provider = visual_status_provider
+        self._presentation_handler = presentation_handler
         self._repeat = RepeatGuard()
         self._capture_cooldown = 0
         self._audio_response_instruction_content = audio_response_instruction.strip()
@@ -113,6 +173,11 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
             "(your eyes) under the webcam entry, and any uploaded file under the media analyzer entry. "
             "Read them there for this turn and keep the two sources separate."
         )
+        if self._attachment_is_pending():
+            pointer += (
+                " A freshly uploaded file is PENDING analysis. A request to describe, read, identify, look at, "
+                "or analyze it must use turn_action analyze_attachment; never respond, think, or clarify."
+            )
         if not live_view:
             return pointer
         return f"Live view right now: {live_view}.\n\n{pointer}"
@@ -126,6 +191,16 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
         except Exception as exc:
             logger.debug(f"Speaker Omni live view unavailable: {exc}")
             return ""
+
+    def _attachment_is_pending(self) -> bool:
+        """Whether a newly uploaded attachment still needs media analysis."""
+        pending = getattr(self, "_attachment_pending", None)
+        if pending is None:
+            return False
+        try:
+            return bool(pending())
+        except Exception:
+            return True
 
     def _routing_enabled(self) -> bool:
         """Whether this turn offers the media-routing fields (only while an upload is pending).
@@ -158,17 +233,44 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
         return params
 
     async def get_chat_completions(self, context: LLMContext) -> AsyncIterator[ChatCompletionChunk]:
-        """Layer the action-envelope parser over the reasoning-filtered stream.
+        """Parse the envelope with one bounded retry before any model content."""
+        return self._stream_action_envelope_with_liveness(context)
 
-        Args:
-            context: The LLM context for the completion request.
+    async def _start_omni_completion_stream(self, context: LLMContext) -> AsyncIterator[ChatCompletionChunk]:
+        """Start one endpoint request; isolated as a deterministic test seam."""
+        return await super().get_chat_completions(context)
 
-        Returns:
-            An async iterator whose visible content is only the envelope's
-            spoken ``response`` field.
-        """
-        stream = await super().get_chat_completions(context)
-        return self._stream_action_envelope(stream)
+    async def _stream_action_envelope_with_liveness(self, context: LLMContext) -> AsyncIterator[ChatCompletionChunk]:
+        for attempt in range(1, _OMNI_TRANSIENT_MAX_ATTEMPTS + 1):
+            raw_started = False
+            try:
+                stream = await self._start_omni_completion_stream(context)
+
+                async def tracked_stream(
+                    source_stream: AsyncIterator[ChatCompletionChunk] = stream,
+                ) -> AsyncIterator[ChatCompletionChunk]:
+                    nonlocal raw_started
+                    async for chunk in source_stream:
+                        raw_started = raw_started or _chunk_has_raw_content(chunk)
+                        yield chunk
+
+                async for chunk in self._stream_action_envelope(tracked_stream()):
+                    yield chunk
+                return
+            except Exception as exc:
+                if raw_started or not _is_transient_omni_error(exc):
+                    raise
+                if attempt < _OMNI_TRANSIENT_MAX_ATTEMPTS:
+                    logger.bind(event="omni_transient_retry", attempt=attempt, outcome="retrying").warning(
+                        f"Speaker Omni endpoint failed before output ({type(exc).__name__}); retrying once"
+                    )
+                    await asyncio.sleep(_OMNI_TRANSIENT_RETRY_DELAY_SECONDS)
+                    continue
+                logger.bind(event="omni_terminal_fallback", attempts=attempt, outcome="fallback").error(
+                    f"Speaker Omni endpoint remained unavailable ({type(exc).__name__}); speaking fallback"
+                )
+                await self._push_llm_text(_OMNI_TRANSIENT_FALLBACK)
+                return
 
     async def _stream_action_envelope(
         self, stream: AsyncIterator[ChatCompletionChunk]
@@ -211,9 +313,18 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
 
             response_delta = response_field.feed(content)
             if response_delta and not gated and not spoke:
-                gated = normalize_turn_action(action_text) not in TURN_ACTIONS
+                action = normalize_turn_action(action_text)
+                gated = action not in TURN_ACTIONS
                 if gated:
                     logger.info("Speaker Omni withheld streamed text: turn ownership was not declared first")
+                elif self.current_turn_has_user_audio() and transcript_field.done and not transcript_text.strip():
+                    gated = True
+                    logger.warning("Speaker Omni empty_audio_transcript outcome=withheld")
+                elif self._pending_attachment_action_requires_correction(transcript_text.strip(), action):
+                    gated = True
+                    logger.info(
+                        "Speaker Omni withheld streamed text: pending attachment request used a non-media action"
+                    )
             if gated:
                 spoken = ""
             elif stream_released:
@@ -250,6 +361,12 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
             f"streamed={spoken_text.strip()!r}, "
             f"resolved={final.response.strip()!r}"
         )
+        if (
+            final.payload.get("presentation") == "architecture"
+            and normalize_turn_action(final.payload.get("turn_action")) == "respond"
+            and self._presentation_handler is not None
+        ):
+            await self._presentation_handler()
         if final.transcript and not transcript_emitted:
             await self._emit_user_transcript(final.transcript)
         if not spoke or final is not result:
@@ -330,6 +447,15 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
             )
         if recovery:
             payload["_action_recovery"] = recovery
+        if self.current_turn_has_user_audio() and not transcript:
+            payload["_action_fallback"] = True
+            payload["_action_recovery"] = _EMPTY_AUDIO_TRANSCRIPT_CORRECTION_REASON
+            response = ""
+        action = normalize_turn_action(payload.get("turn_action"))
+        if self._pending_attachment_action_requires_correction(transcript, action):
+            payload["_action_fallback"] = True
+            payload["_action_recovery"] = _PENDING_ATTACHMENT_CORRECTION_REASON
+            response = ""
         if payload.get("_action_fallback"):
             response = ""
         payload["response"] = response
@@ -339,6 +465,13 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
             raw_content=raw_content,
             payload=payload,
         )
+
+    def _pending_attachment_action_requires_correction(self, transcript: str, action: str) -> bool:
+        """Reject a non-media action for an explicit request about a pending upload."""
+        if action == "analyze_attachment" or not self._attachment_is_pending():
+            return False
+        words = set(re.findall(r"[a-z]+", transcript.lower()))
+        return bool(words & _ATTACHMENT_REQUEST_WORDS) and bool(words & _ATTACHMENT_REFERENCE_WORDS)
 
     def _is_missing_uploaded_attachment_route(self, selected_input_source: str, media_action: str) -> bool:
         if selected_input_source == "live_webcam":
@@ -358,14 +491,57 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
         if not result.payload.get("_action_fallback"):
             await self._handle_turn_result(result)
             return result
-        corrected = await self._attempt_action_correction(result)
+        recovery_reason = str(result.payload.get("_action_recovery", "invalid envelope"))
+        if recovery_reason == _EMPTY_AUDIO_TRANSCRIPT_CORRECTION_REASON:
+            corrected = await self._attempt_empty_audio_transcript_retry(result)
+        else:
+            corrected = await self._attempt_action_correction(result)
         if corrected is not None:
             await self._handle_turn_result(corrected, track_response=True)
             return corrected
-        logger.warning(
-            f"Speaker Omni action correction failed; falling back to Thinker: "
-            f"reason={result.payload.get('_action_recovery', 'invalid envelope')!r}"
-        )
+        if recovery_reason == _EMPTY_AUDIO_TRANSCRIPT_CORRECTION_REASON:
+            logger.warning("Speaker Omni empty_audio_transcript outcome=terminal_fallback")
+            response = _EMPTY_AUDIO_TRANSCRIPT_FALLBACK
+            fallback_payload = dict(result.payload)
+            fallback_payload.update(
+                turn_action="clarify",
+                response=response,
+                selected_input_source="none",
+                media_analysis_action="none",
+                media_analysis_prompt="",
+                highres_query="",
+                _action_fallback=False,
+            )
+            fallback = SpeakerTurnResult(
+                transcript="",
+                response=response,
+                raw_content=result.raw_content,
+                payload=fallback_payload,
+            )
+            await self._handle_turn_result(fallback, track_response=False)
+            return fallback
+        if recovery_reason == _PENDING_ATTACHMENT_CORRECTION_REASON:
+            logger.warning("Speaker Omni pending-attachment correction failed closed without Thinker escalation")
+            response = "I could not start the uploaded-file analysis. Please ask me to analyze that file again."
+            fallback_payload = dict(result.payload)
+            fallback_payload.update(
+                turn_action="clarify",
+                response=response,
+                selected_input_source="none",
+                media_analysis_action="none",
+                media_analysis_prompt="",
+                highres_query="",
+                _action_fallback=False,
+            )
+            fallback = SpeakerTurnResult(
+                transcript=result.transcript,
+                response=response,
+                raw_content=result.raw_content,
+                payload=fallback_payload,
+            )
+            await self._handle_turn_result(fallback, track_response=False)
+            return fallback
+        logger.warning(f"Speaker Omni action correction failed; falling back to Thinker: reason={recovery_reason!r}")
         fallback_payload = dict(result.payload)
         fallback_payload["_action_fallback"] = False
         fallback_payload["response"] = ACTION_FALLBACK_RESPONSE
@@ -377,6 +553,38 @@ class SubagentsSpeakerOmniService(NvidiaOmniLLMService):
         )
         await self._handle_turn_result(fallback, track_response=False)
         return fallback
+
+    async def _attempt_empty_audio_transcript_retry(self, result: SpeakerTurnResult) -> SpeakerTurnResult | None:
+        """Replay the same audio once when Omni returned no user transcript."""
+        if self._context is None:
+            logger.warning("Speaker Omni empty_audio_transcript outcome=retry_unavailable_no_context")
+            return None
+        logger.warning("Speaker Omni empty_audio_transcript outcome=retry")
+        try:
+            raw_correction = await self.retry_active_audio_inference(
+                self._context,
+                correction_instruction=_EMPTY_AUDIO_TRANSCRIPT_CORRECTION,
+                max_tokens=_ACTION_CORRECTION_MAX_TOKENS,
+            )
+        except Exception as exc:
+            logger.warning(f"Speaker Omni empty_audio_transcript outcome=retry_error error={exc}")
+            return None
+        if not raw_correction:
+            logger.warning("Speaker Omni empty_audio_transcript outcome=retry_empty")
+            return None
+        corrected = self._parse_turn_result(raw_correction)
+        if (
+            not corrected.transcript
+            or corrected.payload.get("_action_fallback")
+            or corrected.payload.get("_action_recovery")
+        ):
+            logger.warning("Speaker Omni empty_audio_transcript outcome=retry_rejected")
+            return None
+        logger.info(
+            "Speaker Omni empty_audio_transcript outcome=recovered "
+            f"action={normalize_turn_action(corrected.payload.get('turn_action'))}"
+        )
+        return corrected
 
     async def _attempt_action_correction(self, result: SpeakerTurnResult) -> SpeakerTurnResult | None:
         """Run exactly one Speaker regeneration for a structurally unsafe envelope."""
@@ -521,12 +729,15 @@ class SpeakerOmniAgent(PipelineWorker):
         model_id: str,
         audio_response_instruction: str,
         extra_params: dict[str, Any] | None = None,
+        sampling_session_id: str = "",
+        sampling_initial: dict | None = None,
         media_analysis_prompt_handler: Callable[[str, str, str, str], Awaitable[None]] | None = None,
         uploaded_attachment_available: Callable[[], bool] | None = None,
         attachment_pending: Callable[[], bool] | None = None,
         thinking_handler: Callable[[str, str], Awaitable[None]] | None = None,
         highres_capture_handler: Callable[[str], Awaitable[None]] | None = None,
         visual_status_provider: Callable[[], str] | None = None,
+        presentation_handler: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         """Initialize the bridged Speaker Omni agent.
 
@@ -534,6 +745,9 @@ class SpeakerOmniAgent(PipelineWorker):
         transcript (the speaker must not convert it a second time).
         """
         omni = SubagentsSpeakerOmniService(
+            sampling_session_id=sampling_session_id,
+            sampling_role="speaker",
+            sampling_initial=sampling_initial,
             api_key=api_key,
             base_url=base_url,
             context=context,
@@ -552,6 +766,7 @@ class SpeakerOmniAgent(PipelineWorker):
             thinking_handler=thinking_handler,
             highres_capture_handler=highres_capture_handler,
             visual_status_provider=visual_status_provider,
+            presentation_handler=presentation_handler,
             audio_response_instruction=audio_response_instruction,
         )
         super().__init__(

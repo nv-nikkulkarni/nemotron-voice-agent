@@ -52,7 +52,7 @@ from typing import Annotated
 from urllib.parse import urlparse
 
 import uvicorn
-from fastapi import BackgroundTasks, FastAPI, File, Form, Query, Request, UploadFile, WebSocket
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from loguru import logger
@@ -66,10 +66,17 @@ from pipecat.transports.smallwebrtc.request_handler import (
 
 import config_store
 import examples_registry
+import session_bus
+import session_store
 from attachment_store import consume_capture_request, store_attachment
 from examples.shared.pipeline_utils import PIPELINE_AUDIO_IN_SAMPLE_RATE, PIPELINE_AUDIO_OUT_SAMPLE_RATE
 from examples.shared.prewarm import build_session_languages, peek_cached_tts_config, prewarm_tts, warmup_tts_synthesis
 from examples.shared.subagents import load_subagent_registry
+from session_capture import install_log_sink as install_capture_log_sink
+from session_capture import reaper as capture_reaper
+from session_capture import register_routes as register_capture_routes
+from session_capture import settings as capture_settings
+from session_capture.capture import required_upload_configuration_errors
 from utils import (
     LOCAL_SPEECH_PORTS,
     PROJECT_ROOT,
@@ -93,6 +100,50 @@ from webcam_frame_store import store_webcam_frame, webcam_client_config
 CLIENT_DIST = PROJECT_ROOT / "client" / "dist"
 _session_configs: dict[str, dict] = {}
 _active_session_configs: dict[str, dict] = {}
+
+# Cross-pod session store. Session config is otherwise held per-process, so with >1 app
+# REPLICA (K8s horizontal scale) a client's POST /api/session-config (pod A) and its
+# WS /api/ws?session_id (pod B, via the load balancer) land on different pods and the WS
+# would silently fall back to the default example. When SESSION_STORE_DIR is set (a shared
+# volume — the oci-bv PVC the replicas co-mount), the config is also persisted there so ANY
+# pod resolves ANY session. Empty -> single-pod, in-memory only (unchanged behavior).
+_SESSION_STORE_DIR = os.environ.get("SESSION_STORE_DIR", "")
+
+
+def _persist_session(session_id: str, config: dict) -> None:
+    # Redis session bus (see session_bus/) is the preferred cross-pod path when enabled;
+    # SESSION_STORE_DIR (a shared filesystem) remains the fallback for on-prem/no-Redis.
+    if session_bus.is_enabled():
+        from session_bus import session_config as _bus_config
+
+        _bus_config.put(session_id, config)
+        return
+    if not _SESSION_STORE_DIR or not session_id:
+        return
+    try:
+        os.makedirs(_SESSION_STORE_DIR, exist_ok=True)
+        tmp = os.path.join(_SESSION_STORE_DIR, f".{session_id}.tmp")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(config, fh)
+        os.replace(tmp, os.path.join(_SESSION_STORE_DIR, f"{session_id}.json"))  # atomic
+    except (OSError, TypeError) as exc:
+        logger.warning(f"session-store: persist {session_id} failed: {exc}")
+
+
+def _load_session(session_id: str) -> dict:
+    if session_bus.is_enabled():
+        from session_bus import session_config as _bus_config
+
+        return _bus_config.get(session_id)
+    if not _SESSION_STORE_DIR or not session_id:
+        return {}
+    try:
+        with open(os.path.join(_SESSION_STORE_DIR, f"{session_id}.json"), encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
 _CONNECT_PREWARM_TIMEOUT_SECS = parse_env_int("CONNECT_PREWARM_TIMEOUT_SECS", 45)
 _CONNECT_HEALTH_TIMEOUT_SECS = 5
 _NIM_READY_PATH = "/v1/health/ready"
@@ -162,8 +213,13 @@ def _run_multi_worker(args: argparse.Namespace, workers: int, ssl_kwargs: dict) 
 
 
 def _multi_worker_mode_enabled() -> bool:
-    """Return whether the server is running with more than one uvicorn worker."""
-    return parse_env_int("UVICORN_WORKERS", 1, min_value=1) > 1
+    """Return whether >1 uvicorn worker is running WITHOUT a shared session bus.
+
+    Session-config/WS/attachment routes rely on process-local state unless the
+    Redis session bus (session_bus.is_enabled()) is connected, in which case
+    that state is shared across workers/pods and multi-worker is safe.
+    """
+    return parse_env_int("UVICORN_WORKERS", 1, min_value=1) > 1 and not session_bus.is_enabled()
 
 
 def _multi_worker_session_config_response() -> JSONResponse:
@@ -178,14 +234,28 @@ def _deployment_response(active: dict, options: list[dict]) -> dict:
     registry plus its environment overrides, so this function just packages
     what the registry has already resolved.
     """
-    active_deployment = dict(active)
+    from examples.frontend_backend_agent.src.conversation_history import (
+        MAX_BACKEND_HISTORY_TURN_LIMIT,
+        backend_history_turn_limit_default,
+    )
+
+    def with_history_settings(option: dict) -> dict:
+        result = dict(option)
+        if result.get("domainProfile") == "generic":
+            result["backendHistory"] = {
+                "defaultTurnLimit": backend_history_turn_limit_default(),
+                "maxTurnLimit": MAX_BACKEND_HISTORY_TURN_LIMIT,
+            }
+        return result
+
+    active_deployment = with_history_settings(active)
     active_deployment.setdefault("slots", [])
     active_deployment.setdefault("capabilities", [])
     transports = set(examples_registry.visible_transports())
     return {
         "active": active_deployment,
         "selectable": not examples_registry.is_locked(),
-        "options": options,
+        "options": [with_history_settings(option) for option in options],
         "transports": [option for option in _TRANSPORT_OPTIONS if option["id"] in transports],
         "audio": {
             "input_sample_rate": PIPELINE_AUDIO_IN_SAMPLE_RATE,
@@ -200,17 +270,151 @@ def _sanitize_session_config(data: dict, fallback_example_key: str = "") -> dict
         raise ValueError("session config must be a JSON object")
     example = _bind_example_context_by_key(str(data.get("pipeline_mode", "")) or fallback_example_key)
     config = dict(data)
-    if not config.get("prompt_key") and not config.get("prompt_content"):
-        prompt_key = examples_registry.prompt_default_key(example["key"])
-        if prompt_key:
-            config["prompt_key"] = prompt_key
-    return filter_session_config(config)
+    config["pipeline_mode"] = example["key"]
+    # Registry-owned: a client cannot pair a prompt catalog with another domain backend.
+    config["domain_profile"] = example.get("domain_profile", "")
+    config["thinker_prompt"] = example.get("thinker_prompt", "")
+    allowed_tools = list(dict.fromkeys(example.get("tools") or ()))
+    config["tools"] = allowed_tools
+    if example.get("domain_profile"):
+        requested_tools = config.pop("tools_available", None)
+        if requested_tools is not None:
+            if isinstance(requested_tools, str):
+                requested = [] if requested_tools.strip().lower() == "none" else requested_tools.split(",")
+            elif isinstance(requested_tools, list | tuple):
+                requested = requested_tools
+            else:
+                requested = []
+            requested_names = {str(name).strip() for name in requested}
+            # The browser may narrow a domain's registry-owned allowlist, but it
+            # can never add a tool that the selected example did not declare.
+            config["tools"] = [name for name in allowed_tools if name in requested_names]
+
+    for key in ("prompt_content", "thinker_prompt_content", "persistent_prompt"):
+        if key in config and (not isinstance(config[key], str) or len(config[key]) > 32000):
+            raise ValueError(f"{key} must be text of at most 32000 characters")
+    timezone = config.get("client_timezone", "UTC")
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    try:
+        ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError, TypeError) as exc:
+        raise ValueError("client_timezone must be an IANA timezone") from exc
+    config["client_timezone"] = timezone
+    if example.get("domain_profile") == "generic":
+        from examples.frontend_backend_agent.src.conversation_history import (
+            backend_history_turn_limit_default,
+            validate_backend_history_turn_limit,
+        )
+
+        config["backend_history_turn_limit"] = (
+            validate_backend_history_turn_limit(config["backend_history_turn_limit"])
+            if "backend_history_turn_limit" in config
+            else backend_history_turn_limit_default()
+        )
+    elif "backend_history_turn_limit" in config:
+        raise ValueError("backend_history_turn_limit is only supported by the Generic Frontend/Backend Assistant")
+    _bind_registry_prompt(example, config)
+    sanitized = filter_session_config(config)
+    if "tts_pronunciations" in sanitized:
+        from utils import validate_pronunciation_overrides
+
+        sanitized["tts_pronunciations"] = validate_pronunciation_overrides(sanitized["tts_pronunciations"])
+        if sanitized["tts_pronunciations"] and "magpie" not in str(sanitized.get("tts_model") or "").casefold():
+            raise ValueError("IPA pronunciation rules require a Magpie speech engine")
+    sample = sanitized.get("tts_voice_sample")
+    if sample:
+        from examples.shared.demo_speech import supports_audio_prompt, validate_voice_sample
+
+        if not supports_audio_prompt(str(sanitized.get("tts_model") or "")):
+            raise ValueError("Select Magpie Zero-shot to use a voice sample")
+        validate_voice_sample(sample)
+    if "llm_role_settings" in sanitized:
+        from llm_settings import validate_settings
+
+        sanitized["llm_role_settings"] = validate_settings(sanitized["llm_role_settings"], example["key"])
+    sanitized["_session_capabilities"] = list(example.get("capabilities") or ())
+    return sanitized
+
+
+def _bind_registry_prompt(example: dict, config: dict) -> None:
+    """Prevent a domain profile from selecting another domain's catalog prompt."""
+    if config.get("prompt_content"):
+        return
+    default_key = examples_registry.prompt_default_key(example["key"])
+    requested_key = str(config.get("prompt_key") or default_key or "").strip()
+    if not example.get("domain_profile"):
+        if requested_key:
+            config["prompt_key"] = requested_key
+        return
+
+    module_file = examples_registry.example_module_file(example)
+    catalog = load_prompt_catalog(module_file)
+    hidden_keys = frozenset(example.get("agent_prompt_keys") or ())
+    if requested_key not in catalog or requested_key in hidden_keys:
+        logger.warning(
+            f"Prompt {requested_key!r} is not selectable for domain {example['domain_profile']!r}; "
+            f"using registry default {default_key!r}"
+        )
+        requested_key = default_key or ""
+    if requested_key:
+        config["prompt_key"] = requested_key
 
 
 def _example_with_module_file(example_key: str = "") -> tuple[dict, Path]:
     """Return ``(registry_entry, module_file)`` for a registry example key."""
     selected = examples_registry.find(example_key)
     return selected, examples_registry.example_module_file(selected)
+
+
+def _domain_tools_payload(example: dict) -> list[dict]:
+    """Render registry-allowlisted domain ToolSpecs for the browser catalog."""
+    profile = str(example.get("domain_profile") or "").strip()
+    if not profile:
+        return []
+
+    from examples.frontend_backend_agent.src.domain import resolve_domain_spec
+
+    spec = resolve_domain_spec(profile)
+    kind_to_json = {str: "string", int: "integer", float: "number", bool: "boolean"}
+    payload: list[dict] = []
+    for name in dict.fromkeys(example.get("tools") or ()):
+        tool = spec.tool_registry.get(name)
+        if tool is None:
+            continue
+        properties: dict[str, dict] = {}
+        required: list[str] = []
+        for param_name, param in tool.params.items():
+            property_schema: dict = {"type": kind_to_json.get(param.kind, "string")}
+            if param.label:
+                property_schema["description"] = param.label
+            if param.kind is str:
+                property_schema["minLength"] = 1
+                property_schema["maxLength"] = param.max_len
+            if param.choices:
+                property_schema["enum"] = sorted(param.choices)
+            if param.bounds:
+                lower, upper = param.bounds
+                property_schema["minimum"] = int(lower) if param.kind is int else lower
+                property_schema["maximum"] = int(upper) if param.kind is int else upper
+            if not param.required and param.default is not None:
+                property_schema["default"] = param.default
+            if param.required:
+                required.append(param_name)
+            properties[param_name] = property_schema
+        payload.append(
+            {
+                "name": name,
+                "description": tool.contract,
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                    "additionalProperties": False,
+                },
+            }
+        )
+    return payload
 
 
 def _bind_example_context_by_key(example_key: str = "") -> dict:
@@ -229,7 +433,10 @@ def _activate_example_catalog_by_key(example_key: str = "") -> dict:
 
 def _resolve_config(session_id: str = "", fallback_example_key: str = "", **query_params: str) -> dict:
     """Return the stored session config, or sanitize and hydrate the query params when none is stored."""
+    # In-memory (same-pod fast path) first; else the shared store (cross-pod, multi-replica).
     stored = _session_configs.pop(session_id, None) if session_id else None
+    if stored is None and session_id:
+        stored = _load_session(session_id) or None
     if stored is not None:
         _bind_example_context_by_key(str(stored.get("pipeline_mode", "")) or fallback_example_key)
         return stored
@@ -292,18 +499,38 @@ def _get_default_llm_base_url() -> str:
 def _store_session_config(config: dict) -> str:
     """Store a sanitized session config and return its session id."""
     session_id = uuid.uuid4().hex[:12]
+    from llm_settings import initialize
+
+    initialize(session_id, config)
     _session_configs[session_id] = config
+    _persist_session(session_id, config)  # cross-pod: any replica can resolve this session
     return session_id
 
 
 def _session_capability_error(session_id: str, capability: str) -> JSONResponse | None:
     """Return an upload rejection when session/capability validation fails."""
     cleaned_session_id = session_id.strip()
-    config = _active_session_configs.get(cleaned_session_id) or _session_configs.get(cleaned_session_id)
-    if not cleaned_session_id or config is None:
+    config = (
+        _active_session_configs.get(cleaned_session_id)
+        or _session_configs.get(cleaned_session_id)
+        or _load_session(cleaned_session_id)
+    )
+    if not cleaned_session_id or not config:
+        logger.warning(
+            f"session-capability: missing config (session_id={cleaned_session_id[:8]}..., capability={capability})"
+        )
         return JSONResponse(status_code=404, content={"detail": "session not found"})
-    example = examples_registry.find(config.get("pipeline_mode", ""))
-    if capability not in set(example.get("capabilities") or []):
+    raw_capabilities = config.get("_session_capabilities")
+    if isinstance(raw_capabilities, list) and all(isinstance(item, str) for item in raw_capabilities):
+        capabilities = set(raw_capabilities)
+    else:
+        capabilities = set(examples_registry.find(config.get("pipeline_mode", "")).get("capabilities") or [])
+    if capability not in capabilities:
+        logger.warning(
+            "session-capability: unsupported "
+            f"(session_id={cleaned_session_id[:8]}..., "
+            f"pipeline_mode={config.get('pipeline_mode', '')!r}, capability={capability})"
+        )
         return JSONResponse(status_code=403, content={"detail": f"session does not support {capability}"})
     return None
 
@@ -584,8 +811,46 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        session_bus.init_from_env()  # no-op unless REDIS_URL is set
+        session_store.init_from_env()  # local filesystem unless SESSION_STORE_BACKEND=s3
+        # session-capture needs TWO independent things to be shared for >1 replica:
+        # coordination state (Redis; see session_capture/state.py) and the
+        # artifacts themselves (session_store). Missing either one breaks a
+        # different way -- without Redis, the two-signal handshake is per-process,
+        # so a signal recorded on one pod is invisible to another and the session
+        # just never finalizes (hangs forever, no error); without a shared store,
+        # the finalizing pod reads only its OWN local disk, finds nothing, and
+        # reports success while the pipeline pod's real artifacts are orphaned
+        # (refer to docs/current-deployed-pipeline-architecture.md section 14). The Helm chart
+        # hard-fails both combinations at template time (P5.6); this is a
+        # backstop for anyone running the app outside that chart.
+        app_replicas = parse_env_int("APP_REPLICAS", 1, min_value=1)
+        capture_startup_errors = required_upload_configuration_errors()
+        if capture_settings.enabled() and app_replicas > 1:
+            if not session_bus.is_enabled():
+                logger.error(
+                    f"session-capture is enabled with APP_REPLICAS={app_replicas} but the Redis "
+                    "session bus is NOT connected (REDIS_URL unset/unreachable) -- coordination "
+                    "state is per-process, so sessions whose two signals land on different pods "
+                    "will never finalize. Set REDIS_URL to a shared Redis, or run a single replica."
+                )
+                if capture_settings.upload_required():
+                    capture_startup_errors.append("shared Redis coordination is not active")
+            if not session_store.is_s3():
+                logger.error(
+                    f"session-capture is enabled with APP_REPLICAS={app_replicas} but session_store "
+                    "is NOT a shared backend (SESSION_STORE_BACKEND=local) -- a session whose consent "
+                    "POST lands on a different pod than its pipeline WILL be silently lost. Set "
+                    "SESSION_STORE_BACKEND=s3 with a shared endpoint, or run a single replica."
+                )
+        if capture_startup_errors:
+            joined = "; ".join(dict.fromkeys(capture_startup_errors))
+            raise RuntimeError(f"Required session-capture upload path is not ready: {joined}")
+        capture_reaper.start()  # no-op unless session capture is enabled
         yield
+        capture_reaper.stop()
         await handler.close()
+        await session_bus.aclose()
 
     app = FastAPI(lifespan=lifespan)
 
@@ -630,6 +895,50 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
         if (failure := await _readiness_check_or_503(config, "session config")) is not None:
             return failure
         return {"session_id": _store_session_config(config)}
+
+    @app.get("/api/llm-settings")
+    async def llm_setting_defaults(pipeline_mode: str = "", llm_id: str = ""):
+        from llm_settings import role_specs
+
+        config = _sanitize_session_config({"pipeline_mode": pipeline_mode, "llm_id": llm_id}, fallback_example_key)
+        return {"roles": role_specs(config), "settings": {}, "revision": 0}
+
+    @app.get("/api/sessions/{session_id}/llm-settings")
+    async def get_llm_settings(session_id: str):
+        from llm_settings import read
+
+        try:
+            document = await asyncio.to_thread(read, session_id)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"detail": str(exc)})
+        if document is None:
+            return JSONResponse(status_code=404, content={"detail": "Session ended or expired"})
+        return document
+
+    @app.put("/api/sessions/{session_id}/llm-settings")
+    async def update_llm_settings(session_id: str, request: Request):
+        from llm_settings import SettingsConflict, replace
+
+        try:
+            raw = await request.body()
+            if len(raw) > 16384:
+                raise ValueError("LLM settings request is too large")
+            data = json.loads(raw)
+            if not isinstance(data, dict) or set(data) != {"settings", "revision"}:
+                raise ValueError("Provide settings and revision only")
+            return await asyncio.to_thread(replace, session_id, data["settings"], data["revision"])
+        except SettingsConflict as exc:
+            return JSONResponse(status_code=409, content={"detail": str(exc)})
+        except LookupError as exc:
+            return JSONResponse(status_code=404, content={"detail": str(exc)})
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    # ---- Session capture (consent + transcript + per-session log -> tarball -> NGC) ----
+    # Fully isolated in session_capture/; a no-op (routes never registered) unless
+    # SESSION_CAPTURE_ENABLED is true. See session_capture/settings.py for the env contract.
+    register_capture_routes(app)
+    install_capture_log_sink()
 
     @app.post("/api/start")
     async def start_bot(request: Request):
@@ -756,6 +1065,9 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
         selected = examples_registry.find(config.get("pipeline_mode", fallback_example_key))
         bot_fn = examples_registry.resolve_bot(selected)
         if session_id:
+            from llm_settings import initialize
+
+            initialize(session_id, config)
             _active_session_configs[session_id] = dict(config)
 
         async def run_bot_session(runner_args: SmallWebRTCRunnerArguments) -> None:
@@ -763,6 +1075,9 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
                 await bot_fn(runner_args)
             finally:
                 if session_id:
+                    from llm_settings import close
+
+                    await asyncio.to_thread(close, session_id)
                     _active_session_configs.pop(session_id, None)
 
         async def on_connection(connection: SmallWebRTCConnection):
@@ -812,6 +1127,9 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
             bot_fn = examples_registry.resolve_bot(selected)
             _bind_example_context_by_key(example["key"])
             if session_id:
+                from llm_settings import initialize
+
+                initialize(session_id, config)
                 _active_session_configs[session_id] = dict(config)
 
             runner_args = SimpleNamespace(
@@ -826,6 +1144,9 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
                 logger.error(f"WebSocket session error: {e}")
             finally:
                 if session_id:
+                    from llm_settings import close
+
+                    await asyncio.to_thread(close, session_id)
                     _active_session_configs.pop(session_id, None)
                 with contextlib.suppress(Exception):
                     await websocket.close()
@@ -860,6 +1181,9 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
             _bind_example_context_by_key(selected["key"])
             session_id = str(session_view.get("id") or "")
             if session_id:
+                from llm_settings import initialize
+
+                initialize(session_id, config)
                 _active_session_configs[session_id] = dict(config)
             runner_args = SimpleNamespace(
                 websocket=ws,
@@ -878,6 +1202,9 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
                 logger.error(f"Realtime pipeline session error: {e}")
             finally:
                 if session_id:
+                    from llm_settings import close
+
+                    await asyncio.to_thread(close, session_id)
                     _active_session_configs.pop(session_id, None)
                 with contextlib.suppress(Exception):
                     await ws.close()
@@ -891,6 +1218,85 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
             fallback_example_key=fallback_example_key,
             default_pipeline_mode=DEFAULT_PIPELINE_MODE,
         )
+
+    @app.get("/api/tts/pronunciations")
+    async def pronunciation_defaults():
+        from utils import load_ipa_dictionary
+
+        return {"entries": load_ipa_dictionary("magpie") or {}}
+
+    preview_slots = asyncio.Semaphore(4)
+
+    @app.post("/api/tts/preview")
+    async def preview_voice(request: Request):
+        import io
+        import wave
+
+        from fastapi.responses import Response
+        from pipecat.services.nvidia.tts import NvidiaTTSSettings
+
+        from examples.shared.demo_speech import DemoNvidiaTTSService, synthesize_request, validate_voice_sample
+        from examples.shared.nemotron_speech_text_filter import NemotronSpeechTextFilter
+        from utils import nvidia_api_key, resolve_ipa_dictionary
+
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > 1_400_000:
+                raise HTTPException(status_code=413, detail="Voice preview request is too large")
+        try:
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                raise ValueError("Voice preview configuration must be a JSON object")
+            text = data.pop("text", "Hello. This is Nemotron 3 Diarization.")
+            if not isinstance(text, str) or not 1 <= len(text) <= 200:
+                raise ValueError("Preview text must contain 1–200 characters")
+            config = _sanitize_session_config(data, fallback_example_key)
+            if not load_service_entry_by_id("tts", str(config.get("tts_id") or "")):
+                raise ValueError("Select a catalog TTS service for voice preview")
+            model = str(config.get("tts_model") or "")
+            options = dict(
+                api_key=nvidia_api_key(),
+                server=config["tts_server"],
+                use_ssl=is_nvcf(config["tts_server"]),
+                settings=NvidiaTTSSettings(voice=config.get("tts_voice_id")),
+                model_function_map={"model_name": model, "function_id": config.get("tts_function_id", "")},
+                custom_dictionary=resolve_ipa_dictionary(model, config.get("tts_pronunciations")),
+                sample_rate=PIPELINE_AUDIO_OUT_SAMPLE_RATE,
+            )
+            if config.get("tts_voice_sample"):
+                options["voice_sample"] = validate_voice_sample(config["tts_voice_sample"])
+            service = DemoNvidiaTTSService(**options)
+            clean = await NemotronSpeechTextFilter().filter(text)
+            try:
+                async with preview_slots:
+                    pcm = await asyncio.to_thread(synthesize_request, service, clean, PIPELINE_AUDIO_OUT_SAMPLE_RATE)
+            finally:
+                if service._service is not None:
+                    service._service.auth.channel.close()
+            buffer = io.BytesIO()
+            with wave.open(buffer, "wb") as audio:
+                audio.setnchannels(1)
+                audio.setsampwidth(2)
+                audio.setframerate(PIPELINE_AUDIO_OUT_SAMPLE_RATE)
+                audio.writeframes(pcm)
+            return Response(buffer.getvalue(), media_type="audio/wav", headers={"Cache-Control": "no-store"})
+        except (ValueError, KeyError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.warning("Voice preview failed: {}", type(exc).__name__)
+            raise HTTPException(status_code=502, detail="Voice synthesis failed; check the selected service") from exc
+
+    @app.get("/api/architecture/{name}.svg")
+    async def architecture_image(name: str):
+        from fastapi.responses import FileResponse
+
+        if name not in {"generic", "omni"}:
+            raise HTTPException(status_code=404, detail="Unknown architecture")
+        path = PROJECT_ROOT / "src" / "examples" / "shared" / "assets" / f"architecture-{name}.svg"
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Architecture unavailable")
+        return FileResponse(path, media_type="image/svg+xml", headers={"Cache-Control": "no-cache"})
 
     # ---- Prompt catalog (read-only, scoped to the active example) ----
 
@@ -911,6 +1317,7 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
                 "builtIn": True,
                 "selectable": key not in hidden_prompt_keys,
                 "scope": "agent" if key in hidden_prompt_keys else "session",
+                "role": "backend" if key == examples_registry.find(example_key).get("thinker_prompt") else "frontend",
                 "tools": [t for t in (val.get("tools_available") or []) if isinstance(t, str)],
             }
             for key, val in catalog.items()
@@ -933,6 +1340,7 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
                             "builtIn": True,
                             "selectable": False,
                             "scope": "agent",
+                            "role": "backend" if agent_key == "ThinkerAgent" else "frontend",
                             "agent": agent_key,
                             "promptName": prompt_key,
                             "tools": [],
@@ -942,7 +1350,9 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
 
     @app.get("/api/tools")
     async def get_tools(pipeline_mode: str = Query(default="")):
-        _, module_file = _example_with_module_file(pipeline_mode or fallback_example_key)
+        example, module_file = _example_with_module_file(pipeline_mode or fallback_example_key)
+        if example.get("domain_profile"):
+            return _domain_tools_payload(example)
         catalog = load_tools_catalog(module_file)
         tools: list[dict] = []
         for name, entry in catalog.items():
@@ -1055,6 +1465,7 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
     async def health():
         return {"status": "ok"}
 
+    # Register explicit routes before the SPA catchall.
     # ---- Static client UI ----
 
     if CLIENT_DIST.is_dir():
@@ -1121,6 +1532,13 @@ def main():
             "<level>{message}</level>"
         ),
     )
+
+    # Per-session log capture (session_capture.install_log_sink) is now installed from
+    # create_app() itself, so it runs once per worker process in BOTH single-worker
+    # (main() calls create_app directly, below) and multi-worker (each uvicorn worker
+    # imports server:app_factory -> create_app independently — the old inline version of
+    # this block only ran in main() and was therefore never installed in worker
+    # subprocesses; this fixes that gap as a side effect of the isolation).
 
     workers = args.workers if args.workers is not None else parse_env_int("UVICORN_WORKERS", 1, min_value=1)
     os.environ["UVICORN_WORKERS"] = str(workers)

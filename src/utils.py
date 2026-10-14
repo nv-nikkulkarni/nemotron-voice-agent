@@ -9,6 +9,7 @@ import math
 import os
 import socket
 import time
+import unicodedata
 from collections.abc import Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar
@@ -53,7 +54,23 @@ def service_recipe() -> str:
     return recipe
 
 
-_SLOT_AGNOSTIC_KEYS: frozenset[str] = frozenset({"pipeline_mode", "prompt_key", "prompt_content", "tool_choice"})
+_SLOT_AGNOSTIC_KEYS: frozenset[str] = frozenset(
+    {
+        "pipeline_mode",
+        "prompt_key",
+        "prompt_content",
+        "thinker_prompt_content",
+        "persistent_prompt",
+        "llm_role_settings",
+        "client_timezone",
+        "backend_history_turn_limit",
+        "tool_choice",
+        "domain_profile",
+        "thinker_prompt",
+        "tools",
+        "tools_available",
+    }
+)
 
 
 def _example_binding(example: ExampleServiceConfig | None) -> _ExampleBinding:
@@ -698,6 +715,7 @@ _CATALOG_HYDRATION: tuple[tuple[str, str, dict[str, str], str, str], ...] = (
             "model_id": "thinker_model_id",
             "base_url": "thinker_base_url",
             "max_tokens": "thinker_max_tokens",
+            "temperature": "thinker_temperature",
             "extra_params": "thinker_extra_params",
         },
         "thinker_llm_settings",
@@ -734,8 +752,11 @@ _CATALOG_HYDRATION: tuple[tuple[str, str, dict[str, str], str, str], ...] = (
 )
 _HYDRATION_FIELD_MAPS: dict[str, dict[str, str]] = {slot: fields for _, slot, fields, _, _ in _CATALOG_HYDRATION}
 _CATALOG_ONLY_BODY_FIELDS = frozenset({"tts_zero_shot_audio_prompt_file"})
+# Client-supplied fields with no catalog counterpart (per-session voice sample and pronunciation fixes).
+_CLIENT_ONLY_SLOT_FIELDS: dict[str, frozenset[str]] = {"tts": frozenset({"tts_voice_sample", "tts_pronunciations"})}
 _SLOT_CONFIG_KEYS: dict[str, frozenset[str]] = {
     slot: frozenset({id_field, *fields.values(), settings_field, streaming_field} - {""}) - _CATALOG_ONLY_BODY_FIELDS
+    | _CLIENT_ONLY_SLOT_FIELDS.get(slot, frozenset())
     for id_field, slot, fields, settings_field, streaming_field in _CATALOG_HYDRATION
 }
 SESSION_CONFIG_KEYS: frozenset[str] = _SLOT_AGNOSTIC_KEYS.union(*_SLOT_CONFIG_KEYS.values())
@@ -980,14 +1001,25 @@ def parse_env_bool(name: str, default: bool = False) -> bool:
     return raw.lower() == "true" if raw else default
 
 
-def load_ipa_dictionary() -> dict | None:
+def load_ipa_dictionary(model_name: str | None = None) -> dict[str, str] | None:
     """Load a word-to-IPA pronunciation dictionary for ``NvidiaTTSService``.
 
     Reads ``TTS_IPA_FILE_PATH`` and parses JSON or YAML into a flat
-    ``{grapheme: ipa}`` dict. Relative paths resolve from ``PROJECT_ROOT``.
-    Returns ``None`` when unset, missing, malformed, or empty so callers can
-    pass the result straight into ``custom_dictionary=``.
+    ``{grapheme: ipa}`` dict. A versioned registry with an ``entries``
+    mapping is also accepted; each entry must contain ``ipa`` and can retain
+    review-only ``arpabet``, ``category``, and ``aliases`` metadata.
+    Relative paths resolve from ``PROJECT_ROOT``.
+
+    NVIDIA Speech NIM custom dictionaries are supported by Magpie, not
+    Chatterbox. When a non-Magpie model is explicit, return ``None`` instead
+    of sending an unsupported request field. An empty model name retains the
+    NvidiaTTSService default, which is Magpie.
     """
+    normalized_model = (model_name or "").strip().lower()
+    if normalized_model and "magpie" not in normalized_model:
+        logger.info(f"Skipping TTS IPA dictionary for unsupported model: {model_name}")
+        return None
+
     raw_path = os.getenv("TTS_IPA_FILE_PATH", "").strip()
     if not raw_path:
         return None
@@ -1010,15 +1042,88 @@ def load_ipa_dictionary() -> dict | None:
         logger.warning(f"TTS IPA dictionary must be a mapping, ignoring: {path}")
         return None
 
-    dictionary = {
-        str(word).strip(): str(ipa).strip() for word, ipa in data.items() if str(word).strip() and str(ipa).strip()
-    }
+    if "entries" in data:
+        entries = data.get("entries")
+        if not isinstance(entries, dict):
+            logger.warning(f"TTS pronunciation registry entries must be a mapping, ignoring: {path}")
+            return None
+        dictionary: dict[str, str] = {}
+        for raw_word, raw_entry in entries.items():
+            word = str(raw_word).strip()
+            if not word or not isinstance(raw_entry, dict):
+                logger.warning(f"Skipping malformed TTS pronunciation registry entry: {raw_word!r}")
+                continue
+            ipa = str(raw_entry.get("ipa", "")).strip()
+            if not ipa:
+                logger.warning(f"Skipping TTS pronunciation registry entry without IPA: {word!r}")
+                continue
+            dictionary[word] = ipa
+            aliases = raw_entry.get("aliases", [])
+            if aliases is None:
+                aliases = []
+            if not isinstance(aliases, list):
+                logger.warning(f"Ignoring non-list aliases for TTS pronunciation entry: {word!r}")
+                continue
+            for raw_alias in aliases:
+                alias = str(raw_alias).strip()
+                if alias:
+                    dictionary[alias] = ipa
+    else:
+        dictionary = {
+            str(word).strip(): str(ipa).strip() for word, ipa in data.items() if str(word).strip() and str(ipa).strip()
+        }
+
     if not dictionary:
         logger.warning(f"TTS IPA dictionary is empty, ignoring: {path}")
         return None
 
     logger.info(f"Loaded TTS IPA dictionary from {path} ({len(dictionary)} entries)")
     return dictionary
+
+
+def validate_pronunciation_overrides(value: object) -> dict[str, str]:
+    """Validate bounded, session-local grapheme-to-IPA rules from the browser."""
+    if not isinstance(value, dict) or len(value) > 50:
+        raise ValueError("tts_pronunciations must be a mapping with at most 50 rules")
+    result = {}
+    seen = set()
+    for word, ipa in value.items():
+        if not isinstance(word, str) or not isinstance(ipa, str):
+            raise ValueError("Pronunciation words and IPA must be text")
+        word, ipa = word.strip(), ipa.strip()
+        if (ipa.startswith("/") and ipa.endswith("/")) or (ipa.startswith("[") and ipa.endswith("]")):
+            ipa = ipa[1:-1].strip()
+        if not 1 <= len(word) <= 80 or any(
+            not (char.isalnum() or unicodedata.category(char).startswith("M") or char in "-'’") for char in word
+        ):
+            raise ValueError("Pronunciation words must be single words of at most 80 characters")
+        if not 1 <= len(ipa) <= 200 or any(
+            unicodedata.category(char).startswith(("C", "N")) or char in "<>{}[]/\\" for char in ipa
+        ):
+            raise ValueError("Use at most 200 IPA characters without markup or ARPAbet numbers")
+        if word.casefold() in seen:
+            raise ValueError("Pronunciation words must be unique regardless of case")
+        seen.add(word.casefold())
+        result[word] = ipa
+    return result
+
+
+def resolve_ipa_dictionary(model_name: str | None, overrides: object = None) -> dict[str, str] | None:
+    """Merge session fixes over deployer defaults without mutating shared state.
+
+    Update case aliases together. Unsupported engines never receive IPA.
+    """
+    rules = validate_pronunciation_overrides(overrides) if overrides is not None else {}
+    if model_name and "magpie" not in model_name.casefold():
+        return None
+    dictionary = dict(load_ipa_dictionary(model_name) or {})
+    for word, ipa in rules.items():
+        for alias in tuple(dictionary):
+            if alias.casefold() == word.casefold():
+                dictionary[alias] = ipa
+        dictionary[word] = ipa
+        dictionary[word.casefold()] = ipa
+    return dictionary or None
 
 
 def normalize_lang_code(code: str) -> str:

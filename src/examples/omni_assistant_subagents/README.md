@@ -88,8 +88,52 @@ The example declares `capabilities: [attachments, webcam]` in `examples_registry
 | `POST /api/sessions/{session_id}/webcam/frames` | Upload one webcam JPEG frame |
 | `GET /api/webcam-config` | Browser webcam capture defaults |
 
+## Astra Session Controls
+
+Before starting a session, open **Prompts** in the Astra client to edit the
+**Speaker** instructions and the **Thinker** prompt. The cards, fields, restore
+controls, and expanded editors identify the Speaker and Thinker roles. Each
+pipeline's edits persist separately in browser localStorage. Global persistent
+instructions append to Speaker and Thinker and remain when you restore a default.
+Other worker prompts stay in `prompts.yaml`. Refer to
+[Configure Prompts](../../../docs/how-to/configure-prompts.md).
+
+Use **Voice** in the launch bar to open the speech studio before connecting.
+Choose a catalog voice, preview it, or add IPA pronunciation fixes for Magpie.
+Magpie Zeroshot accepts an explicitly enabled browser reference sample for the
+next session. **Audio settings** appears during a conversation and contains
+microphone and speaker selectors. The transport agent uses the shared demo
+speech wrapper for reference samples and aligned Magpie “Nemotron” timing. Refer to
+[Configure TTS](../../../docs/how-to/configure-tts.md#preview-and-upload-voices-in-the-astra-client)
+for sample limits and the pronunciation qualification boundary.
+
+Open **LLM settings** from **Tools** before starting, or select **LLM** in the
+conversation header while connected. Tune **Speaker**, **Thinker**, **Media Analyzer**, and
+**Webcam** separately for the shared Nemotron Omni model. **Save settings**
+retains edits for the next session. **Apply to session** updates future inference requests
+after acknowledgement; running requests keep their original settings. Model
+endpoints and reasoning modes remain unchanged. Refer to
+[LLM Session Controls](../../../docs/how-to/configure-llm.md#llm-session-controls)
+for limits, advanced sampling parameters, and the top-k `1` default.
+
+Ask to show the voice-agent architecture to display the repository-owned Omni
+SVG in the Astra client. The Speaker prompt pairs the image with a short
+explanation: browser audio passes through the Transport worker to the Omni
+Speaker, which coordinates reasoning and media workers before the selected
+NVIDIA TTS voice speaks the reply. This presentation action does not require
+a media upload or a provider key. Other media requests keep their analyzer
+routing.
+
+The Speaker's per-turn prompt requires transcription of the current user audio
+before choosing a reply. Its native architecture example keeps the request in
+`transcript` and the diagram explanation in `response`. Qualification checks
+the actual spoken input, the displayed image, and the spoken response.
+
 ## Tips & best practices
 
 - **Keep the voice loop responsive.** Media, webcam, and reasoning analysis run as separate worker agents so the transport and speaker agents never block on vision or reasoning work. Preserve that split when adding new capabilities.
+- **Fail audibly on transient Omni capacity errors.** If the hosted endpoint returns a rate, capacity, timeout, connection, or server error before any model content, the Speaker retries once after a bounded delay. A second transient failure speaks one deterministic unavailable response. Once any raw model content has arrived, the runtime never retries the turn, preventing duplicate transcripts or speech.
+- **Preserve natural speech continuations.** If Smart Turn splits speech at a pause, the Speaker merges the unheard segment with speech that resumes within 2 seconds. After output starts, new speech remains a normal barge-in and cancels the obsolete response.
+- **Ground pending uploads.** A request to describe, read, identify, or analyze a pending upload must use the media analyzer. The Speaker withholds an invalid direct response or clarification, retries its action envelope once, and fails closed without sending visual work to the Thinker.
 - **Reuse the deferred-dispatch pattern.** `media_dispatch_processor.py` holds analyzer dispatch until the current spoken turn finishes, which avoids cutting the user off. Reuse it for any new asynchronous worker.
 - **Model selection and VRAM** follow the Omni sizing in [Configure LLM](../../../docs/how-to/configure-llm.md). For deployment and general failure modes, see the [Troubleshooting guide](../../../docs/06-troubleshooting.md).

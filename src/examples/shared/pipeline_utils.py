@@ -4,12 +4,14 @@
 """Shared pipeline helpers used by all cascaded pipeline variants."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 
 from loguru import logger
 from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
+from pipecat.frames.frames import InterimTranscriptionFrame, TranscriptionFrame
 from pipecat.pipeline.worker import PipelineParams
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
@@ -18,7 +20,9 @@ from pipecat.processors.aggregators.llm_response_universal import (
 from pipecat.runner.types import RunnerArguments
 from pipecat.services.nvidia.llm import NvidiaLLMService
 from pipecat.transports.base_transport import TransportParams
+from pipecat.turns.types import ProcessFrameResult
 from pipecat.turns.user_mute import MuteUntilFirstBotCompleteUserMuteStrategy
+from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
 from pipecat.turns.user_stop import (
     SpeechTimeoutUserTurnStopStrategy,
     TurnAnalyzerUserTurnStopStrategy,
@@ -41,6 +45,29 @@ PIPELINE_AUDIO_IN_SAMPLE_RATE = 16000
 PIPELINE_AUDIO_OUT_SAMPLE_RATE = 22050
 
 
+InterruptionTriggerCallback = Callable[[str, int], Awaitable[None]]
+
+
+class ObservedMinWordsUserTurnStartStrategy(MinWordsUserTurnStartStrategy):
+    """Use Pipecat's bot-aware threshold and report genuine barge-in triggers."""
+
+    def __init__(self, *, on_interruption_trigger: InterruptionTriggerCallback | None = None, **kwargs) -> None:
+        """Create a bot-aware threshold with optional trigger observability."""
+        super().__init__(**kwargs)
+        self._on_interruption_trigger = on_interruption_trigger
+
+    async def _handle_transcription(
+        self,
+        frame: TranscriptionFrame | InterimTranscriptionFrame,
+    ) -> ProcessFrameResult:
+        bot_was_speaking = self._bot_speaking
+        word_count = len(frame.text.split())
+        result = await super()._handle_transcription(frame)
+        if result is ProcessFrameResult.STOP and bot_was_speaking and self._on_interruption_trigger is not None:
+            await self._on_interruption_trigger(frame.text[:240], word_count)
+        return result
+
+
 def build_pipeline_params(**kwargs) -> PipelineParams:
     """Build PipelineParams with Magpie-safe audio sample rates."""
     kwargs.setdefault("audio_in_sample_rate", PIPELINE_AUDIO_IN_SAMPLE_RATE)
@@ -48,17 +75,20 @@ def build_pipeline_params(**kwargs) -> PipelineParams:
     return PipelineParams(**kwargs)
 
 
-def build_smart_turn_analyzer() -> LocalSmartTurnAnalyzerV3:
+def build_smart_turn_analyzer(*, stop_secs: float | None = None) -> LocalSmartTurnAnalyzerV3:
     """Return LocalSmartTurnAnalyzerV3 with the configurable silence fallback."""
-    stop_secs = parse_env_float("SMART_TURN_STOP_SECS", SMART_TURN_FALLBACK_SECS, min_value=0.0)
+    if stop_secs is None:
+        stop_secs = parse_env_float("SMART_TURN_STOP_SECS", SMART_TURN_FALLBACK_SECS, min_value=0.0)
     return LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=stop_secs))
 
 
-def build_smart_turn_stop_strategies(*, wait_for_transcript: bool = True) -> list[TurnAnalyzerUserTurnStopStrategy]:
+def build_smart_turn_stop_strategies(
+    *, wait_for_transcript: bool = True, stop_secs: float | None = None
+) -> list[TurnAnalyzerUserTurnStopStrategy]:
     """Return the shared Smart Turn stop strategy."""
     return [
         TurnAnalyzerUserTurnStopStrategy(
-            turn_analyzer=build_smart_turn_analyzer(),
+            turn_analyzer=build_smart_turn_analyzer(stop_secs=stop_secs),
             wait_for_transcript=wait_for_transcript,
         )
     ]
@@ -166,21 +196,46 @@ def register_session_start_handlers(
             await _start_session("rtvi-client-ready")
 
 
-def build_user_aggregator_params(welcome_enabled: bool) -> LLMUserAggregatorParams:
-    """Return user-turn configuration, defaulting to Pipecat smart turn."""
+def build_user_aggregator_params(
+    welcome_enabled: bool,
+    *,
+    vad_stop_secs: float | None = None,
+    smart_turn_stop_secs: float | None = None,
+    interruption_min_words: int | None = None,
+    on_interruption_trigger: InterruptionTriggerCallback | None = None,
+) -> LLMUserAggregatorParams:
+    """Return user-turn configuration with an optional VAD finalization delay."""
+    default_stop_secs = 0.2 if vad_stop_secs is None else max(0.0, vad_stop_secs)
+    start_strategies = (
+        [
+            ObservedMinWordsUserTurnStartStrategy(
+                min_words=max(1, interruption_min_words),
+                on_interruption_trigger=on_interruption_trigger,
+            )
+        ]
+        if interruption_min_words is not None
+        else None
+    )
+
     if not parse_env_bool("USE_SILERO_VAD_TURN_DETECTION", default=False):
         return LLMUserAggregatorParams(
-            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.2)),
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=default_stop_secs)),
             user_mute_strategies=build_user_mute_strategies(welcome_enabled),
-            user_turn_strategies=UserTurnStrategies(stop=build_smart_turn_stop_strategies()),
+            user_turn_strategies=UserTurnStrategies(
+                start=start_strategies,
+                stop=build_smart_turn_stop_strategies(stop_secs=smart_turn_stop_secs),
+            ),
         )
 
-    stop_secs = parse_env_float("SILERO_VAD_STOP_SECS", 0.5, min_value=0.0)
+    stop_secs = (
+        parse_env_float("SILERO_VAD_STOP_SECS", 0.5, min_value=0.0) if vad_stop_secs is None else default_stop_secs
+    )
     return LLMUserAggregatorParams(
         vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=stop_secs)),
         user_mute_strategies=build_user_mute_strategies(welcome_enabled),
         user_turn_strategies=UserTurnStrategies(
             stop=[SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.0)],
+            start=start_strategies,
         ),
     )
 

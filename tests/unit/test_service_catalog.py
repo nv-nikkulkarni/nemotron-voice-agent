@@ -41,6 +41,7 @@ _CATALOG = dedent(
           name: Local Only
           model_id: local-model
           base_url: http://local-llm:8000/v1
+          temperature: 0.0
       asr:
         parakeet:
           name: Parakeet
@@ -753,6 +754,50 @@ class ComposeRecipeTests(unittest.TestCase):
             environment["FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE"],
             "${FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE:-true}",
         )
+
+
+class ThinkerTemperatureHydrationTests(_CatalogTestCase):
+    def test_talker_and_thinker_temperatures_hydrate_independently(self) -> None:
+        set_service_context(
+            {
+                "services": {"llm": ["nemotron"], "thinker-llm": ["local-only"]},
+                "categories": {"thinker-llm": "llm"},
+            }
+        )
+        config = {
+            "llm_id": "self-hosted:nemotron",
+            "thinker_llm_id": "self-hosted:local-only",
+            "temperature": "0.7",
+            "thinker_temperature": "0.9",
+        }
+
+        hydrate_config_from_catalog(config)
+
+        self.assertEqual(config["model_id"], "catalog-model")
+        self.assertEqual(config["thinker_model_id"], "local-model")
+        self.assertEqual(config["temperature"], "0.7")
+        self.assertEqual(config["thinker_temperature"], "0.0")
+
+
+class SessionToolsConfigTests(_CatalogTestCase):
+    """The additive per-session `tools` selection (default behavior preserved)."""
+
+    def test_tools_list_survives_slot_filtering(self) -> None:
+        # Active slots restrict keys, but `tools` is slot-agnostic (like prompt_key).
+        set_service_context({"services": {"llm": ["nemotron"], "asr": ["parakeet"], "tts": ["magpie"]}})
+        out = filter_session_config(
+            {
+                "pipeline_mode": "generic-assistant",
+                "tools_available": "get_weather,calculate_bmi",
+                "bogus": "x",
+            }
+        )
+        self.assertEqual(out.get("tools_available"), "get_weather,calculate_bmi")
+        self.assertNotIn("bogus", out)
+
+    def test_absent_tools_preserves_prompt_default(self) -> None:
+        out = filter_session_config({"pipeline_mode": "generic-assistant"})
+        self.assertNotIn("tools_available", out)
 
 
 if __name__ == "__main__":

@@ -75,7 +75,13 @@ examples:
     bot: examples.omni_assistant_subagents.pipeline:bot
 
   frontend-backend-agent:
-    label: Frontend Backend Agent
+    label: Airline Frontend Backend Agent
+    domain_profile: airline
+    thinker_prompt: thinker
+    agent_prompt_keys:
+      - thinker
+      - generic_talker
+      - generic_thinker
     services:
       llm: [nemotron-lightning]
       thinker-llm: [nemotron-lightning]
@@ -90,4 +96,46 @@ examples:
           reasoning_budget: 1024
     defaults:
       prompt: [talker]
+    bot: examples.frontend_backend_agent.pipeline:bot
+
+  generic-frontend-backend-agent:
+    label: Generic Frontend Backend Agent
+    domain_profile: generic
+    thinker_prompt: generic_thinker
+    tools:
+      - get_weather
+      - get_stock_price
+      - get_current_time
+      - show_architecture
+      - web_search
+      - calculate_bmi
+      - generate_random_number
+    agent_prompt_keys:
+      - talker
+      - thinker
+      - generic_thinker
+    services:
+      llm: [nemotron-lightning]
+      thinker-llm: [nemotron-super, nemotron-lightning]
+      asr: [nemotron-asr-streaming-english]
+      tts: [magpie-multilingual-tts, chatterbox-multilingual-tts, magpie-zeroshot-tts]
+    categories:
+      thinker-llm: llm
+    settings:
+      llm:
+        nemotron-lightning:
+          enable_thinking: false
+          temperature: 0.0
+          max_tokens: 512
+      thinker-llm:
+        nemotron-super:
+          enable_thinking: true
+          reasoning_budget: 256
+          temperature: 0.0
+          max_tokens: 2048
+        nemotron-lightning:
+          enable_thinking: true
+          reasoning_budget: 1024
+    defaults:
+      prompt: [generic_talker]
     bot: examples.frontend_backend_agent.pipeline:bot

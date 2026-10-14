@@ -117,6 +117,8 @@ async def bot(runner_args: RunnerArguments) -> None:
         body.get("prompt_key", ""),
     )
     base_system_content = _expand_fragments(base_system_content, prompt_catalog)
+    if body.get("persistent_prompt"):
+        base_system_content += "\n\n" + body["persistent_prompt"]
     logger.info(
         f"Starting Nemotron Omni Assistant Subagents pipeline "
         f"(prompt={prompt_key}, agents=transport,speaker,media,webcam,thinker)"
@@ -168,6 +170,8 @@ async def bot(runner_args: RunnerArguments) -> None:
         tts_function_id=tts_function_id,
         tts_model=tts_model,
         tts_zero_shot_audio_prompt_file=tts_zero_shot_audio_prompt_file,
+        tts_voice_sample=body.get("tts_voice_sample", ""),
+        tts_pronunciations=body.get("tts_pronunciations"),
         runner_args=runner_args,
         session_id=session_id,
         subagent_registry=registry,
@@ -181,12 +185,30 @@ async def bot(runner_args: RunnerArguments) -> None:
             )
         },
     )
+
+    async def show_architecture() -> None:
+        from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
+
+        await transport_agent.queue_frame(
+            RTVIServerMessageFrame(
+                data={
+                    "type": "presentation",
+                    "kind": "architecture",
+                    "image_url": "/api/architecture/omni.svg",
+                    "alt": "Current Nemotron Omni voice agent architecture",
+                }
+            )
+        )
+
     speaker_agent = SpeakerOmniAgent(
+        sampling_session_id=session_id,
+        sampling_initial=body.get("llm_role_settings", {}).get("speaker", {}),
         context=context,
         api_key=api_key,
         base_url=base_url,
         model_id=model_id,
         extra_params=extra_params,
+        presentation_handler=show_architecture,
         audio_response_instruction=_agent_prompt_content(prompt_catalog, "SpeakerAgent", "audio_response_instruction"),
         media_analysis_prompt_handler=transport_agent.queue_media_analysis_prompt,
         uploaded_attachment_available=transport_agent.has_uploaded_attachment,
@@ -196,6 +218,8 @@ async def bot(runner_args: RunnerArguments) -> None:
         visual_status_provider=transport_agent.current_visual_status,
     )
     media_analyzer_agent = MediaAnalyzerWorker(
+        sampling_session_id=session_id,
+        sampling_initial=body.get("llm_role_settings", {}).get("media", {}),
         api_key=api_key,
         base_url=base_url,
         model_id=model_id,
@@ -204,6 +228,8 @@ async def bot(runner_args: RunnerArguments) -> None:
         reasoning=_reasoning_for(registry, MediaAnalyzerWorker.AGENT_NAME, "on"),
     )
     webcam_agent = WebcamAgent(
+        sampling_session_id=session_id,
+        sampling_initial=body.get("llm_role_settings", {}).get("webcam", {}),
         api_key=api_key,
         base_url=base_url,
         model_id=model_id,
@@ -213,11 +239,17 @@ async def bot(runner_args: RunnerArguments) -> None:
         gesture_prompt=_agent_prompt_content(prompt_catalog, "WebcamAgent", "gesture_prompt"),
     )
     thinker_agent = ThinkerWorker(
+        sampling_session_id=session_id,
+        sampling_initial=body.get("llm_role_settings", {}).get("thinker", {}),
         api_key=api_key,
         base_url=base_url,
         model_id=model_id,
         extra_params=_extra_params_for(extra_params, llm_entry, registry, ThinkerWorker.AGENT_NAME),
-        system_prompt=_agent_prompt_content(prompt_catalog, "ThinkerAgent", "thinking_system_prompt"),
+        system_prompt=(
+            body.get("thinker_prompt_content")
+            or _agent_prompt_content(prompt_catalog, "ThinkerAgent", "thinking_system_prompt")
+        )
+        + ("\n\n" + body["persistent_prompt"] if body.get("persistent_prompt") else ""),
     )
 
     await runner.add_workers(transport_agent, media_analyzer_agent, webcam_agent, thinker_agent, speaker_agent)

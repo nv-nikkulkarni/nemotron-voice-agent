@@ -58,6 +58,33 @@ TTS runs one of these ways, and the repo wires the right one per profile:
   Magpie Zeroshot NGC access is restricted — apply at the [Magpie TTS Zeroshot NGC page](https://catalog.ngc.nvidia.com/orgs/nim/teams/nvidia/containers/magpie-tts-zeroshot). For audio-prompt cloning, see [Voice cloning / zero-shot](#voice-cloning--zero-shot).
 - **NeMo-Speech.cpp (single GPU, including Jetson Thor)**: on `*/single-gpu`, an on-device sidecar serves Magpie TTS from local GGUF weights: `nemo-speech` / `nemo-speech-multilingual` (ASR + TTS together) or `nemo-speech-tts` (TTS only, for Omni). All three answer on the `nemo-speech` alias, so one catalog entry covers them. `scripts/download-nemo-speech-models.sh` also fetches Sparrowhawk TN grammars so digits and dates are spoken as words (`--tts.tn-model-dir=/models/tn_configs`). See [Jetson Thor](../03-jetson-thor.md).
 
+### Optional Helm Zero-Shot Service
+
+The [NVCF Helm chart](../../nvcf_helm/values.yaml) can add a dedicated Magpie
+Zeroshot pod alongside the existing TTS services. Set `zeroShotTts.enabled: true`
+in your deployment overrides after verifying a spare GPU and authorized NGC
+container and model access. The default is `false`.
+
+The chart uses `zeroShotImage.repository: nvcr.io/nim/nvidia/magpie-tts-zeroshot`
+and `zeroShotImage.tag: "1.2.0"`. Set `zeroShotImage.digest` to pin the image;
+a nonempty digest takes precedence over the tag. The default selector is
+`zeroShotTts.nimTagsSelector: "batch_size=8"`, with a limit of 1 GPU.
+
+The service is `magpie-zeroshot-tts-service:50051` for gRPC and port `9000`
+for HTTP health. Enabling it adds `magpie-zeroshot-tts` to the chart-generated
+TTS choices for Generic Frontend/Backend Agent and Omni Subagents. Select this
+engine before enabling your browser reference sample.
+
+The default `zeroShotTts.cache.nvcf: true` uses a 50 GiB `emptyDir` cache.
+Set it to `false` to request a persistent volume claim; configure
+`zeroShotTts.cache.storageClass` for your cluster instead of assuming the
+`oci-bv` default is available. Pulling the image alone does not prove model
+access or readiness. Check `/v1/health/ready` on port `9000` and a real preview
+before qualifying voice cloning.
+
+Refer to the [zero-shot deployment template](../../nvcf_helm/templates/deployment-magpie-zeroshot-tts.yaml)
+for credential injection, startup probes, and cache mounts.
+
 ### VRAM & Hardware Support
 
 | Model | Typical VRAM | Notes |
@@ -105,7 +132,7 @@ For first-chunk and inter-chunk latency and throughput (RTFX) across GPUs, refer
 
 ### Voices & Emotions
 
-The active voice is the `voice_id` in the catalog entry. The client UI includes a voice selector that discovers the connected service's available voices and languages, so you can switch mid-session. Voice IDs follow each model's naming. For example, use `Magpie-Multilingual.EN-US.Aria`, `Magpie-ZeroShot-Multilingual.Female`, or `Chatterbox-Multilingual.en-US.Male`. Available voices and emotions depend on the deployed NIM and can be discovered at runtime over gRPC or HTTP. Refer to [available voices and emotions](https://docs.nvidia.com/nim/speech/latest/tts/voices.html).
+The active voice is the `voice_id` in the catalog entry. The upstream client includes a voice selector that discovers available voices and languages for mid-session switching. The Astra demo uses pre-session voice cards on the **Voice** studio page. Voice IDs follow each model's naming. For example, use `Magpie-Multilingual.EN-US.Aria`, `Magpie-ZeroShot-Multilingual.Female`, or `Chatterbox-Multilingual.en-US.Male`. Available voices and emotions depend on the deployed NIM and can be discovered at runtime over gRPC or HTTP. Refer to [available voices and emotions](https://docs.nvidia.com/nim/speech/latest/tts/voices.html).
 
 - **Magpie Multilingual**: multiple voices and emotional styles per locale.
 - **Magpie Zeroshot**: languages listed in [Supported languages](#supported-languages); built-in voices across locales are `Magpie-ZeroShot-Multilingual.Female` (default) and `Magpie-ZeroShot-Multilingual.Male` ([model card](https://build.nvidia.com/nvidia/magpie-tts-zeroshot/modelcard)).
@@ -158,11 +185,18 @@ Pipecat's `NvidiaTTSService` supports two synthesis modes through the catalog fi
 
 Magpie Multilingual and Magpie Zeroshot reference the `magpie-tts` profile in [`settings.yaml`](../../settings.yaml), so their card in the Services tab has a **Synthesis Mode** dropdown that defaults to `stitched`. The backend hydrates the choice as `tts_synthesis_mode`. Chatterbox sets `synthesis_mode: per_sentence` directly and shows no dropdown. Give every entry a mode, through the profile or the field, so a TTS switch cannot inherit another model's mode through the registry-default fallback in the pipeline.
 
+The Frontend/Backend Agent and Omni Subagents use
+[`DemoNvidiaTTSService`](../../src/examples/shared/demo_speech.py), which selects
+`per_sentence` for Magpie. Ordinary sentences use `SynthesizeOnline`. Sentences
+containing “Nemotron” use a bounded unary request to obtain word timestamps for
+the targeted timing adjustment described below. Other examples retain their
+catalog synthesis mode.
+
 ### Word-Level Input Streaming and Timestamps
 
 > **NIM only.** `NvidiaWordTTSService` supports Magpie served by NVIDIA NIM. It does not support the GGML/GGUF-based NeMo-Speech.cpp backend used by `*/single-gpu` profiles.
 
-All examples use Pipecat's `NvidiaTTSService` by default, which keeps Magpie Multilingual, Magpie Zeroshot, and Chatterbox switchable through the service catalog. For Magpie TTS Multilingual NIM 1.10.0 or newer, [`NvidiaWordTTSService`](../../src/examples/shared/nvidia_word_tts.py) is an optional drop-in subclass that adds word-level input streaming and timestamp-based LLM context commits. It requires `nvidia-riva-client>=2.27.0,<3`.
+Examples use Pipecat's `NvidiaTTSService` or the demo subclass described above, keeping Magpie Multilingual, Magpie Zeroshot, and Chatterbox switchable through the service catalog. For Magpie TTS Multilingual NIM 1.10.0 or newer, [`NvidiaWordTTSService`](../../src/examples/shared/nvidia_word_tts.py) is an optional drop-in subclass that adds word-level input streaming and timestamp-based LLM context commits. It requires `nvidia-riva-client>=2.27.0,<3`.
 
 To opt in for a custom example, change only the service import and constructor:
 
@@ -189,7 +223,7 @@ The UI renders assistant bubbles from LLM response events, independently of the 
 
 ### Pronunciation (IPA)
 
-Override Magpie's default pronunciation for specific words with an International Phonetic Alphabet (IPA) dictionary. Create a JSON or YAML dictionary file, then set `TTS_IPA_FILE_PATH` in `.env` to that path. Relative paths resolve from the repo root:
+Override Magpie's default pronunciation for specific words with an International Phonetic Alphabet (IPA) dictionary. Create a JSON or YAML dictionary file, then set `TTS_IPA_FILE_PATH` in `.env` to that path. Relative paths resolve from the repository root:
 
 ```bash
 TTS_IPA_FILE_PATH=config/ipa.json
@@ -205,9 +239,69 @@ Example dictionary:
 }
 ```
 
-The dictionary loads at session start and applies to every TTS request. Restart the server (or re-apply the active Compose profile) after changing the file. For the dictionary format and the phonemes Magpie supports, see [TTS customization](https://docs.nvidia.com/nim/speech/latest/tts/customization.html) and [phoneme support](https://docs.nvidia.com/nim/speech/latest/tts/phoneme-support.html).
+The loader also accepts the versioned registry in
+[`pronunciation_registry.yaml`](../../src/examples/shared/pronunciation_registry.yaml).
+Each `entries` item requires `ipa` and can retain `arpabet`, `category`, and
+`aliases` metadata. ARPAbet is review metadata only. The runtime extracts
+grapheme-to-IPA mappings and aliases for Magpie requests.
 
-> **Check the wiring.** `TTS_IPA_FILE_PATH` only takes effect if the pipeline loads the dictionary and passes it to the `NvidiaTTSService`. The shipped examples do this with `custom_dictionary=load_ipa_dictionary()` where they construct the service (see the `NvidiaTTSService(...)` call in [`src/examples/generic/pipeline.py`](../../src/examples/generic/pipeline.py)). If you build a custom pipeline, confirm your `NvidiaTTSService(...)` is created with `custom_dictionary=load_ipa_dictionary()`, or the env var has no effect.
+The NVCF Helm chart sets `TTS_IPA_FILE_PATH` from
+`app.ttsPronunciationPath`, which defaults to the packaged registry. Magpie
+receives the extracted IPA dictionary. Chatterbox receives no custom dictionary
+because its request interface does not support this field. Legacy flat
+grapheme-to-IPA JSON and YAML files remain compatible.
+
+Restart the application after changing the file. You do not need to redeploy the
+text-to-speech NVIDIA Inference Microservice (NIM). The broad packaged mappings
+remain subject to human listening and exact-word Viking qualification before
+promotion. Refer to the [SQA pronunciation evidence and registry boundary](../../tests/sqa/TTS_PRONUNCIATION_CANDIDATES.md).
+
+The packaged “Nemotron” mapping is `ˈnimoʊˌtɹɑn`, a candidate derived from the
+approved audio sample. Approval of the audio does not establish approval of
+this IPA transcription. The demo subclass uses fresh Magpie NIM word timestamps
+to apply `atempo=1.28` only to the target word. If “three” follows, it trims only
+leading quiet audio toward a 25 ms gap, preserving the surrounding speech and
+“three” onset. Missing or invalid alignment leaves the audio unchanged. Verify
+these adjustments through listening before qualifying a deployment. The
+[reference provenance](../../src/examples/shared/assets/nemotron-approved-reference.json)
+records variant `8A-6`, source hashes, and timing parameters. The reference WAV
+is not packaged in the repository; its timestamps are not reused for live audio.
+
+For the dictionary format and the phonemes Magpie supports, refer to
+[TTS customization](https://docs.nvidia.com/nim/speech/latest/tts/customization.html)
+and [phoneme support](https://docs.nvidia.com/nim/speech/latest/tts/phoneme-support.html).
+
+> **Check the wiring.** `TTS_IPA_FILE_PATH` only takes effect if the pipeline
+> passes the selected model to `load_ipa_dictionary(tts_model)` and supplies its
+> result as `custom_dictionary`. Passing the model prevents unsupported
+> services such as Chatterbox from receiving the dictionary. Refer to the
+> `NvidiaTTSService(...)` call in
+> [`src/examples/generic/pipeline.py`](../../src/examples/generic/pipeline.py).
+
+### Session Pronunciation Fixes in the Astra Client
+
+Select **Voice** before starting a conversation and use **Pronunciation fixes**
+in the studio. The list includes deployed defaults and your saved fixes. Select
+**Edit** beside a rule, or enter a **Word** and **IPA pronunciation**, then
+select **Save pronunciation**. Use **Find a pronunciation** to search the list.
+
+You can save up to 50 custom rules per assistant. Each word accepts at most
+80 characters, and each IPA value accepts at most 200 characters. Enter a single
+word; create separate rules for multiword names. The editor accepts IPA without
+markup and rejects ARPAbet numbers. Removing a custom rule restores the deployed
+default for that word.
+
+The browser saves rules per assistant in localStorage. They apply to
+**Preview voice** and the next session through `tts_pronunciations`, a
+word-to-IPA map. The backend combines validated session rules with its deployed
+dictionary. This does not modify `TTS_IPA_FILE_PATH` or the packaged registry.
+Reloading the page preserves your edits for the same browser profile and
+origin. End the conversation before editing them.
+
+IPA controls require a Magpie engine. Chatterbox does not receive these rules;
+your edits remain saved when you switch back to Magpie. Preview a sentence with
+the changed word and listen before using it in a demo. An IPA edit does not
+establish human listening approval.
 
 ### TTS Text Filter
 
@@ -221,7 +315,12 @@ These appear naturally in code, JSON, Markdown, or HTML output. The filter class
 
 #### `NemotronSpeechTextFilter` (default)
 
-A single regex pass that strips `*`, `{`, `}`, and tag-opening `<`. Everything else passes through unchanged: comparison operators (`5 < 7`), currency, emoji, and non-Latin scripts. Use it for plain or lightly formatted prose.
+This filter keeps visible link text while removing link destinations and HTML
+tags. It removes Markdown heading, list, numbered-list, and blockquote prefixes,
+backticks, double-underscore markers, asterisks, ARPAbet braces, and tag-opening
+`<`. Underscores between word characters become spaces. Comparison operators
+such as `5 < 7`, currency, emoji, and non-Latin scripts remain available for
+speech. Use it for plain or lightly formatted prose.
 
 ```python
 # src/examples/generic/pipeline.py
@@ -246,6 +345,43 @@ tts = NvidiaTTSService(
     text_filters=[NemotronSpeechMarkdownTextFilter()],
 )
 ```
+
+### Preview and Upload Voices in the Astra Client
+
+Before starting a session, select **Voice** in the launch bar below the
+example cards to open the `/voice` studio. Choose a catalog **Speech engine**,
+then a **Speaking voice** card. The scrollable gallery shows voice names and language details without a
+dropdown or collapsed section. Larger catalogs offer **Find a voice** search
+by name or expression and show a matching count. Enter up to 200 characters
+and select **Preview voice**.
+Preview uses `POST /api/tts/preview` and returns WAV audio. Engines, voices,
+languages, and samples are pre-session choices; end the session before
+changing them. **Audio settings** appears on the conversation page and opens
+only microphone and speaker selectors. The studio lists available deployment
+engines, including Magpie Zeroshot when enabled. Select **Back to setup** to
+return to the landing page.
+
+For the Frontend/Backend Agent or Omni Subagents, select Magpie Zeroshot
+to use a reference voice. Under **Create a character voice**, upload
+3–10 seconds of clear speech, then enable **Use sample for zero-shot voice**. The browser converts the clip to
+22.05 kHz, 16-bit mono PCM WAV and stores it in IndexedDB for that browser
+profile and origin. The input file is limited to 10 MB. **Remove sample**
+deletes the saved clip. The use checkbox is explicit; uploading alone does not
+activate the sample. The saved clip persists across reloads, but the checkbox
+resets off; enable it again to use the sample. Preview uses the sample when
+this checkbox is enabled.
+Preset voice selection is disabled while the sample supplies the voice. The
+service sets Riva's required `voice_name` to `Magpie-ZeroShot-Multilingual`
+for validated reference audio, rather than a built-in Female or Male preset.
+
+The client sends `tts_voice_sample` as base64 WAV in the next session
+configuration, so application replicas do not need a shared sample path.
+The server accepts at most 1,000,000 decoded bytes, 3–10 seconds, mono 16-bit
+PCM, and sample rates from 22.05 to 48 kHz. Samples require a compatible
+Magpie Zeroshot model. Chatterbox Multilingual NIM 1.1.0 rejects audio prompts,
+so its catalog voices remain available without sample cloning. Client
+filesystem paths are not accepted.
+Other examples keep their catalog-based audio-prompt configuration below.
 
 ### Voice Cloning / Zero-Shot
 

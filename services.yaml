@@ -58,6 +58,7 @@ server:
       server: "chatterbox-tts-service:50051"
       voice_id: "Chatterbox-Multilingual.en-US.Male"
       model: "chatterbox-tts-multilingual"
+      max_tts_chunk_chars: 240
       synthesis_mode: per_sentence
       nvcf:
         function_id: "ddacc747-1269-4fab-bfd9-8f593dead106"

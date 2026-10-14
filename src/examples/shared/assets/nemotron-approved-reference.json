@@ -1,0 +1,14 @@
+{
+  "variant": "8A-6",
+  "recorded_at": "2026-09-22T04:26:15.261540+00:00",
+  "canonical_term": "Nemotron",
+  "reference_voice": "Chris",
+  "handoff_sha256": "0ab55014e0512447a73e871abf471a17acfbdc901fd4069aa76af8faeb63c0f9",
+  "phrase_sha256": "631023a474b70b2ee68dccc4a748d354094af9b788372c57c4d787b2761c5ed7",
+  "word_sha256": "4d7fa80b7d64b9c40e0cffa26166606e8e230ae7c8494623d5fea87496ca27a5",
+  "word_tempo": 1.28,
+  "quiet_gap_seconds": 0.025,
+  "edge_blend_seconds": 0.004,
+  "ipa_separately_approved": false,
+  "integration": "Apply pronunciation dictionary and target-only timing to fresh live word alignment; audition each voice. Reference clip timestamps are not reusable."
+}

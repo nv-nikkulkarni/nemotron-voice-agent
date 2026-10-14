@@ -32,6 +32,13 @@ SERVER_METRIC_KEYS = (
     "vad_smart_turn",
     "llm_processing_time",
     "llm_tokens_per_sec",
+    "frontend_tool_selection_ttft",
+    "frontend_tool_selection_processing_time",
+    "backend_llm_ttft",
+    "backend_llm_processing_time",
+    "backend_tool_call_latency",
+    "frontend_final_response_ttft",
+    "frontend_final_response_processing_time",
 )
 
 _SHUTDOWN_REQUESTED = False
@@ -605,7 +612,12 @@ class PerfClient:
             turn_response_timeout=self.turn_response_timeout,
             metrics_start_time=self.metrics_start_time,
             test_duration=self.test_duration,
-            server_metrics={"samples": samples, "average": averages, "sample_counts": counts},
+            server_metrics={
+                "samples": samples,
+                "average": averages,
+                "sample_counts": counts,
+                "stage_events": getattr(self.protocol_client, "stage_metric_events", []),
+            },
             rtvi_messages=artifacts.get("rtvi_messages", []),
             realtime_turn_metrics=artifacts.get("realtime_turn_metrics", []),
             timestamp=dt.datetime.now().isoformat(),

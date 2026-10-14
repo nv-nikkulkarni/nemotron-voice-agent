@@ -16,6 +16,18 @@ Known issues and fixes for **startup and deployment** of the Nemotron Voice Agen
 | Download script: `Neither 'hf' nor 'uvx' is available` | Neither supported downloader is on `PATH`. Install the Hugging Face `hf` CLI or `uv` for `uvx`, and then rerun the script as your user without `sudo`. | [Getting Started](01-getting-started.md#docker-based-deployment) |
 | Hugging Face `Permission denied` under `~/.cache/huggingface` | The vLLM sidecar bind-mounts that cache and writes as root. Re-run the download script as your user (it reclaims the cache) or `chown` it back to your user. | [Getting Started](01-getting-started.md#docker-based-deployment) |
 
+## Helm Deployment Discovery And Health
+
+Use the matching application image and `nvcf_helm` chart when you deploy the
+Kubernetes stack. Check these responses before starting a voice session:
+
+| Error / symptom | Cause & fix | Reference |
+|-----------------|-------------|-----------|
+| `/api/deployment` fails with a missing default prompt | The chart-provided registry selects a prompt absent from the example catalog. Omni Subagents requires `omni_subagents_assistant` in its `prompts.yaml`. Update the chart registry to match the application image. | [Chart Catalog And Health Checks](deployment-architecture.md#chart-catalog-and-health-checks) |
+| Model pods are Ready, but Magpie or Omni is missing from the Helm deployment catalog | Verify that `magpie-multilingual-tts-service:50051` and `nvidia-llm-vllm-omni:8002` have ready endpoints. The Magpie alias selects the existing TTS pod. Omni uses the vLLM catalog endpoint. Deploy the matching chart before changing model replicas or GPU allocation. | [Chart Catalog And Health Checks](deployment-architecture.md#chart-catalog-and-health-checks) |
+| Omni `/api/session-config` returns `503`, and `/v1/health/ready` returns `404` | A NIM catalog profile points to a vLLM server. The chart requires `nvidia-llm-vllm-omni:8002` with `/health`. Remove a `nvidia-llm-omni:8000` alias to that pod; reserve the NIM hostname and `/v1/health/ready` for an actual NIM deployment. | [Chart Catalog And Health Checks](deployment-architecture.md#chart-catalog-and-health-checks) |
+| `/health` returns HTTP `200` with HTML | A UI fallback handled the request. Expect `application/json` with `{"status":"ok"}`. Use an application version that registers `/health` before the UI fallback, and confirm that your proxy routes `/health` to the backend. Model readiness still requires `/api/session-config` and a real voice turn. | [Chart Catalog And Health Checks](deployment-architecture.md#chart-catalog-and-health-checks) |
+
 <a id="local-llm-wont-start-self-hosted"></a>
 
 ## Local LLM Does Not Start (Self-Hosted)
@@ -55,7 +67,7 @@ Self-hosted Nemotron-3 models only. Cloud (NVCF) has the parsers enabled server-
 | Error / symptom | Cause & fix | Reference |
 |-----------------|-------------|-----------|
 | Synthesis fails or produces odd audio on code / Markdown / JSON output | Characters reserved by the Magpie preprocessor (`{`, `}`, `<tag>`) reached the engine. Apply the text filter, using `NemotronSpeechMarkdownTextFilter` for Markdown-heavy output. | [Configure TTS → TTS text filter](how-to/configure-tts.md#tts-text-filter) |
-| Mispronounced brand / domain terms | Add them to an IPA dictionary using `TTS_IPA_FILE_PATH`. | [Configure TTS → Pronunciation (IPA)](how-to/configure-tts.md#pronunciation-ipa) |
+| Mispronounced brand / domain terms | In the Astra client, use **Voice > Pronunciation fixes** for Magpie previews and the next session. For deployment defaults, update the IPA dictionary selected by `TTS_IPA_FILE_PATH`. Listen to the preview before accepting the edit. | [Session pronunciation fixes](how-to/configure-tts.md#session-pronunciation-fixes-in-the-astra-client) · [Deployment pronunciation defaults](how-to/configure-tts.md#pronunciation-ipa) |
 | Single-GPU TTS reads digits, dates, or currency as characters (for example "2" instead of "two") | Magpie TTS text normalization is off. Re-run `bash scripts/download-nemo-speech-models.sh` so `models/nemo-speech/tn_configs` is present, then restart the `*/single-gpu` profile. The sidecar must receive `--tts.tn-model-dir=/models/tn_configs`. | [Getting Started](01-getting-started.md#docker-based-deployment) · [Jetson Thor](03-jetson-thor.md) |
 | Long replies are rejected or truncated | The TTS NIM caps a request at **2,000 normalized characters**. The NVIDIA Pipecat TTS service streams replies **sentence-by-sentence with a 200-character hard limit per sentence**, so the cap is not reached in normal use. It mainly affects custom integrations that synthesize large blocks at once. Split long text into sentence or paragraph chunks. | [Configure TTS](how-to/configure-tts.md) · [TTS NIM troubleshooting](https://docs.nvidia.com/nim/speech/latest/troubleshooting/tts.html) |
 
@@ -72,7 +84,7 @@ These are runtime behavior issues and apply to any deployment, cloud or local.
 
 | Error / symptom | Cause & fix | Reference |
 |-----------------|-------------|-----------|
-| Background or random noise interrupts the bot mid-reply (false barge-in) and leaves the conversation in a confused state | Silero VAD is detecting ambient noise as the onset of user speech, which barges in and stops the TTS. When no real utterance follows, the turn is left half-finished. The most effective fix is to reduce input noise: use a wired or directional headset mic in a quieter room. If noise still trips it, raise the Silero VAD sensitivity (its confidence and minimum-volume thresholds in `VADParams`) where the pipeline builds the transport. | [Tune Pipeline Performance → Smart Turn Detection](how-to/tune-pipeline-performance.md#smart-turn-detection) · [Configure ASR → Customization](how-to/configure-asr.md#customization) |
+| Background or random noise interrupts the bot mid-reply (false barge-in) and leaves the conversation in a confused state | A stray interim automatic speech recognition token can start a turn and clear buffered bot audio. The Generic Frontend/Backend Agent requires at least 2 transcribed words while the bot is speaking; normal turns still start with 1 word. Search server logs for `user_interruption_trigger` to inspect the bounded transcript and `word_count` that passed the gate. Smart Turn controls end-of-turn detection and is not the cause of this start-of-turn symptom. Use a wired or directional headset in a quieter room if real background speech still passes the gate. | [Tune Pipeline Performance → Smart Turn Detection](how-to/tune-pipeline-performance.md#smart-turn-detection) · [Configure ASR → Customization](how-to/configure-asr.md#customization) |
 
 ## Runtime Service Failures
 

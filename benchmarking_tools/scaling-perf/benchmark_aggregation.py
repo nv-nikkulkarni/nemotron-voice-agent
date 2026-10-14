@@ -33,6 +33,13 @@ SUITE_HEADERS = (
     "VAD+Smart Turn",
     "LLM Proc Time",
     "LLM Tok/s",
+    "Frontend Select TTFT",
+    "Frontend Select Proc",
+    "Backend LLM TTFT",
+    "Backend LLM Proc",
+    "Backend Tool Latency",
+    "Frontend Final TTFT",
+    "Frontend Final Proc",
     "Glitches",
 )
 assert len(SUITE_HEADERS) == 9 + len(SERVER_METRIC_KEYS), "SUITE_HEADERS must cover every server metric key"

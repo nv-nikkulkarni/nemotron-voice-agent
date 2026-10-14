@@ -118,6 +118,14 @@ nemotron-super:
     type: bool
     default: false
     path: extra_body.chat_template_kwargs.enable_thinking
+  reasoning_budget:
+    label: "Reasoning Budget"
+    type: int
+    default: 16384
+    min: 128
+    max: 32768
+    path: extra_body.reasoning_budget
+    requires: enable_thinking
 
 magpie-tts:
   synthesis_mode:

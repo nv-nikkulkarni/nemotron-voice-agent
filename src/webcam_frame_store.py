@@ -15,6 +15,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from session_bus import client as _bus
+
 
 @dataclass(frozen=True)
 class WebcamFrame:
@@ -64,6 +66,10 @@ def register_webcam_frame_listener(session_id: str, listener: Callable[[], None]
     cleaned_session_id = session_id.strip()
     if not cleaned_session_id:
         return lambda: None
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        return _busmedia.start_listener(f"sb:wc:{cleaned_session_id}", listener)
     with _lock:
         _listeners_by_session.setdefault(cleaned_session_id, []).append(listener)
 
@@ -111,6 +117,16 @@ def store_webcam_frame(
     if len(data) > _FRAME_MAX_BYTES:
         raise ValueError(f"webcam frame exceeds max size ({_FRAME_MAX_BYTES} bytes)")
 
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        return _busmedia.store_webcam_frame(
+            session_id=cleaned_session_id,
+            name=name.strip() or "webcam-frame.jpg",
+            content_type=cleaned_content_type,
+            data=data,
+        )
+
     with _lock:
         frame = WebcamFrame(
             id=uuid.uuid4().hex,
@@ -132,6 +148,10 @@ def store_webcam_frame(
 
 def latest_webcam_frame(session_id: str) -> WebcamFrame | None:
     """Return the latest webcam frame for a session."""
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        return _busmedia.latest_webcam_frame(session_id.strip())
     with _lock:
         frames = list(_frames_by_session.get(session_id.strip(), ()))
     return frames[-1] if frames else None
@@ -152,8 +172,13 @@ def recent_webcam_frames(
     cleaned_session_id = session_id.strip()
     if not cleaned_session_id:
         return []
-    with _lock:
-        frames = list(_frames_by_session.get(cleaned_session_id, ()))
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        frames = _busmedia.recent_webcam_frames(cleaned_session_id)
+    else:
+        with _lock:
+            frames = list(_frames_by_session.get(cleaned_session_id, ()))
     if not frames:
         return []
     if max_seconds is not None and math.isfinite(max_seconds) and max_seconds > 0:
@@ -169,6 +194,11 @@ def recent_webcam_frames(
 
 def clear_session_webcam_frames(session_id: str) -> None:
     """Drop all webcam frames for a session."""
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        _busmedia.clear_webcam(session_id.strip())
+        return
     with _lock:
         _frames_by_session.pop(session_id.strip(), None)
         _listeners_by_session.pop(session_id.strip(), None)
@@ -176,5 +206,10 @@ def clear_session_webcam_frames(session_id: str) -> None:
 
 def clear_session_webcam_frame_data(session_id: str) -> None:
     """Drop stored webcam frames but keep live-session listeners registered."""
+    if _bus.is_enabled():
+        from session_bus import media as _busmedia
+
+        _busmedia.clear_webcam(session_id.strip(), keep_seq=True)
+        return
     with _lock:
         _frames_by_session.pop(session_id.strip(), None)

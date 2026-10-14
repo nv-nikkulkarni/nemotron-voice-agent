@@ -15,6 +15,9 @@ deployments such as `generic-assistant/server-perf`.
 protocol the server uses to push per-turn timing breakdowns (LLM / TTS /
 ASR sub-latencies) to the client over the same WebSocket as the audio.
 The benchmark parses those frames alongside the audio stream.
+It accepts nested `server-message` envelopes from the wire and already-unwrapped
+metrics payloads delivered by an RTVI software development kit (SDK) callback.
+Both forms feed the same metric collector.
 
 Use `--protocol realtime` or provide `--ws-url` to run the same client,
 concurrency, pacing, latency, glitch, and aggregation logic against an
@@ -272,6 +275,21 @@ results_<timestamp>/
     └── audio_output_<id>.wav    # bot audio captured by this client (unless --no-save-audio)
 ```
 
+Each per-client `result_<id>.json` includes
+`server_metrics.stage_events`. This list retains each observed Frontend/Backend
+metric before aggregation.
+
+Each event stores `key`, `value`, `metric`, and `processor`, plus `stage`,
+`turn_id`, `invocation_id`, `parent_invocation_id`, `attempt`, `outcome`, and
+`tool_name` when supplied by the server. Event values use seconds. The
+correlation fields let you reconstruct retries, individual tool invocations,
+and a turn's Talker-to-Thinker sequence.
+
+The aggregate text, tab-separated value (TSV), and JSON reports still expose
+the same seven Frontend/Backend stage columns. Use `stage_events` when you need
+per-invocation evidence; raw `rtvi_messages` remain available in the per-client
+result for broader transport analysis.
+
 Multi-level sweep (`--clients "1 4 16"`):
 
 ```
@@ -306,6 +324,22 @@ weighted-averaged across all turns/clients in a run):
 | `vad_smart_turn` | VAD + smart-turn analyzer time |
 | `llm_processing_time` | LLM end-to-end (request → final token) |
 | `llm_tokens_per_sec` | Completion tokens / `llm_processing_time` |
+| `frontend_tool_selection_ttft` | Initial Talker dispatch → first native tool-call token |
+| `frontend_tool_selection_processing_time` | Initial Talker dispatch → completed native tool call and arguments |
+| `backend_llm_ttft` | Streamed Thinker dispatch → first reasoning or answer token |
+| `backend_llm_processing_time` | Streamed Thinker dispatch → final Thinker token |
+| `backend_tool_call_latency` | Internal allowlisted tool start → success, timeout, error, or cancellation |
+| `frontend_final_response_ttft` | Post-result Talker dispatch → first visible answer token |
+| `frontend_final_response_processing_time` | Post-result Talker dispatch → final answer token |
+
+All latency and processing columns use seconds. The benchmark recognizes the
+stage processor names before the generic LLM classifier, so stage samples do
+not inflate `llm_ttft` or `llm_processing_time`.
+
+`frontend_final_response_ttft` and
+`frontend_final_response_processing_time` are unavailable in `direct` result
+mode. In `hybrid` mode, they appear only for non-success results that use the
+Talker final-response pass.
 
 The Nemotron Realtime gateway maps Pipecat token accounting to the standard
 `response.done.response.usage` object. It also places response-scoped server

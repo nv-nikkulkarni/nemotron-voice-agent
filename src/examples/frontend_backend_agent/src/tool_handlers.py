@@ -18,6 +18,10 @@ from loguru import logger
 from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame, LLMTextFrame
 from pipecat.services.llm_service import FunctionCallResultProperties
 
+from examples.frontend_backend_agent.src.conversation_history import (
+    DEFAULT_BACKEND_HISTORY_TURN_LIMIT,
+    bounded_conversation_history,
+)
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent, is_speakable_payload, response_hint
 from examples.frontend_backend_agent.src.runtime_context import runtime_today
 
@@ -33,6 +37,49 @@ _MAX_PLANNER_ERROR_ATTEMPTS = 2
 
 if TYPE_CHECKING:
     from pipecat.services.llm_service import FunctionCallParams
+
+    from examples.frontend_backend_agent.src.domain import FillerPolicy
+    from examples.frontend_backend_agent.src.stage_metrics import StageMetricsCoordinator
+
+
+_FILLER_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’-]*")
+_FILLER_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_FILLER_INTERNAL_RE = re.compile(
+    r"\b(?:backend|function|hidden|llm|model|prompt|reasoning|system|tool)\b|"
+    r"</?(?:think|tool_call|function|parameter)[^>]*>|```|https?://|www\.",
+    re.IGNORECASE,
+)
+_FILLER_RESULT_CLAIM_RE = re.compile(
+    r"\b(?:completed|done|finished|found|got|result|succeeded|successful|shows?|the answer is|turns out)\b",
+    re.IGNORECASE,
+)
+_FILLER_PROGRESS_WORDS = frozenset(
+    {
+        "a",
+        "about",
+        "and",
+        "check",
+        "checking",
+        "for",
+        "i",
+        "it",
+        "latest",
+        "let",
+        "look",
+        "looking",
+        "me",
+        "please",
+        "that",
+        "the",
+        "those",
+        "to",
+        "up",
+        "verify",
+        "verifying",
+        "will",
+        "your",
+    }
+)
 
 
 class ThinkerBackend(Protocol):
@@ -50,24 +97,36 @@ class ThinkerBackend(Protocol):
     def cancel_active(self, reason: str = "new_user_query") -> bool:
         """Cancel any active Thinker invocation."""
 
-    def cancel_pending_booking(self) -> bool:
-        """Cancel pending domain work that has no active task."""
+    def cancel_pending_work(self) -> bool:
+        """Cancel pending domain state that has no active task."""
 
 
-def build_handlers(thinker: ThinkerBackend, *, filler_threshold_seconds: float = 0.8) -> dict[str, Callable]:
+def build_handlers(
+    thinker: ThinkerBackend,
+    *,
+    filler_threshold_seconds: float = 0.8,
+    filler_policy: FillerPolicy = "planner_authored",
+    filler_selector: Callable[[str], str] | None = None,
+    interrupted_speech_consumer: Callable[[], bool] | None = None,
+    max_query_chars: int = 4000,
+    enforce_future_travel_dates: bool = True,
+    stage_metrics: StageMetricsCoordinator | None = None,
+) -> dict[str, Callable]:
     """Return tool handlers bound to one session-local backend agent."""
     consecutive_planner_errors = 0
+    tool_result_mode_default = getattr(thinker, "tool_result_mode_default", "talker")
+    talker_result_tools = frozenset(getattr(thinker, "talker_result_tools", ()))
 
     async def handle_call_backend(params: FunctionCallParams) -> None:
         nonlocal consecutive_planner_errors
         arguments = _normalize_arguments(params.arguments or {})
         query = str(arguments.get("query", "") or "").strip()
-        if not query:
+        if not query or len(query) > max_query_chars:
             consecutive_planner_errors = 0
             await params.result_callback(
                 {
                     "type": "response_hint",
-                    "reason": "params_missing",
+                    "reason": "params_missing" if not query else "params_invalid",
                     "action": "req_params",
                     "params_needed": ["query"],
                     "response_text": "What would you like me to check?",
@@ -75,7 +134,7 @@ def build_handlers(thinker: ThinkerBackend, *, filler_threshold_seconds: float =
                 }
             )
             return
-        past_date = _past_date_in_query(query)
+        past_date = _past_date_in_query(query) if enforce_future_travel_dates else None
         if past_date is not None:
             consecutive_planner_errors = 0
             payload = response_hint(
@@ -90,15 +149,46 @@ def build_handlers(thinker: ThinkerBackend, *, filler_threshold_seconds: float =
             await _emit_terminal_payload(params, payload)
             return
         try:
-            filler_text = str(arguments.get("filler_text", "") or "").strip()
+            if filler_policy == "talker_authored":
+                filler_text = _validated_talker_filler(query, arguments.get("filler_text"))
+            elif filler_policy == "planner_authored":
+                filler_text = " ".join(str(arguments.get("filler_text") or "").split()).strip()
+            elif filler_policy == "code_authored":
+                filler_text = filler_selector(query) if filler_selector is not None else ""
+            else:
+                raise ValueError(f"Unknown filler policy: {filler_policy}")
+            filler_mode = _talker_filler_mode()
+            if filler_policy == "talker_authored":
+                logger.bind(
+                    event="talker_filler_candidate",
+                    mode=filler_mode,
+                    accepted=bool(filler_text),
+                    word_count=len(_FILLER_WORD_RE.findall(filler_text)),
+                ).info("Processed Talker-authored filler candidate")
+            if filler_mode != "emit":
+                filler_text = ""
             slots = {key: value for key, value in arguments.items() if key not in {"query", "intent", "filler_text"}}
+            if getattr(thinker, "accepts_conversation_context", False):
+                messages = params.context.get_messages()[getattr(thinker, "conversation_start_index", 0) :]
+                slots["conversation_context"] = bounded_conversation_history(
+                    messages, getattr(thinker, "backend_history_turn_limit", DEFAULT_BACKEND_HISTORY_TURN_LIMIT)
+                )
+                slots["client_timezone"] = getattr(thinker, "client_timezone", "UTC")
             filler_task: asyncio.Task | None = None
             filler_started = False
+            filler_emitted = False
+
+            async def emit_filler_once() -> None:
+                nonlocal filler_emitted
+                if filler_emitted or not filler_text:
+                    return
+                filler_emitted = True
+                await _emit_talker_response(params.llm, filler_text, append_to_context=False)
 
             async def emit_filler_after_threshold() -> None:
                 try:
                     await asyncio.sleep(filler_threshold_seconds)
-                    await _emit_talker_response(params.llm, filler_text)
+                    await emit_filler_once()
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -106,13 +196,21 @@ def build_handlers(thinker: ThinkerBackend, *, filler_threshold_seconds: float =
 
             async def schedule_thinker_started_filler(event: ThinkerLifecycleEvent) -> None:
                 nonlocal filler_started, filler_task
+                if stage_metrics is not None:
+                    await stage_metrics.bind_backend_call(params.tool_call_id, event.call_id)
+                if event.marker == "IntermediateResponse" and filler_text and not filler_emitted:
+                    await _cancel_pending_filler(filler_task)
+                    filler_task = None
+                    await emit_filler_once()
+                    return
+
                 if event.marker != "ThinkerStarted" or not filler_text:
                     return
                 if filler_started or (filler_task is not None and not filler_task.done()):
                     return
                 filler_started = True
                 if filler_threshold_seconds <= 0:
-                    await _emit_talker_response(params.llm, filler_text)
+                    await emit_filler_once()
                     return
                 filler_task = asyncio.create_task(emit_filler_after_threshold())
 
@@ -137,21 +235,19 @@ def build_handlers(thinker: ThinkerBackend, *, filler_threshold_seconds: float =
                 },
                 properties=FunctionCallResultProperties(run_llm=False),
             )
+            if stage_metrics is not None:
+                await stage_metrics.cleanup_tool_call(params.tool_call_id)
             return
         except Exception as exc:
             consecutive_planner_errors = 0
             logger.exception(f"call_backend failed before producing a result: {exc}")
-            await params.result_callback(
-                {
-                    "type": "response_hint",
-                    "reason": "tool_error",
-                    "action": "retry",
-                    "error": str(exc),
-                    "response_text": "I could not complete that request right now. Please try again.",
-                    "context": "call_backend",
-                }
-            )
-            return
+            payload = {
+                "type": "response_hint",
+                "reason": "tool_error",
+                "action": "retry",
+                "response_text": "I could not complete that request right now. Please try again.",
+                "context": "call_backend",
+            }
         if payload.get("reason") == "planner_error":
             consecutive_planner_errors += 1
             if consecutive_planner_errors >= _MAX_PLANNER_ERROR_ATTEMPTS:
@@ -168,38 +264,56 @@ def build_handlers(thinker: ThinkerBackend, *, filler_threshold_seconds: float =
                 )
                 await _emit_terminal_payload(params, terminal_payload)
                 consecutive_planner_errors = 0
+                if stage_metrics is not None:
+                    await stage_metrics.cleanup_tool_call(params.tool_call_id)
                 return
         else:
             consecutive_planner_errors = 0
-        if _direct_tool_response_enabled() and is_speakable_payload(payload):
-            await _emit_talker_response(params.llm, str(payload.get("response_text") or ""))
-            await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
-            return
-        await params.result_callback(payload)
+        await _deliver_tool_payload(
+            params,
+            payload,
+            default_mode=tool_result_mode_default,
+            talker_result_tools=talker_result_tools,
+            stage_metrics=stage_metrics,
+        )
 
     async def handle_cancel_backend(params: FunctionCallParams) -> None:
         nonlocal consecutive_planner_errors
         consecutive_planner_errors = 0
         cancelled = thinker.cancel_active("user_cancelled")
-        cleared_pending_booking = thinker.cancel_pending_booking()
-        did_cancel = cancelled or cleared_pending_booking
+        cancel_pending = getattr(thinker, "cancel_pending_work", None)
+        if not callable(cancel_pending):
+            # Compatibility for third-party/older airline backends while they
+            # migrate to the domain-neutral protocol.
+            cancel_pending = getattr(thinker, "cancel_pending_booking", None)
+        cleared_pending_work = bool(cancel_pending()) if callable(cancel_pending) else False
+        interrupted_speech = bool(interrupted_speech_consumer()) if interrupted_speech_consumer else False
+        did_cancel = cancelled or cleared_pending_work or interrupted_speech
+        if cancelled or cleared_pending_work:
+            reason = "cancelled"
+        elif interrupted_speech:
+            reason = "interrupted_speech"
+        else:
+            reason = "nothing_to_cancel"
         payload = {
             "type": "response_hint",
-            "reason": "cancelled" if did_cancel else "nothing_to_cancel",
+            "reason": reason,
             "action": "cancelled" if did_cancel else "nothing_to_cancel",
             "response_text": "Okay, I stopped that." if did_cancel else "There is nothing pending right now.",
             "context": "cancel_backend",
         }
-        if _direct_tool_response_enabled():
-            await _emit_talker_response(params.llm, str(payload["response_text"]))
+        if _tool_result_mode(tool_result_mode_default) == "direct":
+            await _emit_talker_response(params.llm, str(payload["response_text"]), append_to_context=False)
             await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
+            if stage_metrics is not None:
+                await stage_metrics.cleanup_tool_call(params.tool_call_id)
             return
         await params.result_callback(payload)
 
     return {"call_backend": handle_call_backend, "cancel_backend": handle_cancel_backend}
 
 
-async def _emit_talker_response(llm, text: str) -> None:
+async def _emit_talker_response(llm, text: str, *, append_to_context: bool = True) -> None:
     """Emit Talker-authored filler through the normal LLM text/TTS path."""
     if _task_cancellation_requested():
         return
@@ -207,7 +321,9 @@ async def _emit_talker_response(llm, text: str) -> None:
     try:
         started = True
         await llm.push_frame(LLMFullResponseStartFrame())
-        await llm.push_frame(LLMTextFrame(text=text))
+        text_frame = LLMTextFrame(text=text)
+        text_frame.append_to_context = append_to_context
+        await llm.push_frame(text_frame)
     finally:
         if started:
             await llm.push_frame(LLMFullResponseEndFrame())
@@ -226,6 +342,16 @@ async def _cancel_pending_filler(task: asyncio.Task | None) -> None:
     task.cancel()
     with suppress(asyncio.CancelledError):
         await task
+
+
+def _remember_backend_response(llm, text: str, payload: dict[str, Any]) -> None:
+    remember_result = getattr(llm, "remember_backend_result", None)
+    if callable(remember_result):
+        remember_result(payload)
+        return
+    remember = getattr(llm, "remember_backend_response", None)
+    if callable(remember):
+        remember(text)
 
 
 def _normalize_arguments(arguments: dict) -> dict:
@@ -272,6 +398,136 @@ def _past_date_in_query(query: str, *, today: date | None = None) -> date | None
 
 def _direct_tool_response_enabled() -> bool:
     return os.getenv("FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+async def _deliver_tool_payload(
+    params: FunctionCallParams,
+    payload: dict[str, Any],
+    *,
+    default_mode: object = "talker",
+    stage_metrics: StageMetricsCoordinator | None = None,
+    talker_result_tools: frozenset[str] = frozenset(),
+) -> None:
+    """Deliver one grounded payload through the configured final-response path."""
+    if not is_speakable_payload(payload):
+        await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
+        if stage_metrics is not None:
+            await stage_metrics.cleanup_tool_call(params.tool_call_id)
+        return
+    results = [payload]
+    if payload.get("tool") == "multi_tool":
+        results = (payload.get("data") or {}).get("results") or []
+    if any(item.get("tool") == "show_architecture" and item.get("status") == "success" for item in results):
+        from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
+
+        await params.llm.push_frame(
+            RTVIServerMessageFrame(
+                data={
+                    "type": "presentation",
+                    "kind": "architecture",
+                    "image_url": "/api/architecture/generic.svg",
+                    "alt": "Current Nemotron voice agent architecture",
+                }
+            )
+        )
+    response_text = str(payload.get("response_text") or "")
+    _remember_backend_response(params.llm, response_text, payload)
+    if _should_deliver_directly(payload, default_mode=default_mode, talker_result_tools=talker_result_tools):
+        await _emit_talker_response(params.llm, response_text, append_to_context=False)
+        await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
+        if stage_metrics is not None:
+            await stage_metrics.cleanup_tool_call(params.tool_call_id)
+        return
+    await params.result_callback(
+        _talker_result_projection(payload),
+        properties=FunctionCallResultProperties(run_llm=True),
+    )
+
+
+def _tool_result_mode(default_mode: object = "talker") -> str:
+    raw = os.getenv("FRONTEND_BACKEND_TOOL_RESULT_MODE", "").strip().lower()
+    if raw in {"direct", "hybrid", "talker"}:
+        return raw
+    if _direct_tool_response_enabled():
+        return "direct"
+    normalized_default = str(default_mode or "").strip().lower()
+    return normalized_default if normalized_default in {"direct", "hybrid", "talker"} else "talker"
+
+
+def _should_deliver_directly(
+    payload: dict[str, Any],
+    *,
+    default_mode: object = "talker",
+    talker_result_tools: frozenset[str] = frozenset(),
+) -> bool:
+    mode = _tool_result_mode(default_mode)
+    if mode == "direct":
+        return True
+    if mode == "hybrid":
+        if talker_result_tools:
+            dynamic_success = _payload_outcome(payload) == "success" and payload.get("tool") in talker_result_tools
+            return not dynamic_success
+        return _payload_outcome(payload) == "success"
+    return False
+
+
+def _payload_outcome(payload: dict[str, Any]) -> str:
+    if payload.get("type") == "tool_result":
+        status = str(payload.get("status") or "error")
+        return "success" if status == "success" else "partial" if status == "partial" else "failure"
+    reason = str(payload.get("reason") or "")
+    if reason in {"params_missing", "params_invalid"}:
+        return "needs_input"
+    if reason in {"aborted", "cancelled"}:
+        return "cancelled"
+    return "failure"
+
+
+def _talker_result_projection(payload: dict[str, Any]) -> dict[str, Any]:
+    """Expose the trusted spoken contract plus a bounded weather fact projection."""
+    allowed = {"type", "tool", "status", "response_text", "reason", "action", "context", "params_needed"}
+    projected = {key: value for key, value in payload.items() if key in allowed}
+    data = payload.get("data")
+    result = data.get("result") if isinstance(data, dict) else None
+    if payload.get("tool") == "get_weather" and isinstance(result, dict):
+        weather_keys = {
+            "city",
+            "temperature",
+            "temperature_unit",
+            "condition",
+            "feels_like",
+            "humidity_percent",
+            "wind_kph",
+        }
+        projected["data"] = {key: result[key] for key in weather_keys if key in result}
+    return projected
+
+
+def _talker_filler_mode() -> str:
+    raw = os.getenv("FRONTEND_BACKEND_TALKER_FILLER_MODE", "emit").strip().lower()
+    return raw if raw in {"off", "observe", "emit"} else "emit"
+
+
+def _validated_talker_filler(query: str, raw_filler: object) -> str:
+    """Accept a short grounded progress phrase or suppress it without replacement."""
+    original = str(raw_filler or "")
+    filler = " ".join(original.split()).strip()
+    if not filler or len(filler) > 96 or "\n" in original:
+        return ""
+    words = _FILLER_WORD_RE.findall(filler)
+    if not 3 <= len(words) <= 12:
+        return ""
+    if "?" in filler or len(re.findall(r"[.!]", filler)) > 1:
+        return ""
+    if any(character.isdigit() for character in filler):
+        return ""
+    if _FILLER_INTERNAL_RE.search(filler) or _FILLER_RESULT_CLAIM_RE.search(filler):
+        return ""
+    filler_tokens = set(_FILLER_TOKEN_RE.findall(filler.casefold())) - _FILLER_PROGRESS_WORDS
+    query_tokens = set(_FILLER_TOKEN_RE.findall(query.casefold()))
+    if not filler_tokens or filler_tokens.isdisjoint(query_tokens):
+        return ""
+    return filler
 
 
 def _task_cancellation_requested() -> bool:

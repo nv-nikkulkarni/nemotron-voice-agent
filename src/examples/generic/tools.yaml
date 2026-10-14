@@ -61,13 +61,13 @@ get_stock_price:
   type: function
   function:
     name: get_stock_price
-    description: Get the current stock price for a given company name.
+    description: Get the current live stock price for a company by name or ticker.
     parameters:
       type: object
       properties:
         company_name:
           type: string
-          description: The name of the company, e.g. Apple, Tesla, Microsoft, NVIDIA
+          description: Company name or stock ticker, e.g. Apple, Tesla, NVIDIA, or AAPL
       required:
         - company_name
 
@@ -119,3 +119,21 @@ get_news_headlines:
           type: string
           description: The category of news, e.g. business, sports, entertainment
       required: []
+
+web_search:
+  type: function
+  function:
+    name: web_search
+    description: >-
+      Search the live web (via Perplexity Sonar) for current, real-time, or recent
+      information — news, prices, scores, events, or any fact that may be beyond your
+      training or that you don't reliably know. Prefer this whenever the user asks about
+      something current, live, or recent.
+    parameters:
+      type: object
+      properties:
+        query:
+          type: string
+          description: The natural-language search query describing what to look up.
+      required:
+        - query

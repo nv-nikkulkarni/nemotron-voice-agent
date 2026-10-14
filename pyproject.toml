@@ -13,6 +13,9 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-grpc>=1.40.0",
     "langchain-nvidia-ai-endpoints>=1.2.1",
     "imageio-ffmpeg>=0.5.1",
+    "redis>=5.0.0",
+    "boto3>=1.35.0",
+    "tzdata>=2026.3",
 ]
 
 # Force patched versions for known CVEs
@@ -79,6 +82,11 @@ select = [
 ]
 
 ignore = ["SIM108", "E402"]
+
+[tool.ruff.lint.per-file-ignores]
+# Standalone diagnostic scripts, not product code.
+"tests/voicetest/**" = ["D", "E501", "SIM105", "B904"]
+"tests/model_eval/**" = ["D", "E501", "SIM115", "F841", "B007"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
