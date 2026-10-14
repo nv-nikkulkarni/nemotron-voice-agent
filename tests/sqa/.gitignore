@@ -1,0 +1,6 @@
+audio/
+artifacts/
+out/
+video/
+node_modules
+*.raw.wav
