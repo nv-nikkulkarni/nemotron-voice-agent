@@ -1,0 +1,20 @@
+{{- if and .Values.asrMultilingual.enabled (not .Values.asrMultilingual.cache.nvcf) -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" . }}-asr-multilingual-cache
+  labels:
+    {{- include "nemotron-voice-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: asr-multilingual
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.asrMultilingual.cache.storageClass }}
+  storageClassName: {{ .Values.asrMultilingual.cache.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.asrMultilingual.cache.size }}
+{{- end }}

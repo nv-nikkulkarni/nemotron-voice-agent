@@ -36,6 +36,20 @@ server:
       health_path: "/v1/health/ready"
       extra_params: '{"extra_body":{"repetition_penalty":1.05}}'
       settings: nemotron-super
+    nemotron-super-vl:
+      name: "Nemotron 3.5 Super VL 120B A12B"
+      model_id: "nvidia/nemotron-3.5-super-vl-120b-a12b"
+      base_url: "http://nvidia-llm-super-vl:8000/v1"
+      health_path: "/v1/health/ready"
+      supported_languages: [en, de, es, fr, it, ja, hi, ko, pt, zh]
+      settings: nemotron-super-vl
+    gemma-4-31b:
+      name: "Gemma 4 31B"
+      model_id: "google/gemma-4-31b-it"
+      base_url: "http://nvidia-llm-vllm-gemma4:8003/v1"
+      health_path: "/health"
+      supported_languages: [en, de, es, fr, it, ja, hi, ko, pt, zh, ar, vi]
+      settings: gemma-4-31b
     nemotron-omni-nvfp4:
       name: "Nemotron 3 Nano Omni 30B A3B Reasoning"
       model_id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
@@ -104,6 +118,13 @@ single-gpu:
       supported_languages: [en, de, es, fr, it, ja]
       extra_params: '{"extra_body":{"repetition_penalty":1.05}}'
       settings: nemotron-vllm
+    gemma-4-31b:
+      name: "Gemma 4 31B"
+      model_id: "google/gemma-4-31b-it"
+      base_url: "http://nvidia-llm-vllm-gemma4:8003/v1"
+      health_path: "/health"
+      supported_languages: [en, de, es, fr, it, ja, hi, ko, pt, zh, ar, vi]
+      settings: gemma-4-31b
     nemotron-omni-nvfp4:
       name: "Nemotron 3 Nano Omni 30B A3B Reasoning"
       model_id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"

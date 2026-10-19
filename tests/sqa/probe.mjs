@@ -72,7 +72,7 @@ async function main() {
   // generic-assistant, Super
   const superBtn = page.getByRole("button", { name: "Try with Nemotron Super" });
   if (await superBtn.count()) await superBtn.first().click();
-  else await page.locator(".example-card").first().click();
+  else await page.locator(".example-card").first().click({position:{x:12,y:12}});
   await sleep(400);
   await page.getByRole("button", { name: /start conversation/i }).click();
 

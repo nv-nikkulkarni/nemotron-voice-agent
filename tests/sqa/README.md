@@ -36,6 +36,7 @@ same `sk-*` key as `web_search`: `gpt-4o-mini-tts` (voice `coral`) and
 | `prod_remediation_corner_cases.mjs` | API failures, cancellation, bounded multi-tool speech, and isolated safety/grounding probes. |
 | `robustness.mjs` | Barge-in, graceful End, forced WebSocket close, Reconnect, and unique replacement-session checks. |
 | `test_teardown.mjs` | End and Start without a tab refresh; requires a new session ID plus transcript and audible welcome in the second session. |
+| `hindi_multilingual.mjs` | Hindi assistant through the real UI: the **Hindi assistant** button and **Multilingual assistant** with Hindi picked, every Generic tool in spoken Hindi, Devanagari checks on every bot message including fillers, Hindi transcription of the bot audio (`gpt-4o-mini-transcribe`), and a language-picker check against the Bolt Talker's languages. Pair it with `nvcf_session_log_check.py` on the NVCF log for the reported session IDs. Set `SQA_IGNORE_CERT=1` for internal TLS. |
 | `webcam_baseline_concurrency.mjs` | Four simultaneous Omni sessions with distinct visual baselines, bot-audio assertions, and scene-leakage detection. |
 | `capture_lifecycle_matrix.mjs` | Twenty consented sessions, five explicit declines, long-session, pagehide, and forced-drop capture acknowledgement evidence. Correlate its session IDs with NGC separately. |
 | `record_video.mjs` | Records a spoken Generic-Assistant conversation to `video/generic_conversation.mp4` (screen + both voices). |
@@ -85,22 +86,6 @@ Each invocation receives a UTC run ID and writes reports, screenshots, and audio
 under the ignored `out/<run-id>/` directory. Set `SQA_RUN_ID` only when you need
 a stable external identifier. A later phase or rerun does not overwrite earlier
 evidence.
-Versioned qualification summaries live in `reports/`; older completed runs live in
-`reports/archive/`.
-
-The [October 05 backend history dev report](reports/BACKEND_HISTORY_DEV_2026-10-05.md)
-records the configurable Generic user-turn window, deployment identities,
-focused voice checks, and qualification limits.
-The [October 05 backend history staging report](reports/BACKEND_HISTORY_STAGING_2026-10-05.md)
-records isolated NVCF/Astra staging, the H200 placement, dynamic filler, exact
-artifact/control-plane identities, and failed or incomplete qualification gates.
-The [comprehensive Astra staging report](reports/COMPREHENSIVE_ASTRA_STAGING_2026-10-05.md)
-tracks the separate four-phase run, raw outcomes, speech/capture evidence, and
-qualification limits.
-The [main Astra staging UI cutover report](reports/MAIN_STAGING_UI_CUTOVER_2026-10-05.md)
-records the main staging cutover, full-browser stock-answer failure, capture
-and protection checks, retained rollback, and qualification limits.
-
 ## Comprehensive Dev Checks
 
 Run all four phases against the target UI from the repository root:
@@ -156,13 +141,6 @@ backlog. It does not prove that a particular archive reached NGC. Correlate
 consented session IDs with archive storage separately. This suite does not replace
 the repeated-tool matrix, capture lifecycle matrix, pronunciation listening,
 robustness tests, or other release gates. It does not promote a deployment.
-
-The [October 04 comprehensive dev report](reports/COMPREHENSIVE_DEV_2026-10-04.md)
-records the completed four-phase run, raw failures, separate input-fidelity
-findings, capture readback, and repository-check gaps.
-The [web-search root cause analysis](reports/WEB_SEARCH_RCA_DEV_2026-10-04.md)
-records the original planner clarification, a controlled transcript comparison,
-and current Sonar Pro provider verification.
 
 ## Pre-Session Configuration Checks
 
@@ -244,10 +222,6 @@ multimodal requests, including all four Omni roles, and confirm that an
 in-flight request keeps its snapshot while a later request receives the update.
 The browser suite checks real Generic and Omni speech; it does not exercise
 every uploaded-media or webcam inference path.
-
-The [LLM Settings dev qualification report](reports/LLM_SETTINGS_DEV_2026-10-04.md)
-records exact artifact identities, targeted spoken checks, and remaining release
-gates.
 
 ## Voice Studio Acceptance Checks
 

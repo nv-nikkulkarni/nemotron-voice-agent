@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: BSD-2-Clause
+
+# Wraps an LLM NIM so NVCF can start it: the entrypoint exports NGC_API_KEY from the
+# function-version secrets file, then runs the NIM's own start script.
+#
+#   docker build -f docker/Dockerfile.nvcf-nim \
+#     --build-arg BASE_IMAGE=nvcr.io/nim/nvidia/nemotron-3.5-super-vl-120b-a12b:2.0.13-variant-build.1 \
+#     -t nvcr.io/<org>/nvcf-nemotron-super-vl:2.0.13-variant-build.1-nvcf .
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY --chmod=0555 docker/nvcf-nim-entrypoint.sh /opt/nva/bin/nvcf-nim-entrypoint.sh
+ENTRYPOINT ["/opt/nva/bin/nvcf-nim-entrypoint.sh"]
+CMD ["/opt/nim/start_server.sh"]

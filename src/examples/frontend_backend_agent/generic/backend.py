@@ -48,12 +48,9 @@ _MAX_PLANNING_ROUNDS = 3
 class GenericThinkerBackend:
     """Run one bounded, replaceable backend task per voice session."""
 
-    # Generic formatters already produce grounded, TTS-safe speech; avoid a second
-    # Talker pass over Pipecat's asynchronous started/final result envelope.
+    # Formatters build grounded, TTS-safe text; the Talker phrases every result before TTS.
     accepts_conversation_context = True
     client_timezone = "UTC"
-    tool_result_mode_default = "direct"
-    talker_result_tools = ("get_weather",)
 
     def __init__(
         self,

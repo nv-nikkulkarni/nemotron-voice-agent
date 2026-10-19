@@ -790,3 +790,76 @@ class ReliableTalkerTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NumberPreservationTests(unittest.TestCase):
+    """The Talker must repeat the numbers of a numeric-answer tool result exactly."""
+
+    @staticmethod
+    def _chunks(text: str) -> list:
+        from types import SimpleNamespace
+
+        delta = SimpleNamespace(content=text, tool_calls=None)
+        return [SimpleNamespace(choices=[SimpleNamespace(delta=delta)])]
+
+    @staticmethod
+    def _payload(tool: str, text: str, status: str = "success") -> dict:
+        return {"type": "tool_result", "tool": tool, "status": status, "response_text": text}
+
+    def _reason(self, tool: str, result: str, reply: str, language: str = "") -> str | None:
+        from examples.frontend_backend_agent.src.reliable_talker import _post_result_invalid_reason
+
+        return _post_result_invalid_reason(
+            self._chunks(reply), self._payload(tool, result), english_grounding=False, session_language=language
+        )
+
+    def test_exact_numbers_pass_and_changed_numbers_are_flagged(self) -> None:
+        result = "NVIDIA is trading at 182.45 dollars."
+        self.assertIsNone(self._reason("get_stock_price", result, "NVIDIA trades at 182.45 dollars right now."))
+        self.assertEqual(
+            self._reason("get_stock_price", result, "NVIDIA trades at 184.45 dollars right now."), "numbers_dropped"
+        )
+
+    def test_native_script_digits_match_ascii_digits(self) -> None:
+        self.assertIsNone(self._reason("calculate_bmi", "Your BMI is 22.9.", "आपका बीएमआई २२.९ है।", language="hi-IN"))
+        self.assertEqual(
+            self._reason("calculate_bmi", "Your BMI is 22.9.", "आपका बीएमआई २३.९ है।", language="hi-IN"),
+            "numbers_dropped",
+        )
+
+    def test_spelled_out_numbers_and_free_text_tools_are_not_checked(self) -> None:
+        self.assertIsNone(self._reason("generate_random_number", "The number is 52.", "The number is fifty two."))
+        self.assertIsNone(
+            self._reason("web_search", "Three sources report 41 percent growth.", "Growth was strong, sources say.")
+        )
+
+    def test_sentence_final_punctuation_and_trailing_zeros_are_not_changes(self) -> None:
+        random_result = "Your random number between 1 and 100 is 42."
+        self.assertIsNone(self._reason("generate_random_number", random_result, "Your random number is 42."))
+        self.assertIsNone(self._reason("calculate_bmi", "Your BMI is 22.86, which is normal.", "Your BMI is 22.86."))
+        self.assertIsNone(self._reason("get_stock_price", "NVIDIA is at 182.1 dollars.", "It is $182.10 now."))
+
+    def test_clock_formats_and_negative_utc_offsets_are_equivalent(self) -> None:
+        self.assertIsNone(self._reason("get_current_time", "It is 3:05 PM in Delhi.", "It is 15:05 in Delhi."))
+        offset = "It is 2:15 PM UTC minus 3 hours."
+        self.assertIsNone(self._reason("get_current_time", offset, "It's 2:15 PM, UTC minus 3 hours."))
+        self.assertEqual(
+            self._reason("get_current_time", "It is 3:05 PM in Delhi.", "It is 4:05 PM in Delhi."), "numbers_dropped"
+        )
+
+    def test_negative_result_keeps_its_sign(self) -> None:
+        self.assertIsNone(self._reason("generate_random_number", "The number is -5.", "The number is minus 5."))
+        self.assertEqual(
+            self._reason("generate_random_number", "The number is -5.", "The number is 5."), "numbers_dropped"
+        )
+
+    def test_thousands_separator_does_not_split_a_number(self) -> None:
+        self.assertIsNone(self._reason("get_stock_price", "It is at 1,234.5 dollars.", "It is at 1234.5 dollars."))
+
+    def test_failed_results_are_not_checked(self) -> None:
+        from examples.frontend_backend_agent.src.reliable_talker import _post_result_invalid_reason
+
+        payload = self._payload("get_stock_price", "Price unavailable for 3 tries.", status="error")
+        self.assertIsNone(
+            _post_result_invalid_reason(self._chunks("Sorry, no price."), payload, english_grounding=False)
+        )

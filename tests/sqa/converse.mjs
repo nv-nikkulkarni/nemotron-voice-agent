@@ -27,7 +27,7 @@ const CONVERSATIONS = {
     example: "omni", model: null, label: "Omni Assistant Subagents (Beta)",
     turns: [
       { text: "Hello! Please tell me a short one sentence story about a friendly robot.", heard: /story|robot/i, expect: /robot/i, budgetS: 20 },
-      { text: "What is seventeen times twenty three?", heard: /seventeen|twenty three/i, expect: /391|three hundred|ninety/i, budgetS: 20, tool: "mental math" },
+      { text: "What is seventeen times twenty three?", heard: /seventeen|twenty[- ]three|\b17\b|\b23\b/i, expect: /391|three hundred|ninety/i, budgetS: 20, tool: "mental math" },
       { text: "Thanks, that is all for now. Bye!", heard: /thanks|bye/i, expect: /bye|welcome|glad|care|day/i, budgetS: 16 },
     ],
   },

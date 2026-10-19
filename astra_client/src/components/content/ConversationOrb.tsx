@@ -20,10 +20,13 @@ import {
 } from "../../demo/frontendBackendStageMetrics";
 import {
   buildAgentTimeline,
+  buildCriticalPath,
+  parseLatencyBreakdownMessage,
   selectFirstAudioLatency,
   suppressDuplicateLlmRows,
   timelineDomainMs,
   type AgentTimelineStage,
+  type LatencyBreakdownMessage,
 } from "../../demo/latencyTimeline";
 
 interface LatRow { label: string; ms: number; kind: string }
@@ -57,6 +60,7 @@ export function ConversationOrb() {
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [clientFirstAudioMs, setClientFirstAudioMs] = useState<number | null>(null);
   const [breakdown, setBreakdown] = useState<LatRow[] | null>(null);
+  const [latencyParts, setLatencyParts] = useState<LatencyBreakdownMessage | null>(null);
   const [agentBreakdown, setAgentBreakdown] = useState<AgentStageMetricSnapshot | null>(null);
   const [agentMetricOffsets, setAgentMetricOffsets] = useState<Record<string, number>>({});
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -83,6 +87,7 @@ export function ConversationOrb() {
       setLatencyMs(null);
       setClientFirstAudioMs(null);
       setBreakdown(null);
+      setLatencyParts(null);
       setAgentBreakdown(null);
       setAgentMetricOffsets({});
       setPlayoutMs(null);
@@ -156,7 +161,10 @@ export function ConversationOrb() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     useCallback((message: any) => {
       if (message?.type === "user-bot-latency") setLatencyMs((message.latency ?? 0) * 1000);
-      else if (message?.type === "latency-breakdown") setBreakdown(parseBreakdown(message.events || []));
+      else if (message?.type === "latency-breakdown") {
+        setBreakdown(parseBreakdown(message.events || []));
+        setLatencyParts(parseLatencyBreakdownMessage(message));
+      }
       // `tool-call` : the LLM chose a tool and is about to call it (show the box).
       // Also mirror the existing RTVI event as a browser event for automation. A
       // tool can start and finish inside one React render batch, so the visible
@@ -182,7 +190,10 @@ export function ConversationOrb() {
   const pipelineRows = suppressDuplicateLlmRows(breakdown, hasAgentBreakdown);
   const timeline = buildAgentTimeline(agentBreakdown, agentMetricOffsets, firstAudioMs);
   const timelineMaxMs = timelineDomainMs(timeline.maxMs);
-  const hasBreakdown = hasAgentBreakdown || pipelineRows.length > 0;
+  // The ordered parts of the server-measured time to first audio. Older servers
+  // send only `events`, which fall back to the unsummed pipeline rows below.
+  const criticalPath = buildCriticalPath(latencyParts, latencyMs);
+  const hasBreakdown = hasAgentBreakdown || pipelineRows.length > 0 || !!criticalPath;
   // A quiet one-time hint once the latency chip becomes clickable; it also fades by CSS.
   useEffect(() => {
     if (!hasBreakdown) return;
@@ -267,8 +278,45 @@ export function ConversationOrb() {
               </div>
               <button type="button" className="lat-breakdown__x" onClick={() => setShowBreakdown(false)} aria-label="Close">×</button>
             </div>
+            {criticalPath && (
+              <section className="lat-sum" aria-label="How time to first audio adds up">
+                <div className="lat-lane__head">
+                  <span>How {criticalPath.totalMs} ms adds up</span>
+                  <span>In the order it happened</span>
+                </div>
+                <div className="lat-sum__bar" aria-hidden>
+                  {criticalPath.rows.map((row) => (
+                    <span
+                      key={`bar-${row.key}`}
+                      className={`lat-sum__seg lat-sum__seg--${row.tone}`}
+                      style={{ flexGrow: Math.max(row.ms, 1) }}
+                      title={`${row.label}: ${row.ms} ms`}
+                    />
+                  ))}
+                </div>
+                <ol className="lat-sum__list">
+                  {criticalPath.rows.map((row, index) => (
+                    <li key={row.key} className={`lat-sum__row lat-sum__row--${row.tone}`}>
+                      <span className="lat-sum__dot" aria-hidden />
+                      <span className="lat-sum__text">
+                        <span className="lat-sum__label">{index > 0 ? "+ " : ""}{row.label}</span>
+                        <small>{row.detail}</small>
+                      </span>
+                      <span className="lat-sum__ms">{row.ms} ms</span>
+                    </li>
+                  ))}
+                </ol>
+                {criticalPath.overByMs > 0 && (
+                  <p className="lat-sum__note" role="note">
+                    The named parts add up to {criticalPath.attributedMs} ms, {criticalPath.overByMs} ms more than
+                    the headline, because the two were measured on different clocks.
+                  </p>
+                )}
+              </section>
+            )}
             {hasAgentBreakdown && (
               <>
+                {criticalPath && <div className="lat-breakdown__section">Inside the agent</div>}
                 <div className="lat-axis" aria-hidden>
                   <span>0</span>
                   <span>{Math.round(timelineMaxMs / 2)} ms</span>
@@ -277,24 +325,24 @@ export function ConversationOrb() {
                 <section className="lat-lane lat-lane--critical" aria-label="Stages before first audio">
                   <div className="lat-lane__head">
                     <span>Before you heard a response</span>
-                    <span>Critical path</span>
+                    <span>First audio waited for these</span>
                   </div>
                   <ul className="lat-timeline">{timeline.critical.map(renderTimelineStage)}</ul>
                 </section>
                 {!!timeline.asynchronous.length && (
                   <section className="lat-lane lat-lane--async" aria-label="Asynchronous delegated stages">
                     <div className="lat-lane__head">
-                      <span>After delegation</span>
-                      <span>Does not block first audio</span>
+                      <span>After first audio</span>
+                      <span>Did not delay first audio</span>
                     </div>
                     <ul className="lat-timeline">{timeline.asynchronous.map(renderTimelineStage)}</ul>
                   </section>
                 )}
               </>
             )}
-            {!!pipelineRows.length && <div className="lat-breakdown__section">Realtime voice pipeline</div>}
+            {!criticalPath && !!pipelineRows.length && <div className="lat-breakdown__section">Realtime voice pipeline</div>}
             <ul className="lat-breakdown__list" aria-label="Realtime voice pipeline latency">
-              {pipelineRows.map((r, i) => (
+              {!criticalPath && pipelineRows.map((r, i) => (
                 <li key={`${r.kind}-${i}`} className={`lat-row lat-row--${r.kind}`}>
                   <span className="lat-row__dot" aria-hidden />
                   <span className="lat-row__label">{r.label}</span>
@@ -303,12 +351,12 @@ export function ConversationOrb() {
               ))}
             </ul>
             <div className="lat-breakdown__total">
-              <span>{clientObservedLatency ? "Browser-observed end-to-end latency" : "Time to first audio (user silence → speech)"}</span>
+              <span>{clientObservedLatency ? "Browser-observed end-to-end latency" : criticalPath ? "= Time to first audio (you stop → server sends speech)" : "Time to first audio (user silence → speech)"}</span>
               <span>{firstAudioMs != null ? `${Math.round(firstAudioMs)} ms` : "—"}</span>
             </div>
             {playoutMs != null && latencyMs != null && (
               <div className="lat-breakdown__sub">
-                <span>+ Audio playout (your browser)</span>
+                <span>+ Network and audio playout (your browser)</span>
                 <span>{Math.round(playoutMs)} ms</span>
               </div>
             )}
@@ -318,7 +366,10 @@ export function ConversationOrb() {
                 <span>{Math.round(latencyMs + playoutMs)} ms</span>
               </div>
             )}
-            <p className="lat-breakdown__playout-note">Browser playout measures bot-start → first audible sample.</p>
+            <p className="lat-breakdown__playout-note">
+              Time to first audio is measured on the server from the moment you stopped speaking. Network and
+              playout are measured in your browser, from the bot-start signal to the first audible sample.
+            </p>
           </div>
         )}
       </aside>

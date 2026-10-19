@@ -19,6 +19,7 @@ export function VoiceStudio({ onBusyChange }: Readonly<{ onBusyChange: (busy: bo
     sessionLanguages ? app.selectedASR?.model : undefined,
     sessionLanguages ? app.selectedASR?.functionId : undefined,
     app.selectedTTS?.functionId, app.selectedTTS?.model,
+    sessionLanguages ? { pipelineMode: app.selectedExample?.key, llmId: app.selectedLLM?.id } : undefined,
   );
   const [search, setSearch] = useState("");
   const [text, setText] = useState("Hello. This is Nemotron 3 Diarization.");

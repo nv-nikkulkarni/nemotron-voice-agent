@@ -105,6 +105,13 @@ llmSuperImage:
   tag: "2.0.5"
   pullPolicy: IfNotPresent
 
+# Nemotron 3.5 Super VL 120B-A12B NIM — Thinker (reasoning on) and an optional Talker for the
+# Generic Frontend/Backend examples. Public NGC NIM catalog path like Super 120B.
+llmSuperVlImage:
+  repository: "nvcr.io/nim/nvidia/nemotron-3.5-super-vl-120b-a12b"
+  tag: "2.0.13-variant-build.1"
+  pullPolicy: IfNotPresent
+
 # Nemotron 3.5 Lightning 30B-A3B — the Generic Frontend/Backend Talker LLM. Same
 # PUBLIC NGC NIM catalog pattern as Super/Chatterbox (full `repository`). 30B-A3B fits on
 # ONE GPU (tp=1); chosen for markedly better tool-calling reliability than Super-120B (see
@@ -134,6 +141,13 @@ parakeetImage:
 omniImage:
   repository: "nvcr.io/0491162300748285/vllm-omni"
   tag: "v0.20.0-cu130-r2"
+  pullPolicy: IfNotPresent
+
+# vLLM image for Hugging Face checkpoints (docker/Dockerfile.vllm-hf): Gemma 4 31B.
+# Holds no model; `vllmModels` passes the checkpoint and flags. Its entrypoint exports HF_TOKEN from the NVCF secrets file.
+vllmHfImage:
+  repository: "nvcr.io/0491162300748285/vllm-hf"
+  tag: "v0.31.0-exp4"
   pullPolicy: IfNotPresent
 
 # Chatterbox TTS Multilingual NIM (a second, swappable voice in the builder).
@@ -195,13 +209,9 @@ app:
   chatHistoryRecentTurns: ""
   # Generic backend context: user turns including the current request (1–20).
   backendHistoryTurnLimit: "8"
-  # Generic Frontend/Backend orchestration. The explicit release settings use
-  # Talker-authored progress and deterministic trusted-result delivery. `off` and
-  # `talker` remain explicit diagnostic modes; the legacy boolean remains false
-  # so it cannot override these explicit modes.
+  # Generic Frontend/Backend orchestration: Talker-authored progress. Every tool result is
+  # phrased by the Talker before TTS; there is no direct-delivery mode.
   frontendBackendTalkerFillerMode: "emit"
-  frontendBackendToolResultMode: "direct"
-  frontendBackendDirectToolResponse: false
   thinkerToolTimeoutSeconds: "45"
   genericBackendTimeoutSeconds: "40"
   genericPlannerTimeoutSeconds: "18"
@@ -398,8 +408,8 @@ asr:
 # Service name fixed to "nemotron-3-super" (matches the chart's services.yaml). 2 GPUs.
 # =============================================================================
 llmSuper:
-  enabled: true    # Production full-model topology: Super uses 2 GPUs; combined with
-                   # Lightning, Omni, ASR, Magpie, and Chatterbox this requests 7 of 8 H100s.
+  enabled: false   # Replaced by Nemotron 3.5 Super VL (vllmModels.superVl) as the Generic
+                   # Frontend/Backend Thinker. Enabling it needs 2 more GPUs.
   nimTagsSelector: "precision=fp8,tp=2"
   # Viking-proven tunings — chart default 32768/256 KV-cache-OOM crash-loops on H100.
   nimKvCachePercent: "0.85"
@@ -414,6 +424,29 @@ llmSuper:
   resources:
     limits:
       nvidia.com/gpu: 2
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# Super VL NIM — Nemotron 3.5 Super VL 120B A12B. Service "nvidia-llm-super-vl". 1 GPU.
+# One server handles the Talker (reasoning off) and Thinker (reasoning on) requests.
+# =============================================================================
+llmSuperVl:
+  enabled: true
+  servedModelName: "nvidia/nemotron-3.5-super-vl-120b-a12b"
+  # Leave NIM_MAX_MODEL_LEN unset: the profile's MTP speculative config uses the model's
+  # full context, and a smaller target length fails vLLM's startup validation.
+  nimKvCachePercent: "0.85"
+  nimMaxNumSeqs: "64"
+  gpuDevices: "0"
+  shmSize: 32Gi
+  cache:
+    nvcf: true
+    size: 300Gi
+  resources:
+    limits:
+      nvidia.com/gpu: 1
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -464,7 +497,9 @@ llmLightning:
 # Served by `vllm serve` (not a NIM). Weights pull from HF at startup.
 # =============================================================================
 omni:
-  enabled: true
+  # In-cluster Omni is off on the 8-GPU node: Omni runs as its own 1-GPU NVCF function
+  # (omniRemote below). Set true to serve it from this chart again.
+  enabled: false
   # Repository/checkpoint used to load the model weights.
   model: "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4"
   # Stable OpenAI API model ID advertised by vLLM. Keep this aligned with the
@@ -495,6 +530,69 @@ omni:
     limits:
       nvidia.com/gpu: 1
       memory: 160Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# =============================================================================
+# Omni served by a separate NVCF function. When `functionId` is set and the in-cluster
+# Omni is disabled, the chart's services.yaml points nemotron-omni-nvfp4 at
+# https://<functionId>.invocation.api.nvcf.nvidia.com/v1 and the app authenticates with
+# the NVCF_API_KEY function secret.
+# =============================================================================
+omniRemote:
+  functionId: ""
+
+# =============================================================================
+# Hugging Face models served by vLLM (vllmHfImage). One Deployment and Service per
+# enabled entry; the Service name and port must match the chart's services.yaml.
+# =============================================================================
+vllmModels:
+  gemma4:
+    enabled: true
+    serviceName: nvidia-llm-vllm-gemma4
+    port: 8003
+    model: "google/gemma-4-31B-it"
+    servedModelName: "google/gemma-4-31b-it"
+    args:
+      - "--max-model-len=16384"
+      - "--gpu-memory-utilization=0.90"
+      - "--max-num-seqs=64"
+      - "--enable-prefix-caching"
+      - "--enable-auto-tool-choice"
+      - "--tool-call-parser=gemma4"
+      - "--reasoning-parser=gemma4"
+    shmSize: 16Gi
+    cache:
+      nvcf: true
+      size: 150Gi
+    resources:
+      requests:
+        cpu: "4"
+        memory: 32Gi
+      limits:
+        nvidia.com/gpu: 1
+        memory: 96Gi
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+
+# =============================================================================
+# Multilingual ASR NIM — Nemotron ASR Streaming, `type=multi`. Service
+# "nemotron-asr-streaming-multilingual" (grpc 50052, http 9001). 1 GPU.
+# =============================================================================
+asrMultilingual:
+  enabled: true
+  nimTagsSelector: "type=multi,mode=str"
+  gpuDevices: "0"
+  shmSize: 8Gi
+  cache:
+    nvcf: true
+    size: 50Gi
+    storageClass: oci-bv
+  resources:
+    limits:
+      nvidia.com/gpu: 1
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -595,6 +693,9 @@ prewarm:
     super:
       baseUrl: http://nemotron-3-super:8000/v1
       model: nvidia/nemotron-3-super-120b-a12b
+    superVl:
+      baseUrl: http://nvidia-llm-super-vl:8000/v1
+      model: nvidia/nemotron-3.5-super-vl-120b-a12b
     omni:
       baseUrl: http://nvidia-llm-vllm-omni:8002/v1
       # Omni's Speaker generates with response_format={"type":"json_object"} (guided/
@@ -710,8 +811,7 @@ redis:
 # session_store (src/session_store/) — shared object storage for session-capture
 # artifacts (log, ASR/TTS audio, transcript) across app replicas. This is the piece
 # that makes sessionCapture actually replica-safe: the pipeline pod and the pod that
-# receives the browser's consent POST can be different pods (see
-# docs/current-deployed-pipeline-architecture.md section 14) -- coordination crosses pods
+# receives the browser's consent POST can be different pods -- coordination crosses pods
 # via Redis, but without a SHARED store the finalizing pod can only see artifacts on
 # its OWN disk and silently archives an incomplete (or empty) session while reporting
 # success. Disabled by default: sessionCapture still works at replicas=1 (or with a

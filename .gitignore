@@ -78,3 +78,6 @@ nemotron-voice-agent-*.tgz
 # Stray screenshots/logos dropped in repo root during manual debugging
 /*.png
 /*.webp
+
+# Local Hugging Face token
+.env_hf_token

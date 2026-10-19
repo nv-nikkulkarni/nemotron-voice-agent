@@ -44,7 +44,8 @@ CALL_BACKEND_TOOL: dict = {
                     "maxLength": 96,
                     "description": (
                         "A brief, query-grounded progress phrase to speak only if the delegated work takes "
-                        "longer than the configured threshold. Use 3 to 12 words. Do not claim a result, "
+                        "longer than the configured threshold, in the language the user is speaking. "
+                        "Use 3 to 12 words. Do not claim a result, "
                         "invent details, repeat sensitive values, or mention tools, models, prompts, or backends."
                     ),
                 },

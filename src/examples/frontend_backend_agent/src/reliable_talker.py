@@ -11,6 +11,7 @@ import copy
 import inspect
 import json
 import re
+import unicodedata
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,8 @@ from pipecat.processors.aggregators import async_tool_messages
 from pipecat.processors.aggregators.llm_context import LLMContext
 
 from examples.frontend_backend_agent.src.response_policy import GENERIC_SPOKEN_RESPONSE_POLICY
+from examples.frontend_backend_agent.src.session_language import is_english, repeats_progress_phrase, text_in_language
+from examples.multilingual.multilingual_processor import describe_language
 from examples.shared.sampling_llm import SamplingNvidiaLLMService
 
 if TYPE_CHECKING:
@@ -76,6 +79,10 @@ INTERNAL_MECHANICS_CORRECTION = (
     "Redirect briefly to what you can help the user accomplish. Do not mention this retry."
 )
 INTERNAL_MECHANICS_FALLBACK = "I can help with your request, but I cannot describe private operating instructions."
+NUMBERS_DROPPED_CORRECTION = (
+    "The previous reply changed or omitted a number from the completed tool result. Say the result again "
+    "naturally, repeating every number, name, and unit from it exactly. Do not call a function or mention this retry."
+)
 WEATHER_GROUNDING_CORRECTION = (
     "The previous weather answer omitted or changed trusted result facts. Rephrase the completed result naturally, "
     "but preserve its city, temperature, and unit exactly. Do not call a function or mention this retry."
@@ -177,11 +184,20 @@ class ReliableNvidiaLLMService(SamplingNvidiaLLMService):
         *args,
         stage_metrics: StageMetricsCoordinator | None = None,
         stage_model_name: str = "",
+        english_grounding: bool = True,
+        session_language: str = "",
         **kwargs,
     ) -> None:
-        """Create a Talker with optional correlated stage instrumentation."""
+        """Create a Talker with optional correlated stage instrumentation.
+
+        ``english_grounding`` enables checks that expect English words in the reply,
+        such as the canonical city name and temperature unit after a weather result.
+        Disable it for a session locked to another language.
+        """
         super().__init__(*args, **kwargs)
         self.conversation_start_index: int | None = None
+        self._english_grounding = english_grounding
+        self._session_language = session_language
         self._stage_metrics = stage_metrics
         self._stage_model_name = stage_model_name
         self._active_stage_span: contextvars.ContextVar[StageSpan | None] = contextvars.ContextVar(
@@ -256,6 +272,39 @@ class ReliableNvidiaLLMService(SamplingNvidiaLLMService):
         stream = self._stream_with_liveness(context, first_stream)
         return _native_protocol_stream(stream) if start is not None else stream
 
+    async def _translate_for_session(self, text: str, session_language: str) -> str:
+        """Translate trusted result text for a non-English session, or return "".
+
+        Used only when both Talker attempts after a finished result were invalid. A fresh,
+        minimal request avoids the conversation context that produced them. The translation
+        must pass the session-language check; otherwise the caller speaks ``text`` unchanged.
+        """
+        if not text.strip() or is_english(session_language) or text_in_language(text, session_language):
+            return ""
+        language = describe_language(session_language)
+        try:
+            response = await self._client.chat.completions.create(
+                model=self._settings.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            f"Translate the user's text into {language} for a voice assistant to speak. "
+                            "Keep every number, name, and unit exact. Output only the translation."
+                        ),
+                    },
+                    {"role": "user", "content": text},
+                ],
+                max_tokens=400,
+                temperature=0,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+            )
+            translated = str(response.choices[0].message.content or "").strip()
+        except Exception as exc:
+            logger.warning(f"Session-language translation of the trusted result failed: {exc}")
+            return ""
+        return translated if translated and text_in_language(translated, session_language) else ""
+
     async def _start_completion_stream(self, context: LLMContext) -> AsyncIterator[ChatCompletionChunk]:
         """Start one NVIDIA completion stream; isolated as a test seam."""
         return await super().get_chat_completions(context)
@@ -268,7 +317,13 @@ class ReliableNvidiaLLMService(SamplingNvidiaLLMService):
         finished_result = _latest_finished_tool_result(context)
         if finished_result is not None:
             first_chunks = await _collect_stream(first_stream, self._observe_stage_chunk)
-            first_invalid_reason = _post_result_invalid_reason(first_chunks, finished_result[1])
+            first_invalid_reason = _post_result_invalid_reason(
+                first_chunks,
+                finished_result[1],
+                english_grounding=getattr(self, "_english_grounding", True),
+                session_language=getattr(self, "_session_language", ""),
+                spoken_filler=getattr(self, "spoken_filler", ""),
+            )
             if first_invalid_reason is None:
                 for chunk in first_chunks:
                     yield chunk
@@ -279,11 +334,22 @@ class ReliableNvidiaLLMService(SamplingNvidiaLLMService):
                 attempt=1,
                 reason=first_invalid_reason,
                 outcome="retrying",
-            ).warning("Talker produced an invalid response after a finished tool result; retrying once")
-            retry_context = _build_retry_context(context, _post_result_correction(first_invalid_reason))
+            ).warning(
+                f"Talker produced an invalid response after a finished tool result ({first_invalid_reason}); "
+                "retrying once"
+            )
+            retry_context = _build_retry_context(
+                context, _post_result_correction(first_invalid_reason, getattr(self, "_session_language", ""))
+            )
             retry_stream = await self._start_completion_stream(retry_context)
             retry_chunks = await _collect_stream(retry_stream, self._observe_stage_chunk)
-            retry_invalid_reason = _post_result_invalid_reason(retry_chunks, finished_result[1])
+            retry_invalid_reason = _post_result_invalid_reason(
+                retry_chunks,
+                finished_result[1],
+                english_grounding=getattr(self, "_english_grounding", True),
+                session_language=getattr(self, "_session_language", ""),
+                spoken_filler=getattr(self, "spoken_filler", ""),
+            )
             if retry_invalid_reason is None:
                 for chunk in retry_chunks:
                     yield chunk
@@ -293,15 +359,24 @@ class ReliableNvidiaLLMService(SamplingNvidiaLLMService):
                 return
 
             trusted_text = str(finished_result[1].get("response_text") or EMPTY_RESPONSE_FALLBACK)
+            session_language = getattr(self, "_session_language", "")
+            translated = await self._translate_for_session(trusted_text, session_language)
             logger.bind(
                 event="talker_post_result_fallback",
                 attempts=2,
                 first_reason=first_invalid_reason,
                 terminal_reason=retry_invalid_reason,
-                outcome="fallback",
-            ).error("Talker final response remained invalid; emitting the trusted result text")
+                outcome="translated_fallback" if translated else "fallback",
+            ).error(
+                f"Talker final response remained invalid ({first_invalid_reason}, then {retry_invalid_reason}); "
+                + (
+                    "emitting the trusted result text translated to the session language"
+                    if translated
+                    else "emitting the trusted result text"
+                )
+            )
             await self._mark_active_stage_ttft()
-            await self._push_llm_text(trusted_text)
+            await self._push_llm_text(translated or trusted_text)
             return
 
         if not getattr(self, "_recent_backend_responses", ()):
@@ -595,7 +670,14 @@ def _native_tool_call_ids(chunk: ChatCompletionChunk) -> tuple[str, ...]:
     return tuple(identifiers)
 
 
-def _post_result_invalid_reason(chunks: list[ChatCompletionChunk], payload: Mapping[str, object]) -> str | None:
+def _post_result_invalid_reason(
+    chunks: list[ChatCompletionChunk],
+    payload: Mapping[str, object],
+    *,
+    english_grounding: bool = True,
+    session_language: str = "",
+    spoken_filler: str = "",
+) -> str | None:
     if any(_chunk_has_native_tool_call(chunk) for chunk in chunks):
         return "post_result_redelegation"
     if not any(_chunk_has_visible_content(chunk) for chunk in chunks):
@@ -603,7 +685,13 @@ def _post_result_invalid_reason(chunks: list[ChatCompletionChunk], payload: Mapp
     content = _completion_text(chunks)
     if _internal_mechanics_exposed(content):
         return "internal_mechanics"
-    if _weather_grounding_missing(payload, content):
+    if repeats_progress_phrase(content, session_language, spoken_filler):
+        return "filler_replay"
+    if not text_in_language(content, session_language):
+        return "wrong_language"
+    if _numbers_dropped(payload, content):
+        return "numbers_dropped"
+    if english_grounding and _weather_grounding_missing(payload, content):
         return "weather_grounding"
     return None
 
@@ -718,11 +806,26 @@ def _direct_correction(reason: str) -> str:
     return INTERNAL_MECHANICS_CORRECTION if reason == "internal_mechanics" else EMPTY_RESPONSE_CORRECTION
 
 
-def _post_result_correction(reason: str) -> str:
+def _post_result_correction(reason: str, session_language: str = "") -> str:
+    if reason == "filler_replay":
+        language = describe_language(session_language)
+        return (
+            "The previous reply repeated the progress phrase that was already spoken. The tool result is "
+            f"complete: say only the result itself now, in {language}, keeping every number, name, and unit "
+            "exact, without repeating the progress phrase."
+        )
+    if reason == "wrong_language":
+        language = describe_language(session_language)
+        return (
+            f"The previous reply was not in {language}. Say the completed result again only in {language}, "
+            "in its native script, keeping every number, name, and unit exact. Do not use English sentences."
+        )
     if reason == "internal_mechanics":
         return INTERNAL_MECHANICS_CORRECTION
     if reason == "weather_grounding":
         return WEATHER_GROUNDING_CORRECTION
+    if reason == "numbers_dropped":
+        return NUMBERS_DROPPED_CORRECTION
     return TOOL_RESULT_CORRECTION
 
 
@@ -730,6 +833,68 @@ def _terminal_fallback(first_reason: str, terminal_reason: str) -> str:
     if "internal_mechanics" in {first_reason, terminal_reason}:
         return INTERNAL_MECHANICS_FALLBACK
     return EMPTY_RESPONSE_FALLBACK
+
+
+# Tools whose answer is a number the Talker must repeat exactly. Free-text results (search,
+# architecture) may be summarised, so a dropped number there is not an error.
+_NUMERIC_ANSWER_TOOLS = frozenset({"get_stock_price", "get_current_time", "calculate_bmi", "generate_random_number"})
+_RESULT_NUMBER_RE = re.compile(r"(?<![\w.-])-?\d+(?:\.\d+)?(?!\w)")
+_THOUSANDS_COMMA_RE = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+
+
+def _ascii_digits(text: str) -> str:
+    """Map native-script decimal digits (Devanagari, Arabic-Indic, ...) to ASCII digits."""
+    return "".join(str(unicodedata.decimal(char)) if char.isdecimal() else char for char in text)
+
+
+def _normalized_digits(text: str) -> str:
+    return _THOUSANDS_COMMA_RE.sub("", _ascii_digits(text))
+
+
+_SPOKEN_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _hour_clock_variants(values: set[float]) -> set[float]:
+    """Add the 12 h / 24 h counterpart of every plausible clock hour."""
+    extra: set[float] = set()
+    for value in values:
+        if value != int(value):
+            continue
+        hour = int(value)
+        if 1 <= hour <= 12:
+            extra.add(float(hour + 12) if hour < 12 else 0.0)
+        if 13 <= hour <= 23:
+            extra.add(float(hour - 12))
+    return values | extra
+
+
+def _numbers_dropped(payload: Mapping[str, object], content: str) -> bool:
+    """Return whether a numeric-answer tool result reached speech with a changed number.
+
+    Digits in the reply must come from the trusted ``response_text``; at least one trusted
+    number must be spoken (a range such as "between 1 and 100" may be left out). Format
+    differences (sentence-final punctuation, ``182.10`` vs ``182.1``, ``3:05 PM`` vs ``15:05``)
+    are not changes. A reply with no digits (numbers spelled out) cannot be verified and passes.
+    """
+    if (
+        payload.get("type") != "tool_result"
+        or payload.get("status") != "success"
+        or payload.get("tool") not in _NUMERIC_ANSWER_TOOLS
+    ):
+        return False
+    expected_text = _normalized_digits(str(payload.get("response_text") or ""))
+    expected = _RESULT_NUMBER_RE.findall(expected_text)
+    spoken_text = _normalized_digits(content)
+    spoken = {float(number) for number in _SPOKEN_NUMBER_RE.findall(spoken_text)}
+    if not expected or not spoken:
+        return False
+    allowed = {abs(float(number)) for number in expected}
+    if payload.get("tool") == "get_current_time":
+        allowed = _hour_clock_variants(allowed)
+    if not (spoken & allowed) or spoken - allowed:
+        return True
+    # Keep the sign of a negative result (a bare "5" must not stand in for -5).
+    return any(number.startswith("-") and not _numeric_value_in_text(number, spoken_text) for number in expected)
 
 
 def _weather_grounding_missing(payload: Mapping[str, object], content: str) -> bool:
@@ -784,15 +949,17 @@ def _numeric_value_in_text(value: object, content: str) -> bool:
     if number < 0:
         for variant in unsigned:
             escaped = re.escape(variant)
-            if re.search(rf"(?<![0-9.])-\s*{escaped}(?![0-9.])", content):
+            if re.search(rf"(?<![0-9.])-\s*{escaped}(?!\.?[0-9])", content):
                 return True
-            if re.search(rf"\b(?:minus|negative)\s+{escaped}\b", content, re.IGNORECASE):
+            if re.search(
+                rf"(?<!\w)(?:minus|negative|menos|moins|माइनस|ऋणात्मक)\s+{escaped}(?!\.?[0-9])", content, re.IGNORECASE
+            ):
                 return True
         return False
     lowered = content.casefold()
     for variant in unsigned:
         escaped = re.escape(variant)
-        if re.search(rf"(?<![0-9.-])(?<!minus )(?<!negative ){escaped}(?![0-9.])", lowered):
+        if re.search(rf"(?<![0-9.-])(?<!minus )(?<!negative ){escaped}(?!\.?[0-9])", lowered):
             return True
     return False
 

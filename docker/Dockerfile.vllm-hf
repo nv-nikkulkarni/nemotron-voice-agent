@@ -1,0 +1,51 @@
+# vLLM image for Hugging Face checkpoints served on NVCF and OpenShift-style
+# non-root runtimes: Gemma 4 31B and Nemotron 3.5 Super VL.
+#
+# The image holds no model. The Helm chart (or `--container-args` on a container
+# function) passes the checkpoint and the `vllm serve` flags; weights download at
+# startup into /cache. Caches live in writable, group-0 locations so the container
+# runs as an arbitrary non-root UID, matching docker/Dockerfile.omni.
+#
+# vLLM 0.31.0 is the minimum for Super VL 3.5 and also serves Gemma 4.
+# BASE_IMAGE also accepts the Omni image (docker/Dockerfile.omni) to run Omni as a
+# standalone NVCF container function with the same entrypoint.
+#
+# Build:
+#   docker build --platform linux/amd64 -f docker/Dockerfile.vllm-hf \
+#     -t nvcr.io/0491162300748285/vllm-hf:v0.31.0 docker/
+#   docker build --platform linux/amd64 -f docker/Dockerfile.vllm-hf \
+#     --build-arg BASE_IMAGE=nvcr.io/0491162300748285/vllm-omni:v0.20.0-cu130-r2 \
+#     -t nvcr.io/0491162300748285/vllm-omni-nvcf:v0.20.0-cu130-r2 docker/
+
+ARG BASE_IMAGE=vllm/vllm-openai:v0.31.0
+FROM ${BASE_IMAGE}
+
+USER root
+
+ENV HOME=/tmp \
+    USER=vllm \
+    LOGNAME=vllm \
+    HF_HOME=/cache/hf \
+    HF_HUB_CACHE=/cache/hf/hub \
+    XDG_CACHE_HOME=/tmp/.cache \
+    XDG_CONFIG_HOME=/tmp/.config \
+    TRITON_CACHE_DIR=/tmp/.triton \
+    NUMBA_CACHE_DIR=/tmp/.numba \
+    OUTLINES_CACHE_DIR=/tmp/.outlines \
+    VLLM_CONFIG_ROOT=/tmp/.vllm
+
+# Group 0 covers an arbitrary OpenShift UID. vLLM 0.31.0 images define UID 1000 as a
+# real user (gid 1000), so every pre-created cache directory is also world-writable
+# with the sticky bit, like /tmp itself.
+RUN mkdir -p /cache/hf/hub /tmp/.cache /tmp/.config /tmp/.triton /tmp/.numba /tmp/.outlines /tmp/.vllm \
+    && chgrp -R 0 /cache /tmp \
+    && chmod -R g=u /cache /tmp \
+    && find /cache /tmp -mindepth 1 -type d -exec chmod 1777 {} + \
+    && chmod 1777 /cache /tmp \
+    && chmod g=u /etc/passwd
+
+COPY vllm-hf-entrypoint.sh /usr/local/bin/vllm-hf-entrypoint.sh
+
+USER 1000
+
+ENTRYPOINT ["/usr/local/bin/vllm-hf-entrypoint.sh"]

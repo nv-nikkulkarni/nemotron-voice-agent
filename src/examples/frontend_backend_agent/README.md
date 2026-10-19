@@ -72,7 +72,7 @@ contains native calls, the runtime withholds accompanying model speech while
 preserving the calls. Validated progress and completed-result speech remain
 separate.
 
-When direct tool speech is enabled, the structured function result is the single retained copy of the deterministic backend response; the separately emitted TTS frame is not appended again as an assistant message. The Talker remembers a bounded normalized signature outside the prompt context. If a later completion substantially replays that cached result without a native tool call, the runtime withholds it and retries once with an internal contract correction. It never selects a domain tool or constructs a function call. A second invalid replay fails closed with deterministic speech.
+The structured function result is the single retained copy of the deterministic backend response. The Talker remembers a bounded normalized signature outside the prompt context. If a later completion substantially replays that cached result without a native tool call, the runtime withholds it and retries once with an internal contract correction. It never selects a domain tool or constructs a function call. A second invalid replay fails closed with deterministic speech.
 
 The runtime retains bounded successful subject arguments by capability. A
 non-successful or subjectless result clears only that capability's baseline,
@@ -90,16 +90,21 @@ correction, and then fails closed if the retry still drifts. Capability matching
 is validation-only: it never infers user intent, selects a domain tool, or writes
 a corrected tool call in Python.
 
-When `FRONTEND_BACKEND_TOOL_RESULT_MODE` is absent, each backend selects its
-default. Generic uses `direct`, which speaks trusted backend text without a
-second Talker inference. Airline retains `talker`, which sends every speakable
-result through the guarded final Talker pass. An explicit `direct`, `hybrid`,
-or `talker` value overrides either backend default. In the generic domain,
-`hybrid` sends only a successful `get_weather` result through the Talker for a
-natural rephrasing. Other successes, clarifications, and failures use trusted
-deterministic speech. The final Talker pass must preserve the trusted city,
+Every grounded result, cancel hint, missing-parameter hint, and terminal
+message returns to the Talker with `run_llm=true`, and the Talker phrases it
+before text-to-speech (TTS). No environment variable or chart value changes
+this routing. In a language-locked session, the payload carries `reply_language`
+and `reply_instruction`. The weather reply must preserve the trusted city,
 temperature, and unit; it retries once and then uses deterministic speech if
 those facts are missing or changed.
+
+For `get_stock_price`, `get_current_time`, `calculate_bmi`, and
+`generate_random_number` results, a Talker reply that contains digits but not
+every number of the trusted result is retried once with a correction (reason
+`numbers_dropped`) and then falls back as before. The check normalizes
+native-script digits and skips replies with no digits, such as spelled-out
+numbers. It does not check free-text tools such as `web_search` and
+`show_architecture`.
 
 The Generic Talker also rejects responses that expose private operating
 instructions, decision rules, model roles, function names, or internal tool
@@ -107,17 +112,6 @@ inventory. The runtime retries one invalid completion with a private
 correction, then returns a brief deterministic refusal if the retry still
 exposes internal mechanics. This validation does not infer intent or select a
 tool in Python.
-
-The checked-in NVCF chart explicitly sets
-`app.frontendBackendToolResultMode: "direct"`. That chart value becomes
-`FRONTEND_BACKEND_TOOL_RESULT_MODE=direct` in the application pod and
-overrides the Generic source default. Changing only the backend source does not
-change this rendered Helm behavior.
-
-The Viking qualification values set
-`app.frontendBackendToolResultMode: "hybrid"`. This canary setting enables the
-guarded Talker rephrasing only for successful weather results. It does not
-change the NVCF values file or any Astra deployment.
 
 Replay validation buffers a completion only after a direct backend response has been recorded. Initial and pre-tool conversation remains streamed, preserving its existing time-to-first-audio behavior.
 
@@ -131,6 +125,7 @@ Both built-ins point to `examples.frontend_backend_agent.pipeline:bot`. The sele
 | --- | --- | --- | --- | --- | --- |
 | `frontend-backend-agent` | `airline` | `talker` | `thinker` | Airline domain defaults | `booking-server` |
 | `generic-frontend-backend-agent` | `generic` | `generic_talker` | `generic_thinker` | `get_weather`, `get_stock_price`, `get_current_time`, `show_architecture`, `web_search`, `calculate_bmi`, and `generate_random_number` | WeatherAPI, Finnhub, and Perplexity credentials for their respective live tools |
+| `multilingual-generic-frontend-backend-agent` | `generic` | `generic_talker` | `generic_thinker` | The same 7 generic tools | Same credentials as the generic entry |
 
 When users ask its identity, developer, or pipeline, the generic Talker uses this exact response:
 
@@ -141,6 +136,73 @@ sends only International Phonetic Alphabet (IPA) mappings; Chatterbox receives
 no custom dictionary. Refer to [Configure TTS](../../../docs/how-to/configure-tts.md#pronunciation-ipa).
 
 `domain_profile`, `thinker_prompt`, and `tools` are registry-owned. The server binds these values from `examples_registry.yaml`; a client session cannot replace the hidden prompt key or widen the allowed tool set. For a domain-profile session, optional `tools_available` input can only select a subset of that registry list. Unknown names grant no capability, and `none` disables every optional tool. The pipeline resolves `domain_profile` through the code allowlist in `src/domain.py`. It never imports a client-provided module or path.
+
+### Multilingual Generic Flavor
+
+The `multilingual-generic-frontend-backend-agent` entry (**Multilingual Frontend/Backend Assistant**) uses the generic domain with the `session_languages` capability. When an example has this capability, `pipeline.py` locks the session to one language. A launch variant with a `session_language` sets that language. Otherwise, the client selects it through `asr_language_code`, and the registry default is `en-US`. The pipeline then:
+
+- Sets the ASR and TTS language and resolves a TTS voice for the language.
+- Appends `fixed_session_language_addon` to the Talker prompt and `thinker_session_language_addon` to the Thinker prompt. A variant can name other prompt keys through `talker_prompt_addon` and `thinker_prompt_addon`, and these are the fallback when a variant names none.
+- Returns every tool result to the Talker, which speaks it in the session language.
+- Skips the English-only weather grounding check for a non-English session. That check expects the English city name and temperature unit in the spoken reply.
+
+The Thinker language addon requires every tool argument in English with Latin letters, for example `Delhi` instead of a Devanagari place name, because WeatherAPI rejects Devanagari input. Spoken tool results split sentences at `।`, `॥`, `。`, `！`, and `？` in addition to `.`, `!`, and `?`.
+
+Fillers follow the session language too. The Talker is asked to write `call_backend.filler_text` in the session language, and a filler that is not in that language is never spoken. When the Talker's filler is rejected, a fixed short filler in the session language is spoken instead, so a non-English user still hears progress while the backend works.
+
+Tool results reach the Talker with their `response_text` in English plus a `reply_language` instruction to say them in the session language. A Talker reply to a tool result that is not in the session language is retried once with a correction; if it is still wrong, the trusted English result text is spoken as the last resort.
+
+By default a fixed-language session sends its language to the ASR, so a Hindi session does not transcribe English speech. Set `FRONTEND_BACKEND_FIXED_LANGUAGE_ASR=auto` to keep automatic language detection when the ASR catalog entry uses `language_code: auto` (the Nemotron ASR Streaming Multilingual entry does); English and Hinglish speech are then transcribed, but in the Hindi SQA run Hindi recognition dropped noticeably (city names were lost), so this is opt-in.
+
+The UI language list is the intersection of the languages that the selected ASR, TTS, and Talker LLM support. Super VL declares `en`, `de`, `es`, `fr`, `it`, `ja`, `hi`, `ko`, `pt`, and `zh`. Gemma 4 declares those languages plus `ar` and `vi`, so the picker offers Arabic and Vietnamese with Gemma 4 because the ASR and TTS support them. Lightning declares `en`, `de`, `es`, `fr`, `it`, and `ja`, so selecting Lightning removes Hindi, Korean, Portuguese, and Chinese.
+
+The registry offers these services. The first available option is the default:
+
+| Slot | Options | Settings |
+| --- | --- | --- |
+| Talker `llm` | `gemma-4-31b`, `nemotron-super-vl`, `nemotron-lightning` | Reasoning off, temperature `0.0`, `max_tokens` 512 |
+| `thinker-llm` | `nemotron-super-vl`, `nemotron-lightning` | Super VL: reasoning on, effort `low`, `max_tokens` 2,048. Lightning: reasoning on, budget 1,024 |
+| `asr` | `nemotron-asr-streaming-multilingual`, `parakeet-rnnt` (the cloud-recipe option) | Not applicable |
+| `tts` | `magpie-multilingual-tts`, `chatterbox-multilingual-tts`, `magpie-zeroshot-tts` | Not applicable |
+
+The entry declares two launch variants under `variants`:
+
+| Variant | Label | Behavior |
+| --- | --- | --- |
+| `hindi` | Hindi | Locks the session to `hi-IN` and selects the Gemma 4 Talker with the `hindi_talker` and `hindi_thinker` prompts |
+| `multilingual` | Any language | Selects the Gemma 4 Talker with the `multilingual_talker` and `multilingual_thinker` prompts and lets the user pick any supported language |
+
+Each variant accepts the string fields `label` (required), `description`, `session_language`, `llm`, `tts_voice`, `talker_prompt_addon`, and `thinker_prompt_addon`. `tts_voice` is a voice name (the Hindi variant uses `Leo`) that the server resolves against the TTS catalog for the variant's language when the user has not picked a voice; it falls back to the language default. The Hindi variant is listed first and is the preselected mode. The registry loader rejects unknown fields and an `llm` that is not listed under the example's `services.llm`. The client sends the selected variant as the `example_variant` session configuration key. The server ignores an unknown variant and logs a warning. Refer to the [Astra client README](../../../astra_client/README.md) for the launch buttons.
+
+Each variant's Talker section in `prompts.yaml` tells the model to speak, converse, and keep context in the session language, to use a filler in that language, and to speak results with exact numbers, units, and names. A Talker section with `few_shots` replaces the English native-protocol demonstrations for that variant. Each Thinker section tells the model to translate the request and entities to English before planning. Tool arguments, queries, and every `response_text` stay in English, and the Talker speaks them in the session language.
+
+Gemma 4 31B (`google/gemma-4-31B-it`, served as `google/gemma-4-31b-it` by vLLM 0.31.0 from Hugging Face on port 8003) needs about 62 GB for BF16 weights, so it needs one GPU with 80 GB or more of memory. NVIDIA verified it live on NVIDIA Cloud Functions (NVCF) with a Hindi conversation, native `call_backend` tool calls, 12 languages, and reasoning on and off. Streaming time to first token was about 0.7 s through NVCF with the full prompt.
+
+#### Deploy the Multilingual Flavor
+
+The Docker Compose recipes provide the following profiles for this entry:
+
+| Recipe profile | App service | Sidecars |
+| --- | --- | --- |
+| `multilingual-generic-frontend-backend-agent` | `multilingual-generic-frontend-backend-agent` | None. The cloud recipe offers Lightning, Parakeet RNNT, and Magpie from NVIDIA cloud endpoints |
+| `multilingual-generic-frontend-backend-agent/server` | `multilingual-generic-frontend-backend-agent-server` | `nvidia-llm` (Lightning), `nemotron-asr-streaming-multilingual`, and `magpie-multilingual-tts-service` on GPU 0, `nvidia-llm-vllm-gemma4` on GPU 1, and `nvidia-llm-super-vl` (NIM) on GPU 2 |
+
+Gemma 4 and Super VL have no NVIDIA cloud entry, so the cloud recipe cannot run the Hindi variant. Use the Server recipe for Hindi, Korean, Portuguese, or Chinese sessions.
+
+The Server recipe builds `docker/Dockerfile.vllm-hf` and downloads the Hugging Face checkpoints at startup. Set both `NVIDIA_API_KEY` and `HF_TOKEN` in `.env`, log in to `nvcr.io`, and start the profile:
+
+```bash
+docker compose --profile multilingual-generic-frontend-backend-agent/server up -d
+```
+
+The NVCF Helm chart in `nvcf_helm/` also deploys this entry. It adds the example to the chart registry when `asrMultilingual.enabled` and `vllmModels.gemma4.enabled` are both `true`. Refer to [Deployment Architecture](../../../docs/deployment-architecture.md#multilingual-frontendbackend-models) for the chart values.
+
+The example has these known limitations:
+
+- The Hindi and multilingual prompts are interim addons that are pending a prompt review.
+- Hindi accuracy of the multilingual ASR has not been verified live.
+- The output guards are in English, and the English few-shot demonstrations apply to any variant that has no Talker `few_shots` section.
+- A few deterministic terminal fallback messages, such as "I could not complete that request right now," remain in English.
 
 ## Default Models
 
@@ -258,8 +320,6 @@ The following environment variables bound shared and domain-specific orchestrati
 | `FRONTEND_BACKEND_VAD_STOP_SECS` | `0.8` | Local VAD pause in seconds; lower values finalize sooner, higher values tolerate longer pauses and trailing words at the cost of end-of-turn latency. Native ASR can finalize earlier; Smart Turn decides completion. |
 | `FRONTEND_BACKEND_SMART_TURN_STOP_SECS` | `2.0` | Semantic turn silence fallback in seconds; minimum `0.8`. |
 | `FRONTEND_BACKEND_TALKER_FILLER_MODE` | `emit` | Uses `off` or `observe` to suppress progress speech, or `emit` to permit validated, query-grounded Generic progress |
-| `FRONTEND_BACKEND_TOOL_RESULT_MODE` | Domain default: Generic `direct`; Airline `talker`; NVCF chart `direct` | An explicit `direct`, `hybrid`, or `talker` value overrides the backend default. Generic `hybrid` uses the Talker only for successful weather results. |
-| `FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` | Disabled (`true` for single-GPU Compose) | Legacy switch that forces direct mode only when the explicit result-mode variable is absent |
 | `THINKER_FILLER_THRESHOLD_SECONDS` | `0.3` | Delays progress speech until delegated work remains active past the threshold |
 | `THINKER_TOOL_TIMEOUT_SECONDS` | `45.0` (`90` for single-GPU Compose) | Bounds the shared Talker-to-backend function handler |
 | `GENERIC_PLANNER_TIMEOUT_SECONDS` | `6.0` | Bounds each generic Thinker planning round; the backend permits at most 3 rounds |
@@ -461,9 +521,14 @@ original values. Refer to [LLM Session Controls](../../../docs/how-to/configure-
 
 For model and catalog settings, refer to [Configure LLM](../../../docs/how-to/configure-llm.md) and [Configure Services](../../../docs/how-to/configure-services.md). For prompt behavior, tool subsets, and domain extension, refer to [Configure Frontend/Backend Agent Domains](../../../docs/how-to/configure-frontend-backend-domains.md).
 
-The built-in generic profile keeps Nemotron 3 Super reasoning enabled for the
-Thinker at temperature `0.0`. Its server and cloud catalog entries bound each
-plan with `max_tokens: 2048` and a 256-token reasoning budget. These bounds
+The built-in generic profile offers Nemotron 3.5 Lightning, Gemma 4 31B,
+and Nemotron 3.5 Super VL as Talkers, all with reasoning off. Its Thinker is
+Nemotron 3.5 Super VL with reasoning enabled at temperature `0.0`, with
+Nemotron 3.5 Lightning as the fallback when Super VL is not reachable. The
+registry bounds each Super VL plan with `max_tokens: 2048` and `low`
+reasoning effort, which the catalog sends as `extra_body.reasoning_effort`.
+The `frontend-backend-agent` Compose profiles do not start Gemma 4 or Super VL, so
+those profiles use Lightning for both roles. These bounds
 preserve reasoning, model-based planning, and Python plan validation.
 A typed empty-plan error can retry once after 0.2 seconds, with a 6-second
 limit per planner attempt inside the 40-second backend deadline.
@@ -593,9 +658,9 @@ The pipeline enforces the following boundaries:
 - Live-data tools read credentials from the process environment. Credentials never enter the Thinker request or tool parameters.
 - Missing credentials, timeouts, invalid responses, and upstream failures return bounded unavailable responses. The generic tools do not substitute fabricated data.
 - Deterministic Python formatters produce TTS-safe result text from validated inputs and returned service data.
-- In generic `hybrid` mode, only successful weather results receive a guarded
-  Talker rephrasing. The response must preserve the trusted city, temperature,
-  and unit, while all failures retain deterministic speech.
+- Every tool result goes to the Talker. The weather response must preserve the
+  trusted city, temperature, and unit, or the runtime retries once and then
+  uses deterministic speech.
 - Generic validates the Talker's optional query-grounded progress candidate.
   Unsafe or ungrounded candidates produce silence without a fixed fallback.
   Airline retains planner-authored progress for backward compatibility.

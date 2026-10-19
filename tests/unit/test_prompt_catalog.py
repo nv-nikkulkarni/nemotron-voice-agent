@@ -36,6 +36,11 @@ def _example_with_catalog(contents: str):
 
 
 class PromptCatalogTests(unittest.TestCase):
+    def test_talker_prompt_tells_the_model_not_to_borrow_example_topics(self) -> None:
+        text = (PROJECT_ROOT / "src/examples/frontend_backend_agent/prompts.yaml").read_text(encoding="utf-8")
+        self.assertIn('User: "Search the web."', text)
+        self.assertIn("never\n    borrow a topic", text)
+
     def test_builtin_catalogs_have_expected_prompts(self) -> None:
         cases = {
             PROJECT_ROOT / "src/examples/generic/prompts.yaml": {

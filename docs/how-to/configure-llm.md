@@ -10,12 +10,14 @@ Models are declared in the root [`services.yaml`](../../services.yaml), and each
 
 ## Models
 
-Three unique Nemotron models back the examples. Each is served by the self-hosted Compose service(s) below. Nemotron 3.5 Lightning and Nemotron 3 Nano Omni are also available from the cloud catalog with no sidecar. Nemotron 3 Super is self-hosted only.
+Five unique Nemotron models and one Gemma 4 model back the examples. Each is served by the self-hosted Compose services below. Nemotron 3.5 Lightning and Nemotron 3 Nano Omni are also available from the cloud catalog with no sidecar. Nemotron 3 Super and Nemotron 3.5 Super VL are self-hosted only. Gemma 4 31B, which is not a Nemotron model, is also self-hosted only.
 
 | Model | Self-hosted compose service | Modelcard |
 |-------|-----------------------------|-----------|
 | **Nemotron 3.5 Lightning 30B A3B**: fast, efficient text LLM | [`docker-compose.nemotron35-lightning-nim.yaml`](../../docker/docker-compose.nemotron35-lightning-nim.yaml) (NIM), [`docker-compose.nemotron35-lightning.yaml`](../../docker/docker-compose.nemotron35-lightning.yaml) (vLLM) | [modelcard](https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b/modelcard) |
 | **Nemotron 3 Super 120B A12B**: higher-capability alternative for complex tasks, available self-hosted | [`docker-compose.nemotron3-super.yaml`](../../docker/docker-compose.nemotron3-super.yaml) | [model card](https://build.nvidia.com/nvidia/nemotron-3-super-120b-a12b/modelcard) |
+| **Gemma 4 31B**: multilingual Talker for the Generic Frontend/Backend examples | [`docker-compose.nemotron35-vllm-hf.yaml`](../../docker/docker-compose.nemotron35-vllm-hf.yaml) (vLLM) | [Hugging Face model card](https://huggingface.co/google/gemma-4-31B-it) |
+| **Nemotron 3.5 Super VL 120B A12B**: reasoning Thinker and multilingual Talker for the Generic Frontend/Backend examples | [`docker-compose.nemotron35-super-vl-nim.yaml`](../../docker/docker-compose.nemotron35-super-vl-nim.yaml) (NIM) | Refer to [Gemma 4 and Nemotron 3.5 Super VL](#gemma-4-and-nemotron-35-super-vl) |
 | **Nemotron 3 Nano Omni 30B A3B**: audio-input model that does ASR and the LLM in one, used by the Omni examples | [`docker-compose.nemotron3-omni-nim.yaml`](../../docker/docker-compose.nemotron3-omni-nim.yaml) (NIM), [`docker-compose.nemotron3-omni.yaml`](../../docker/docker-compose.nemotron3-omni.yaml) (vLLM) | [modelcard](https://build.nvidia.com/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning) |
 
 Each model is exposed as one or more **catalog keys** in `services.yaml`:
@@ -24,9 +26,30 @@ Each model is exposed as one or more **catalog keys** in `services.yaml`:
 |-------|--------------|
 | Nemotron 3.5 Lightning | `nemotron-lightning` |
 | Nemotron 3 Super | `nemotron-super` (self-hosted only) |
+| Gemma 4 31B | `gemma-4-31b` (self-hosted vLLM, `server` and `single-gpu`) |
+| Nemotron 3.5 Super VL 120B A12B | `nemotron-super-vl` (self-hosted NIM, `server` only) |
 | Nemotron 3 Nano Omni | `nemotron-omni-nvfp4` |
 
 Reasoning is a per-session toggle on the same entry, not a separate key (see [Reasoning, parser & tool calling](#reasoning-parser--tool-calling)). The active default per slot is the first available key under the example's `services` in [`examples_registry.yaml`](../../examples_registry.yaml).
+
+### Gemma 4 and Nemotron 3.5 Super VL
+
+The `gemma-4-31b` and `nemotron-super-vl` entries serve the `generic-frontend-backend-agent` and `multilingual-generic-frontend-backend-agent` examples. vLLM 0.31.0 serves Gemma 4 from a Hugging Face checkpoint through [`docker/Dockerfile.vllm-hf`](../../docker/Dockerfile.vllm-hf). Super VL runs as an NVIDIA NIM. Neither entry has an NVIDIA cloud endpoint. The following table lists their catalog and serving values:
+
+| Catalog key | Served model | Hugging Face checkpoint | Host | Serving flags |
+|-------------|--------------|-------------------------|------|---------------|
+| `gemma-4-31b` | `google/gemma-4-31b-it` | `google/gemma-4-31B-it` (about 62 GB of BF16 weights, so one GPU with 80 GB or more of memory) | `nvidia-llm-vllm-gemma4:8003` | `--tool-call-parser=gemma4`, `--reasoning-parser=gemma4`, `--max-num-seqs=64`, `--gpu-memory-utilization=0.90` |
+| `nemotron-super-vl` | `nvidia/nemotron-3.5-super-vl-120b-a12b` | NIM image `nvcr.io/nim/nvidia/nemotron-3.5-super-vl-120b-a12b:2.0.13-variant-build.1` | `nvidia-llm-super-vl:8000` | NIM passthrough arguments `--tool-call-parser qwen3_coder` and `--reasoning-parser nemotron_v3`, with a reasoning-effort chat template |
+
+Gemma 4 uses `/health` and Super VL uses `/v1/health/ready` for readiness. Super VL declares `en`, `de`, `es`, `fr`, `it`, `ja`, `hi`, `ko`, `pt`, and `zh`. Gemma 4 declares those languages plus `ar` and `vi`. NVIDIA verified Gemma 4 live on NVIDIA Cloud Functions (NVCF) with a Hindi conversation, native `call_backend` tool calls, 12 languages, and reasoning on and off. Streaming time to first token was about 0.7 s through NVCF with the full prompt. Both expose a **Reasoning** setting through `extra_body.chat_template_kwargs.enable_thinking`. Super VL also exposes **Reasoning Effort** (`low`, `medium`, `high`), which it sends as `extra_body.reasoning_effort`. The Super VL NIM ignores reasoning budgets, and `thinking_token_budget` makes it keep reasoning without answering, so the catalog does not offer a budget for it.
+
+The `multilingual-generic-frontend-backend-agent/server` Compose profile starts Gemma 4 from [`docker/docker-compose.nemotron35-vllm-hf.yaml`](../../docker/docker-compose.nemotron35-vllm-hf.yaml) and Super VL from [`docker/docker-compose.nemotron35-super-vl-nim.yaml`](../../docker/docker-compose.nemotron35-super-vl-nim.yaml). Gemma 4 runs on GPU 1, and Super VL runs on GPU 2 and needs one H200-class GPU. Set `HF_TOKEN` in `.env` so vLLM can download the Gemma 4 checkpoint from Hugging Face. Set `NVIDIA_API_KEY` so the Super VL NIM can pull its model, because the NIM does not use `HF_TOKEN`. No `*/single-gpu` profile starts Gemma 4, although the `single-gpu` catalog lists it.
+
+The vLLM image entrypoint, [`docker/vllm-hf-entrypoint.sh`](../../docker/vllm-hf-entrypoint.sh), reads `HF_TOKEN` from `/var/secrets/secrets.json` when the variable is unset, which matches NVIDIA Cloud Functions (NVCF) secrets. When the container receives no arguments, the entrypoint reads the `vllm serve` arguments from `VLLM_SERVE_ARGS_JSON`, a JSON list of strings.
+
+On NVCF, [`docker/Dockerfile.nvcf-nim`](../../docker/Dockerfile.nvcf-nim) wraps an LLM NIM, and [`docker/nvcf-nim-entrypoint.sh`](../../docker/nvcf-nim-entrypoint.sh) exports `NGC_API_KEY` from `/var/secrets/secrets.json` before the NIM starts. Use the wrapper for standalone NVCF functions.
+
+An LLM `base_url` on a per-function NVCF invocation host, `<function-id>.invocation.api.nvcf.nvidia.com`, authenticates with `NVCF_API_KEY` when that variable is set. Other endpoints, and invocation hosts without `NVCF_API_KEY`, use `NVIDIA_API_KEY`.
 
 ### Multilingual Session Languages
 
@@ -36,17 +59,19 @@ The multilingual assistant exposes only locales supported by the selected ASR, T
 | --- | --- |
 | Nemotron 3.5 Lightning (`nemotron-lightning`) | English (`en`), German (`de`), Spanish (`es`), French (`fr`), Italian (`it`), Japanese (`ja`) |
 | Nemotron 3 Super (`nemotron-super`, self-hosted) | English (`en`), German (`de`), Spanish (`es`), French (`fr`), Italian (`it`), Japanese (`ja`), Chinese (`zh`) |
+| Nemotron 3.5 Super VL (`nemotron-super-vl`), self-hosted | English (`en`), German (`de`), Spanish (`es`), French (`fr`), Italian (`it`), Japanese (`ja`), Hindi (`hi`), Korean (`ko`), Portuguese (`pt`), Chinese (`zh`) |
+| Gemma 4 31B (`gemma-4-31b`), self-hosted | English (`en`), German (`de`), Spanish (`es`), French (`fr`), Italian (`it`), Japanese (`ja`), Hindi (`hi`), Korean (`ko`), Portuguese (`pt`), Chinese (`zh`), Arabic (`ar`), Vietnamese (`vi`) |
 
 The source of truth for the built-in capability metadata is the NVIDIA [Nemotron 3.5 Lightning model card](https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b/modelcard) and [Nemotron 3 Super model card](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8).
 
-> **Multilingual conversation quality.** Nemotron 3.5 Lightning's conversation quality is weaker in some languages (for example Hindi). For multilingual deployments where language fidelity matters, self-host **Nemotron 3 Super** (`nemotron-super`) with [`docker-compose.nemotron3-super.yaml`](../../docker/docker-compose.nemotron3-super.yaml) and add it to the example's `services.llm` list. It stays more reliably in the target language and reads more naturally across languages.
+> **Multilingual conversation quality.** Nemotron 3.5 Lightning's conversation quality is weaker in some languages (for example Hindi). For multilingual deployments where language fidelity matters, self-host **Nemotron 3 Super** (`nemotron-super`) with [`docker-compose.nemotron3-super.yaml`](../../docker/docker-compose.nemotron3-super.yaml) and add it to the example's `services.llm` list. It stays more reliably in the target language and reads more naturally across languages. For Hindi, Korean, Portuguese, or Chinese, use Gemma 4 31B or Nemotron 3.5 Super VL, which the `multilingual-generic-frontend-backend-agent/server` profile starts.
 
 ## Hardware Requirements and Deployment Configs
 
 You can self-host the LLM two ways, and the repo wires the right one per profile:
 
-- **NIM** (`nvidia-llm`, `nvidia-llm-omni`, `nemotron-3-super`): a prebuilt, optimized inference microservice with automatic, hardware-aware model-profile selection. It is used by `*/server` recipes.
-- **vLLM** (`nvidia-llm-vllm*`, `nvidia-llm-vllm-omni`): serves weights directly. The `*/single-gpu` recipes select the serving precision automatically from the host and GPU.
+- **NIM** (`nvidia-llm`, `nvidia-llm-omni`, `nvidia-llm-super-vl`, `nemotron-3-super`): a prebuilt, optimized inference microservice with automatic, hardware-aware model-profile selection. It is used by `*/server` recipes.
+- **vLLM** (`nvidia-llm-vllm*`, `nvidia-llm-vllm-omni`): serves weights directly. The `*/single-gpu` recipes select the serving precision automatically from the host and GPU. The `multilingual-generic-frontend-backend-agent/server` recipe also uses vLLM for `nvidia-llm-vllm-gemma4` and a NIM for `nvidia-llm-super-vl`.
 
 Both expose the same OpenAI-compatible API, so the pipeline and the request tuning below behave identically against either.
 

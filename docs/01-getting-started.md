@@ -26,6 +26,7 @@ Each example ships as Docker Compose **profiles**. Pick exactly one per deployme
 | [`omni-assistant-subagents`](../src/examples/omni_assistant_subagents/README.md) | Multi-agent Omni with media + live-webcam understanding | `omni-assistant-subagents`, `omni-assistant-subagents/server`, `omni-assistant-subagents/single-gpu` (workstation, DGX Spark) |
 | [`frontend-backend-agent`](../src/examples/frontend_backend_agent/README.md) | Frontend LLM with a stateful backend agent (airline-booking reference) | `frontend-backend-agent`, `frontend-backend-agent/server`, `frontend-backend-agent/single-gpu` (workstation, DGX Spark, Jetson Thor) |
 | [`generic-frontend-backend-agent`](../src/examples/frontend_backend_agent/README.md) | Shared Talker/Thinker pipeline with grounded generic tools | Set `EXAMPLE_SELECTION=generic-frontend-backend-agent` with a Frontend/Backend Agent profile |
+| [`multilingual-generic-frontend-backend-agent`](../src/examples/frontend_backend_agent/README.md) | Generic Talker/Thinker pipeline with a fixed language per session | `multilingual-generic-frontend-backend-agent`, `multilingual-generic-frontend-backend-agent/server` (workstation with 3 GPUs; also requires `HF_TOKEN`) |
 
 > Observability overlays `tracing` (Phoenix OTel) and Coturn Server `turn` can be added to any profile.
 

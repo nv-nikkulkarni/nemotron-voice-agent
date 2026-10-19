@@ -12,7 +12,7 @@ CHART = ROOT / "nvcf_helm" / "Chart.yaml"
 VALUES = ROOT / "nvcf_helm" / "values.yaml"
 VIKING_VALUES = ROOT / "nvcf_helm" / "values-viking.yaml"
 
-EXPECTED_CHART_VERSION = "0.1.141-dev.20261004.23"
+EXPECTED_CHART_VERSION = "0.1.143-dev.20261017.1"
 EXPECTED_APP_VERSION = "2.0.68"
 EXPECTED_MAGPIE_IMAGE = "nvcr.io/nim/nvidia/magpie-tts-multilingual:1.10.0"
 EXPECTED_CHATTERBOX_IMAGE = "nvcr.io/nim/nvidia/chatterbox-tts-multilingual:1.1.0"
@@ -40,8 +40,8 @@ def test_frontend_backend_uses_release_modes_and_ordered_deadlines() -> None:
     app = values["app"]
 
     assert app["frontendBackendTalkerFillerMode"] == "emit"
-    assert app["frontendBackendToolResultMode"] == "direct"
-    assert app["frontendBackendDirectToolResponse"] is False
+    assert "frontendBackendToolResultMode" not in app
+    assert "frontendBackendDirectToolResponse" not in app
     outer = float(app["thinkerToolTimeoutSeconds"])
     overall = float(app["genericBackendTimeoutSeconds"])
     planner = float(app["genericPlannerTimeoutSeconds"])
@@ -55,7 +55,6 @@ def test_frontend_backend_uses_release_modes_and_ordered_deadlines() -> None:
     template = (ROOT / "nvcf_helm" / "templates" / "deployment-app.yaml").read_text()
     for name in (
         "FRONTEND_BACKEND_TALKER_FILLER_MODE",
-        "FRONTEND_BACKEND_TOOL_RESULT_MODE",
         "THINKER_TOOL_TIMEOUT_SECONDS",
         "GENERIC_BACKEND_TIMEOUT_SECONDS",
         "GENERIC_PLANNER_TIMEOUT_SECONDS",
@@ -88,3 +87,32 @@ def test_app_and_ui_images_accept_immutable_release_labels() -> None:
     assert "ARG UI_VERSION=unknown" in ui_dockerfile
     assert "LABEL org.opencontainers.image.version=${UI_VERSION}" in ui_dockerfile
     assert "LABEL org.opencontainers.image.revision=${SOURCE_SHA}" in ui_dockerfile
+
+
+def _rendered_gpu_total(*extra_args: str) -> int:
+    import shutil
+    import subprocess
+
+    import pytest
+
+    if shutil.which("helm") is None:
+        pytest.skip("helm is not installed")
+    rendered = subprocess.run(
+        ["helm", "template", "gpu-check", str(ROOT / "nvcf_helm"), *extra_args],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    total = 0
+    for doc in yaml.safe_load_all(rendered):
+        if not doc or doc.get("kind") != "Deployment":
+            continue
+        for container in doc["spec"]["template"]["spec"]["containers"]:
+            total += int(container.get("resources", {}).get("limits", {}).get("nvidia.com/gpu", 0))
+    return total
+
+
+def test_default_and_viking_renders_fit_an_eight_gpu_node() -> None:
+    """The NVCF function and the Viking node both have 8 GPUs; the chart must not request more."""
+    assert _rendered_gpu_total() <= 8
+    assert _rendered_gpu_total("-f", str(VIKING_VALUES)) <= 8

@@ -48,7 +48,7 @@ const INTRODUCTION_STEPS: TourStep[] = [
     target: '[data-tour="prompts"]',
     eyebrow: "Step 4",
     title: "Prepare your prompts",
-    body: "Edit system prompts and persistent instructions before starting. Your edits are saved in this browser.",
+    body: "Edit system prompts before starting. Your edits are saved in this browser.",
   },
   {
     target: '[data-tour="start"]',

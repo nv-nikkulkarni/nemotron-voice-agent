@@ -13,11 +13,6 @@ from typing import Any
 from unittest.mock import patch
 
 from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame, LLMTextFrame
-from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.processors.aggregators.llm_response_universal import (
-    LLMContextAggregatorPair,
-)
-from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.llm_service import FunctionCallParams
 
 import server
@@ -940,7 +935,7 @@ class FrontendBackendAgentTests(unittest.IsolatedAsyncioTestCase):
         markers = [event.marker for event in thinker.state.lifecycle_events]
         self.assertEqual(markers, ["ThinkerStarted", "IntermediateResponse", "ThinkerCompleted"])
 
-    async def test_call_backend_direct_response_emits_talker_text_and_suppresses_llm_rerun(self) -> None:
+    async def test_call_backend_result_goes_to_the_talker_for_phrasing(self) -> None:
         thinker = _make_thinker()
         llm = _FrameCapturingLLM()
         results = []
@@ -966,19 +961,10 @@ class FrontendBackendAgentTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict("os.environ", {"FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE": "true"}):
             await build_handlers(thinker)["call_backend"](params)
 
-        self.assertEqual(len(llm.frames), 3)
-        self.assertIsInstance(llm.frames[0], LLMFullResponseStartFrame)
-        self.assertIsInstance(llm.frames[1], LLMTextFrame)
-        self.assertEqual(llm.frames[1].text, results[-1][0]["response_text"])
-        self.assertFalse(llm.frames[1].append_to_context)
-        self.assertIsInstance(llm.frames[2], LLMFullResponseEndFrame)
+        self.assertEqual(llm.frames, [])
+        self.assertTrue(results[-1][1].run_llm)
         self.assertEqual(results[-1][0]["type"], "tool_result")
-        self.assertFalse(results[-1][1].run_llm)
-        context = LLMContext([])
-        _, assistant_aggregator = LLMContextAggregatorPair(context)
-        for frame in llm.frames:
-            await assistant_aggregator.process_frame(frame, FrameDirection.DOWNSTREAM)
-        self.assertEqual(context.get_messages(), [])
+        self.assertTrue(results[-1][0]["response_text"])
         self.assertEqual(llm.backend_responses, [results[-1][0]["response_text"]])
 
     async def test_call_backend_ignores_duplicate_started_events_for_filler(self) -> None:
@@ -1111,8 +1097,8 @@ class FrontendBackendAgentTests(unittest.IsolatedAsyncioTestCase):
             await build_handlers(_RaisingThinker())["call_backend"](params)
 
         self.assertEqual(results[-1][0]["reason"], "past_date")
-        self.assertFalse(results[-1][1].run_llm)
-        self.assertEqual(llm.frames[1].text, results[-1][0]["response_text"])
+        self.assertTrue(results[-1][1].run_llm)
+        self.assertEqual(llm.frames, [])
 
     async def test_call_backend_stops_planner_errors_after_initial_attempt_and_one_retry(self) -> None:
         thinker = _PlannerErrorThinker()
@@ -1138,8 +1124,8 @@ class FrontendBackendAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(thinker.calls, 2)
         self.assertEqual(results[0][0]["reason"], "planner_error")
         self.assertEqual(results[1][0]["reason"], "planner_error_exhausted")
-        self.assertFalse(results[1][1].run_llm)
-        self.assertEqual(llm.frames[1].text, results[1][0]["response_text"])
+        self.assertTrue(results[1][1].run_llm)
+        self.assertEqual(llm.frames, [])
 
     async def test_non_planner_terminal_paths_reset_planner_error_retries(self) -> None:
         thinker = _PlannerErrorWithTerminalPathsThinker()
@@ -1344,7 +1330,7 @@ class FrontendBackendAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results[-1][0]["response_text"], "Okay, I stopped that.")
         self.assertFalse(interrupted)
 
-    async def test_cancel_backend_direct_response_emits_talker_text_and_suppresses_llm_rerun(self) -> None:
+    async def test_cancel_backend_result_goes_to_the_talker_for_phrasing(self) -> None:
         thinker = _make_thinker()
         llm = _FrameCapturingLLM()
         results = []
@@ -1362,17 +1348,12 @@ class FrontendBackendAgentTests(unittest.IsolatedAsyncioTestCase):
             result_callback=result_callback,
         )
 
-        with patch.dict("os.environ", {"FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE": "true"}):
-            await build_handlers(thinker)["cancel_backend"](params)
+        await build_handlers(thinker)["cancel_backend"](params)
 
-        self.assertEqual(len(llm.frames), 3)
-        self.assertIsInstance(llm.frames[0], LLMFullResponseStartFrame)
-        self.assertIsInstance(llm.frames[1], LLMTextFrame)
-        self.assertEqual(llm.frames[1].text, "There is nothing pending right now.")
-        self.assertIsInstance(llm.frames[2], LLMFullResponseEndFrame)
-        self.assertFalse(llm.frames[1].append_to_context)
+        self.assertEqual(llm.frames, [])
+        self.assertEqual(results[-1][0]["response_text"], "There is nothing pending right now.")
         self.assertEqual(results[-1][0]["context"], "cancel_backend")
-        self.assertFalse(results[-1][1].run_llm)
+        self.assertIsNone(results[-1][1])
 
     async def test_cancel_backend_clears_pending_booking_confirmation(self) -> None:
         thinker = _make_thinker()

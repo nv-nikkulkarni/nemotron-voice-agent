@@ -558,8 +558,13 @@ def resolve_voice_for_language(
     server: str = "",
     function_id: str = "",
     model: str = "",
+    preferred_voice_name: str = "",
 ) -> str:
-    """Pick a TTS voice id for ``language_code`` from the prewarmed catalog."""
+    """Pick a TTS voice id for ``language_code`` from the prewarmed catalog.
+
+    ``preferred_voice_id`` (an explicit user pick) wins, then ``preferred_voice_name``
+    (a variant default such as ``Leo``), then the per-language default.
+    """
     normalized = normalize_lang_code(language_code).lower()
     tts_config: dict = {}
     if server or function_id or model:
@@ -574,6 +579,11 @@ def resolve_voice_for_language(
         for voice in tts_config.get("voices", []):
             if voice.get("id") == preferred_voice_id and voice.get("language", "").lower() == normalized:
                 return preferred_voice_id
+    if preferred_voice_name:
+        wanted = preferred_voice_name.strip().casefold()
+        for voice in tts_config.get("voices", []):
+            if str(voice.get("name", "")).casefold() == wanted and voice.get("language", "").lower() == normalized:
+                return str(voice.get("id", ""))
     voice_id = voice_map.get(normalized)
     if voice_id:
         return voice_id

@@ -57,6 +57,7 @@ def service_recipe() -> str:
 _SLOT_AGNOSTIC_KEYS: frozenset[str] = frozenset(
     {
         "pipeline_mode",
+        "example_variant",
         "prompt_key",
         "prompt_content",
         "thinker_prompt_content",
@@ -956,13 +957,24 @@ def nvidia_cloud_available() -> bool:
     return bool(key) and key.casefold() != "not-needed"
 
 
-def nvidia_api_key(default: str = "not-needed") -> str:
+NVCF_INVOCATION_HOST_SUFFIX = ".invocation.api.nvcf.nvidia.com"
+
+
+def nvidia_api_key(default: str = "not-needed", *, base_url: str = "") -> str:
     """Return NVIDIA_API_KEY, defaulting for local OpenAI-compatible endpoints.
 
     Empty, whitespace-only, and unset values become ``default`` so the OpenAI
     SDK can construct a client against local vLLM/NIM without a real cloud key.
     The value is stripped to stay consistent with ``nvidia_cloud_available()``.
+
+    A ``base_url`` on a per-function NVCF invocation host
+    (``<function-id>.invocation.api.nvcf.nvidia.com``) uses ``NVCF_API_KEY`` when
+    it is set, because invoking an organization's own function needs that key.
     """
+    if base_url and (urlparse(base_url).hostname or "").endswith(NVCF_INVOCATION_HOST_SUFFIX):
+        invocation_key = (os.getenv("NVCF_API_KEY") or "").strip()
+        if invocation_key:
+            return invocation_key
     key = (os.getenv("NVIDIA_API_KEY") or "").strip()
     return key or default
 

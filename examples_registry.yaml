@@ -115,8 +115,8 @@ examples:
       - thinker
       - generic_thinker
     services:
-      llm: [nemotron-lightning]
-      thinker-llm: [nemotron-super, nemotron-lightning]
+      llm: [nemotron-lightning, gemma-4-31b, nemotron-super-vl]
+      thinker-llm: [nemotron-super-vl, nemotron-lightning]
       asr: [nemotron-asr-streaming-english]
       tts: [magpie-multilingual-tts, chatterbox-multilingual-tts, magpie-zeroshot-tts]
     categories:
@@ -127,15 +127,98 @@ examples:
           enable_thinking: false
           temperature: 0.0
           max_tokens: 512
+        gemma-4-31b:
+          enable_thinking: false
+          temperature: 0.0
+          max_tokens: 512
+        nemotron-super-vl:
+          enable_thinking: false
+          temperature: 0.0
+          max_tokens: 512
       thinker-llm:
-        nemotron-super:
+        nemotron-super-vl:
           enable_thinking: true
-          reasoning_budget: 256
+          reasoning_effort: low
           temperature: 0.0
           max_tokens: 2048
         nemotron-lightning:
           enable_thinking: true
           reasoning_budget: 1024
     defaults:
+      prompt: [generic_talker]
+    bot: examples.frontend_backend_agent.pipeline:bot
+
+  multilingual-generic-frontend-backend-agent:
+    label: Multilingual Frontend/Backend Assistant
+    domain_profile: generic
+    thinker_prompt: generic_thinker
+    capabilities: [session_languages]
+    tools:
+      - get_weather
+      - get_stock_price
+      - get_current_time
+      - show_architecture
+      - web_search
+      - calculate_bmi
+      - generate_random_number
+    agent_prompt_keys:
+      - talker
+      - thinker
+      - generic_thinker
+      - fixed_session_language_addon
+      - thinker_session_language_addon
+      - hindi_talker
+      - hindi_thinker
+      - multilingual_talker
+      - multilingual_thinker
+    services:
+      llm: [gemma-4-31b, nemotron-super-vl, nemotron-lightning]
+      thinker-llm: [nemotron-super-vl, nemotron-lightning]
+      asr: [nemotron-asr-streaming-multilingual, parakeet-rnnt]
+      tts: [magpie-multilingual-tts, chatterbox-multilingual-tts, magpie-zeroshot-tts]
+    categories:
+      thinker-llm: llm
+    settings:
+      llm:
+        gemma-4-31b:
+          enable_thinking: false
+          temperature: 0.0
+          max_tokens: 512
+        nemotron-super-vl:
+          enable_thinking: false
+          temperature: 0.0
+          max_tokens: 512
+        nemotron-lightning:
+          enable_thinking: false
+          temperature: 0.0
+          max_tokens: 512
+      thinker-llm:
+        nemotron-super-vl:
+          enable_thinking: true
+          reasoning_effort: low
+          temperature: 0.0
+          max_tokens: 2048
+        nemotron-lightning:
+          enable_thinking: true
+          reasoning_budget: 1024
+    # Launch presets shown on the example card. A variant with a session_language
+    # locks the session to it; prompt addons default to the generic language addons.
+    variants:
+      hindi:
+        label: Hindi
+        description: Speaks and listens in Hindi, with the same tools.
+        session_language: hi-IN
+        llm: gemma-4-31b
+        tts_voice: Leo
+        talker_prompt_addon: hindi_talker
+        thinker_prompt_addon: hindi_thinker
+      multilingual:
+        label: Any language
+        description: Pick any supported language before you start.
+        llm: gemma-4-31b
+        talker_prompt_addon: multilingual_talker
+        thinker_prompt_addon: multilingual_thinker
+    defaults:
+      default_session_language: en-US
       prompt: [generic_talker]
     bot: examples.frontend_backend_agent.pipeline:bot

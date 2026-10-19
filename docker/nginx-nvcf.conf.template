@@ -3,7 +3,11 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
+# Builder chat: 30 requests a minute per client, a small burst on top.
+limit_req_zone $binary_remote_addr zone=builder:1m rate=30r/m;
+
 server {
+    include /etc/nginx/snippets/realip.conf;
     listen 7860;
     server_name localhost;
 
@@ -81,4 +85,7 @@ server {
     # Google Form URL. Written by the entrypoint from FEEDBACK_FORM_URL so the
     # form URL is never shipped in the client bundle. Empty when unset.
     include /etc/nginx/snippets/feedback.conf;
+
+    # Agent builder proxy (written by the entrypoint from BUILDER_ORIGIN; empty when unset).
+    include /etc/nginx/snippets/builder.conf;
 }

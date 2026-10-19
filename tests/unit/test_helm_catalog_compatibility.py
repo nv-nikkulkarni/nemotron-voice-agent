@@ -105,3 +105,12 @@ def test_catalog_server_endpoints_route_to_existing_model_pods(resources):
         if slot == "llm":
             probe = matching[0]["spec"]["template"]["spec"]["containers"][0]["readinessProbe"]["httpGet"]
             assert entry["health_path"] == probe["path"]
+
+
+def test_chart_example_variants_match_the_repo_registry(resources):
+    """The chart mounts its own registry over the image's, so a variant field missing here never reaches the app."""
+    chart = yaml.safe_load(_chart_config(resources)["examples_registry.yaml"])["examples"]
+    repo = yaml.safe_load((ROOT / "examples_registry.yaml").read_text())["examples"]
+    for name, example in chart.items():
+        for variant_id, variant in example.get("variants", {}).items():
+            assert variant == repo[name]["variants"][variant_id], f"{name}.{variant_id}"

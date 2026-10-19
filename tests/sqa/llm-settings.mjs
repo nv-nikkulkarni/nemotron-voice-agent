@@ -14,7 +14,7 @@ page.on('request',request=>{if(new URL(request.url()).pathname==='/api/session-c
 const dialog=page.getByRole('dialog',{name:'LLM settings',exact:true});
 const input=(role,name)=>dialog.getByLabel(`${role} ${name} value`,{exact:true});
 async function setup(example) {
-  await page.locator('.example-card').filter({hasText:example}).click();
+  await page.locator('.example-card').filter({hasText:example}).click({position:{x:12,y:12}});
   assert(await H.waitForDeploymentReady(page));
   await page.getByRole('button',{name:'Tools',exact:true}).click();
   await page.getByRole('button',{name:'LLM settings',exact:true}).click();
@@ -96,7 +96,7 @@ try {
   await page.setViewportSize({width:1440,height:1000});await save();await close();await page.getByRole('button',{name:'Back to setup',exact:true}).click();
   report.checks.push({name:'omni-four-roles-and-greedy-override',pass:true});
   for(const [example,mode] of [['Generic Frontend/Backend','generic-frontend-backend-agent'],['Nemotron Omni','omni-assistant-subagents']]) {
-    await page.locator('.example-card').filter({hasText:example}).click();await H.waitForDeploymentReady(page);
+    await page.locator('.example-card').filter({hasText:example}).click({position:{x:12,y:12}});await H.waitForDeploymentReady(page);
     assert((await H.startConversation(page,{timeoutMs:60000})).connected);
     await page.locator('.conv-live').waitFor({timeout:60000});
     assert(await H.waitForSettledWelcome(page),'Welcome must finish before testing user speech');

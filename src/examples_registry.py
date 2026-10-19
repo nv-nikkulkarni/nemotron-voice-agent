@@ -32,6 +32,18 @@ class ActivityCheckConfig(TypedDict, total=False):
     warning_completion_timeout_s: float
 
 
+class VariantEntry(TypedDict):
+    """One launch preset of an example, such as a fixed-language assistant."""
+
+    label: str
+    description: str
+    session_language: str
+    llm: str
+    talker_prompt_addon: str
+    thinker_prompt_addon: str
+    tts_voice: str
+
+
 class ExampleEntry(TypedDict):
     """Raw registry entry for one example."""
 
@@ -46,6 +58,7 @@ class ExampleEntry(TypedDict):
     tools: list[str]
     activity_check: ActivityCheckConfig | None
     defaults: dict[str, list[str] | str]
+    variants: dict[str, VariantEntry]
     welcome_message: bool
     bot: str
 
@@ -266,6 +279,40 @@ def _parse_defaults(example_id: str, entry: dict) -> dict[str, list[str] | str]:
     return parsed
 
 
+_VARIANT_FIELDS = frozenset(VariantEntry.__annotations__)
+
+
+def _parse_variants(example_id: str, entry: dict, services: dict[str, list[str]]) -> dict[str, VariantEntry]:
+    raw = entry.get("variants", {})
+    if not isinstance(raw, dict):
+        raise RuntimeError(f"Example {example_id!r} variants must be a mapping")
+    parsed: dict[str, VariantEntry] = {}
+    for variant_id, value in raw.items():
+        where = f"Example {example_id!r} variants[{variant_id!r}]"
+        if not isinstance(value, dict):
+            raise RuntimeError(f"{where} must be a mapping")
+        unknown = set(value) - _VARIANT_FIELDS
+        if unknown:
+            raise RuntimeError(f"{where} has unsupported fields: {sorted(unknown)}")
+        if any(not isinstance(field, str) for field in value.values()):
+            raise RuntimeError(f"{where} fields must be strings")
+        variant: VariantEntry = {field: str(value.get(field) or "").strip() for field in _VARIANT_FIELDS}  # type: ignore[assignment]
+        if not variant["label"]:
+            raise RuntimeError(f"{where} requires a label")
+        if variant["llm"] and variant["llm"] not in services.get("llm", []):
+            raise RuntimeError(f"{where} llm {variant['llm']!r} is not listed under services.llm")
+        parsed[str(variant_id).strip().lower()] = variant
+    return parsed
+
+
+def find_variant(example_key: str, variant_id: str) -> VariantEntry | None:
+    """Return one variant of an example, or ``None`` when the id is empty or unknown."""
+    cleaned = (variant_id or "").strip().lower()
+    if not cleaned:
+        return None
+    return find(example_key)["variants"].get(cleaned)
+
+
 def _parse_example(example_id: str, entry: Any) -> ExampleEntry:
     if not isinstance(entry, dict):
         raise RuntimeError(f"Example {example_id!r} must be a mapping")
@@ -289,6 +336,7 @@ def _parse_example(example_id: str, entry: Any) -> ExampleEntry:
         "tools": _parse_str_list(example_id, "tools", entry.get("tools", [])),
         "activity_check": _parse_activity_check(example_id, entry),
         "defaults": _parse_defaults(example_id, entry),
+        "variants": _parse_variants(example_id, entry, services),
         "welcome_message": welcome_message,
         "bot": bot_spec,
     }
@@ -419,6 +467,17 @@ def metadata(example: EnrichedExample) -> dict:
         "domainProfile": example["domain_profile"],
         "default_session_language": _session_language(example),
         "defaults": defaults,
+        "variants": [
+            {
+                "id": variant_id,
+                "label": variant["label"],
+                "description": variant["description"],
+                "session_language": variant["session_language"],
+                "llm": variant["llm"],
+                "tts_voice": variant["tts_voice"],
+            }
+            for variant_id, variant in example["variants"].items()
+        ],
     }
 
 

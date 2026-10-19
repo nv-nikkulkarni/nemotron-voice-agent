@@ -7,7 +7,7 @@
 {{- fail "sessionCapture.enabled with app.replicas>1 requires redis.enabled=true: the two-signal coordination state (pipeline-done / consent) is per-process without it, so a signal recorded on one pod is never visible to another -- sessions posted to a different pod than the one that ran the pipeline simply never finalize. Either set redis.enabled=true or run app.replicas=1." }}
 {{- end }}
 {{- if and .Values.sessionCapture.enabled (gt (int .Values.app.replicas) 1) (not .Values.sessionStore.enabled) }}
-{{- fail "sessionCapture.enabled with app.replicas>1 requires sessionStore.enabled=true: per-pod local storage silently discards sessions whose consent POST lands on a different pod than the one that ran the pipeline (refer to docs/current-deployed-pipeline-architecture.md section 14). Either set sessionStore.enabled=true or run app.replicas=1." }}
+{{- fail "sessionCapture.enabled with app.replicas>1 requires sessionStore.enabled=true: per-pod local storage silently discards sessions whose consent POST lands on a different pod than the one that ran the pipeline. Either set sessionStore.enabled=true or run app.replicas=1." }}
 {{- end }}
 apiVersion: apps/v1
 kind: Deployment
@@ -120,6 +120,12 @@ spec:
                 export WEATHERAPI_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('WEATHERAPI_KEY',''))")
                 # get_stock_price (Finnhub) key — same pattern: an NVCF function --secret.
                 export FINNHUB_API_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('FINNHUB_API_KEY',''))")
+                # NVCF invocation key for models served by this org's own NVCF functions
+                # (an llm base_url on <function-id>.invocation.api.nvcf.nvidia.com).
+                export NVCF_API_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('NVCF_API_KEY',''))")
+                # Shared with the agent builder: a custom agent's persona is only trusted when the
+                # builder signed it. Unset (the default) leaves persistent_prompt unverified.
+                export AGENT_BUILDER_SIGNING_KEY=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('AGENT_BUILDER_SIGNING_KEY',''))")
                 # Capture destination is deployment configuration, supplied alongside the
                 # five function credentials so the org/resource is never hardcoded in Git.
                 capture_ngc=$(uv run python -c "import json; print(json.load(open('/var/secrets/secrets.json')).get('SESSION_CAPTURE_NGC',''))")
@@ -202,14 +208,6 @@ spec:
             {{- with .Values.app.frontendBackendTalkerFillerMode }}
             - name: FRONTEND_BACKEND_TALKER_FILLER_MODE
               value: {{ . | quote }}
-            {{- end }}
-            {{- with .Values.app.frontendBackendToolResultMode }}
-            - name: FRONTEND_BACKEND_TOOL_RESULT_MODE
-              value: {{ . | quote }}
-            {{- end }}
-            {{- if .Values.app.frontendBackendDirectToolResponse }}
-            - name: FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE
-              value: "true"
             {{- end }}
             {{- with .Values.app.thinkerToolTimeoutSeconds }}
             - name: THINKER_TOOL_TIMEOUT_SECONDS
@@ -304,8 +302,7 @@ spec:
             # session_store (src/session_store/): the SHARED object store backing
             # session-capture artifacts (log/audio/transcript) across replicas --
             # this is what makes sessionCapture.enabled + app.replicas>1 safe at all
-            # (refer to the hard-fail guard above and section 14 in
-            # docs/current-deployed-pipeline-architecture.md). NOT the same thing as
+            # (refer to the hard-fail guard above). NOT the same thing as
             # SESSION_STORE_DIR below, which is unrelated: that's per-session
             # CONFIG sharing (a different subsystem, session config resolution),
             # this is capture ARTIFACT storage. The name collision is coincidental

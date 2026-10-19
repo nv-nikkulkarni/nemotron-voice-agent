@@ -1,0 +1,513 @@
+Plan for NVCF function updates.
+
+Multilingual Generic Frontend Backend Assistant:
+1) Frontend Nemotron 3.5 Bolt E4B BF16 on vLLM.
+2) Backend Nemotron 3.5 Super VL reasoning On.
+
+- Lets have a preset example with Hindi language within this example. Where we will have the language selected as Hindi, LLM prompts adjusted accordingly. We would still support the same set of tools.
+- But this will be like a preset example, at the same time, users can still select another language and try chatting with the bot, for that we will keep the prompts generic, and select and send the language code based on what user selected.
+- So design the UI accordingly, on the example card itself, we can have two options, try a hindi assistant and try the generic Multilingual assistant..
+- Have the prompts written really well, sophisticated and failsafe. We would have 4 versions of the prompts, all built upon the base Frontend/Backend prompts of today.
+    - Frontend Hindi
+    - Backend Hindi
+    - Frontend Generic Multilingual
+    - Backend Generic Multilingual
+
+- Keep the theme and design of the UI, of the highest standards, exactly matching the colour themes, font styles, animations etc, just like the today's UI.
+
+Generic Frontend Backend Assistant
+- In this example, we need to update the models of the agent,
+- In addition to the existing Nemotron 3.5 lightning frontend model, lets add two other options: Nemotron 3.5 bolt e4b and Nemotron 3.5 Super VL (reasoning off)
+- For the backend, lets migrate from the current Nemotron super 120b to Nemotron 3.5 super VL (reasoning on) completely.
+- Review prompts, but dont change yet any other updates we might need to do.
+
+Latency breakdown updates:
+- I want to make the lantency breakdown option even more clearer, right now, it still isn't totally intuitive, how the final "Time to first audio" is added up.
+- What all exactly gets added to reach that number, isn't fully clear. Make it clear.
+- So make it more intuitive, if there are any hidden latency componenets, lets call them out as well, and explicitly display them.
+
+Prompt update stage:
+We want a dedicated prompt review and update stage that we want to undertake, pause here, and ask for my consent for this stage. We will review all 6 prompts at this stage.
+
+New NIMs/Models to deploy:
+
+1) Nemotron 3.5 Super VL: https://huggingface.co/nvidia/Nemotron-Super-3.5-GA-FINAL-row105-QAD-PreStitched-BoostedMTP
+2) Nemotron 3.5 Bolt: https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB-BF16
+3) ASR Multilingual: cache-aware-parakeet-rnnt-multi-asr-streaming-sortformer
+4) TTS: Magpie TTS Multilingual -> we already have that deployed.
+
+Overall I assume our GPU count to increase:
+1) Nemotron 3.5 Super VL - 1xH200
+2) Nemotron 3.5 Bolt - 1xH200
+3) Nemotron 3.5 lightning - 1xH200
+4) Nemotron ASR Multilingual - 1xH200
+5) Nemotron ASR Streaming English - 1xH200
+6) Magpie TTS Multilingual - 1xH200
+7) Chatterbox TTS - 1xH200
+8) Magpie Zeroshot - 1xH200
+
+
+======================================================================
+STATUS SNAPSHOT - 2026-10-15, ~22:45 IST   (original plan above is unchanged)
+======================================================================
+Branch: dev/nikkulkarni/nvcf-rebased-v3. Latest commit 85a35ab. 21 commits ahead
+of upstream/develop (6 earlier ones plus 15 made today). NOT pushed. No PR yet.
+Nothing here has been promoted to production.
+
+PLAN ITEMS
+ [done]  Multilingual Generic Frontend/Backend Assistant: Bolt Talker, Super VL
+         Thinker (reasoning on). Registry example multilingual-generic-frontend-
+         backend-agent, with launch variants "Hindi" (locks hi-IN) and "Any
+         language" (user picks).
+ [done]  Card UI: two buttons on the card (Hindi assistant / Multilingual
+         assistant), existing theme; three cards fit one screen without scrolling
+         (checked 1920x1080, 1440x900, 1366x768, 1280x720, 1024x768).
+ [done]  Generic assistant: Talker choices Lightning / Bolt / Super VL (reasoning
+         off); backend moved from Super 120B to Super VL (reasoning on).
+ [done]  Latency breakdown: rows add up to time to first audio, with an
+         "unattributed" remainder; hidden parts named (VAD wait, smart turn,
+         speech-gate hold, TTS aggregation, playout). Deployed; not yet reviewed
+         in a live session.
+ [done]  Deployment: Bolt and Super VL served by vLLM 0.31.0 from Hugging Face
+         (image vllm-hf, tag v0.31.0-exp4), multilingual ASR NIM, chart
+         0.1.142-dev.20261015.2 (8 GPUs). Omni runs as its own 1x H200 function.
+ [done]  New staging function; production function untouched; Astra staging
+         only; Astra production untouched.
+ [NOT STARTED, gated]  Prompt review/update stage for the 6 prompts. Needs the
+         user's consent first. Hindi currently runs on interim add-ons plus code
+         guards (see below).
+
+LIVE IDS (refresh before acting)
+ Staging function   nemotron-voice-agent-staging  7355259c-c8e8-4338-930c-e3f6910a0689
+   active version   e0135eb6-c17b-42b7-90be-98a24ce2d781, H200_8x, 1/1, conc 100
+   app image        nemotron-voice-agent:dev-85a35ab-20261015-translated-fallback
+ Standalone Omni    nva-nemotron-omni  b8b7a13c-a33d-4222-8dbe-024565689fb2 (1x H200)
+ Production         fa20412a-4da3-45a1-8057-a076039580e2  (NOT touched)
+ Astra staging      nemotron-voice-agent-deploy (stg); UI tag
+                    dev-4355360-20261015-launch-bar; routed to the staging function
+ Experiment functions, all INACTIVE: nva-bolt-experiment (3af301c9...),
+   nva-super-vl-experiment (78f93664...). Not deleted.
+ H200 quota 32: 31 reserved (26 running). H100 quota 32: 0 used.
+
+HINDI SQA  (./sqa.sh hindi, tests/sqa/hindi_multilingual.mjs; server-side check
+tests/sqa/nvcf_session_log_check.py)
+ run 1  9/11   English fillers suppressed -> silence; English input not heard
+ run 2  6/13   automatic ASR language detection broke Hindi; English results read
+ run 3  10/13  all Hindi; bot repeated the filler instead of the result
+ run 4  11/13  Bolt writes Hindi fillers; repeated its own filler as the answer
+ run 5  9/13   last resort spoke English result text
+ run 6  10/13  build 85a35ab. Server log: session 92836f4e5d87 fully Hindi, every
+               spoken line in Hindi, no guard retries, translated fallback never
+               needed. Real failures were all outside the agent code:
+               - ASR returned nothing for the stock question (turn 4)
+               - ASR returned nothing for "जयपुर में मौसम कैसा है?" (session B)
+               - language picker still offers ar-AR and vi-VN (fix not deployed)
+               The session B greeting "audio not Hindi" failure is a suite false
+               positive: the audio transcriber wrote Nemotron/ASR in Latin
+               letters; the on-screen and TTS text are Devanagari.
+ Counted failures per run include the picker check, which fails every run until
+ the UI fix is deployed.
+
+FIXES DONE TODAY (all committed, 1023 unit tests pass)
+ - Talker filler written in the session language, else dropped; fixed Hindi
+   fallback filler per language (hi de es fr it ja ko pt zh).
+ - Tool results carry a reply-language instruction; a post-result reply that is
+   not in the session language, or only repeats the spoken filler, is retried;
+   last resort is the result text translated to the session language.
+ - Tool arguments in English (WeatherAPI rejects Devanagari); sentence splitting
+   on the danda; English-only weather grounding skipped for other languages.
+ - ASR locked to the session language by default.
+   FRONTEND_BACKEND_FIXED_LANGUAGE_ASR=auto opts into automatic language
+   detection (English input works, Hindi accuracy measurably worse).
+ - NVCF_API_KEY used for LLMs on an NVCF invocation host (remote Omni).
+ - Language picker and Voice studio now filter by the Talker's languages (fix
+   committed, image dev-93ad689-20261015-language-picker pushed, NOT deployed).
+
+OPEN ITEMS
+ 1. Deploy the language-picker UI to Astra staging. Blocked: Fusion login expired
+    (user: fusion login --reauth). Only the stg values, never prd.
+ 2. ASR drops some Hindi sentences (empty transcript). Known behaviour of the
+    multilingual streaming ASR. Audio clips saved for the ASR team.
+ 3. Bolt's supported languages are not published; the list we use
+    (en de es fr it ja hi ko pt zh) was verified by probing. Ask the owners.
+ 4. English regression run, 2026-10-15 ~23:08-23:30 IST, build 85a35ab on Astra
+    staging: no regression from the Hindi work found.
+      converse generic  PASS 6/6 (weather, London follow-up, stock, news, goodbye)
+      converse omni     2/3. Turn 2 answered correctly ("391") but the app ASR
+                        heard "Is 17 times 23?", which the suite's pattern
+                        (seventeen|twenty three) rejects: suite too strict.
+      comprehensive A   16/17 turns. All 7 Generic tools fired; latency 1.2-1.8 s.
+                        Turn 10 architecture image did not render within the
+                        suite's 5 s wait (one ERR_TIMED_OUT). Not reproducible:
+                        the architecture-image suite then passed 4/4 twice, and
+                        the image fetches in 1-2 s.
+      restart           PASS (new session, welcome, reconnect, no errors)
+    Not run: concurrency, robustness, capture suites, Omni media and webcam.
+ 5. Talker terminal messages ("I could not complete that request...") and the
+    English few-shots are still English. Belongs to the prompt stage.
+ 6. Magpie Zero-shot logged an ONNX extraction error at startup; not
+    investigated. Zero-shot not verified working.
+ 7. Push the branch and open a PR (needs the Documentation Writer Review
+    section). User decision.
+ 8. User decisions: prompt-stage consent; delete inactive experiment functions
+    and old NVCF versions; rotate every key seen in chat (HF, NGC, NVCF, others);
+    idle H200 reservations (Magpie 8 always on, Chatterbox and Lightning at
+    min 0 but max 2).
+ 9. Staging swaps need an undeploy-first step (about 40 minutes down): 8 more
+    H200 would exceed the quota.
+
+NOTES
+ - Source of truth for steps and IDs: this file and the deployment skill in
+   .agents/skills/astra-nvcf-voice-agent-deployment (its inventory is dated).
+ - This file is untracked and uncommitted.
+
+
+======================================================================
+ADDENDUM - 2026-10-16: speech-model findings, tool-result path, Hindi fixes
+(appended; the sections above are unchanged and the 10-15 snapshot is stale:
+see "STATE CHANGES SINCE THE SNAPSHOT" at the end)
+======================================================================
+
+1. SPEECH MODEL LANGUAGE SUPPORT (from NVIDIA docs, 26.x support matrices)
+ Magpie TTS Multilingual (357M, v2607): 12 languages
+   en-US es-US fr-FR de-DE zh-CN vi-VN it-IT hi-IN ja-JP ko-KR ar-AR pt-BR
+   - 26.02 had 9 (no ko, ar, pt); an NVIDIA FAQ page still says 9 (outdated).
+   - Language is chosen through the voice name (Magpie-Multilingual.HI-IN.*).
+     Exact request fields not confirmed from the docs.
+   - Which list applies depends on our deployed image version: not checked.
+ Nemotron ASR Streaming type=multi (container nemotron-asr-streaming): 40 locales
+   - Transcription-ready (19): ar-AR de-DE en-GB en-US es-ES es-US fr-CA fr-FR
+     hi-IN it-IT ja-JP ko-KR nl-NL pt-BR pt-PT ru-RU tr-TR uk-UA vi-VN
+   - Broad-coverage (13): bg-BG cs-CZ da-DK et-EE fi-FI hr-HR hu-HU nb-NO pl-PL
+     ro-RO sk-SK sv-SE zh-CN
+   - Adaptation-ready (8): el-GR he-IL lt-LT lv-LV mt-MT nn-NO sl-SI th-TH
+   - Streaming only. Language code optional: language_code=auto detects;
+     a specific code (hi-IN) constrains decoding.
+ Parakeet 1.1B RNNT Multilingual (separate model, 27 codes, hi-IN in all types)
+   - default: auto-detects, returns detected code
+   - prompt:  no detection, client MUST pass the language code, more accurate
+   - indic:   auto-detects, does not return the code
+ Which is "best": the docs name none and give no accuracy/latency numbers.
+   Guidance is by use case: Parakeet RNNT for many languages in one deployment
+   (streaming + offline); Nemotron ASR Streaming for purpose-built streaming.
+   For a real-time voice agent Nemotron ASR Streaming is the closer fit.
+   (A third-party page claims ~17x more concurrent streams; not verified.)
+ Versus upstream/develop: services.yaml there already uses the Nemotron
+   streaming model for multilingual (model
+   cache-aware-parakeet-rnnt-multi-asr-streaming-sortformer, language_code
+   "auto"; single-gpu: nemotron-3.5-asr-streaming-0.6b), and keeps Parakeet CTC
+   and Parakeet RNNT as alternatives. We run the same model: no divergence.
+ Language-code requirement summary:
+   Nemotron ASR multi: optional | Parakeet default/indic: not needed |
+   Parakeet prompt: required | Magpie TTS: effectively yes, via the voice.
+ Picker consequence: Bolt languages (en de es fr it ja hi ko pt zh) are all in
+   the ASR and TTS lists; vi-VN and ar-AR are in both speech lists but not
+   Bolt's, hence the picker bug (fix built, not on Astra staging yet).
+ Untested idea: Parakeet RNNT "prompt" type fits our locked-language design and
+   is documented as more accurate; A/B it against the Nemotron streaming model
+   on the Hindi sentences the ASR currently clips.
+ Still unchecked: the exact ASR variant we deploy; the TTS request fields.
+
+2. HOW A TOOL RESULT REACHES THE USER (frontend_backend_agent/src/tool_handlers.py)
+ The backend (Thinker, Super VL reasoning on) only PLANS the tool call. It does
+ not write the spoken answer. The tool runs and Python formatters
+ (result_formatters.py) build a short TTS-safe response_text. Delivery then
+ depends on the mode (_deliver_tool_payload / _should_deliver_directly):
+ Generic assistant (English), default mode "direct" (generic/backend.py):
+   - response_text is pushed straight into TTS (_emit_talker_response); the
+     Talker does not rephrase it.
+   - Exception: get_weather is in talker_result_tools. The Talker gets a trimmed
+     fact set (city, temperature, unit, condition, feels_like, humidity, wind)
+     and writes the sentence itself (run_llm=True).
+   - Non-speakable payloads (errors, needs-input) are not read verbatim; they go
+     to the Talker as the tool result and it decides what to say.
+ Multilingual assistant (language locked, Hindi preset or picked language):
+   - pipeline.py forces force_tool_result_mode="talker", overriding the direct
+     default and the env switches, because response_text is an English template.
+   - For EVERY tool the Talker (Bolt by default) receives _talker_result_
+     projection: response_text (English facts), status, and reply_language plus
+     reply_instruction ("say this only in <language>, native script, keep every
+     number/name/unit exact, never read the English aloud").
+   - Guards behind it: a reply not in the session language, or one that only
+     repeats the spoken filler, is retried; last resort is the result text
+     translated to the session language (never needed in the Hindi SQA run 6).
+ Filler: in both agents the Talker also speaks a short filler before the tool
+   returns ("एक पल रुकिए..." in Hindi); that is separate from the final answer.
+ Not traced: whether any tool (e.g. web_search) calls a model to summarise.
+
+3. CUSTOM CHANGES FOR THE HINDI FAILURES (all committed; 1023 unit tests pass)
+ Symptom -> change:
+ - English fillers suppressed, producing silence (run 1) -> the Talker filler is
+   written in the session language, otherwise dropped; a fixed per-language
+   fallback filler exists (hi de es fr it ja ko pt zh).
+ - English tool results spoken in a Hindi session -> multilingual sessions force
+   the Talker to speak results (mode "talker") with a reply-language
+   instruction in the result payload (see section 2).
+ - Bot repeated its own filler as the answer (runs 3, 4) -> a post-result reply
+   that only repeats the filler, or is not in the session language, is
+   retried; last resort is the result translated to the session language.
+ - Tool arguments in Devanagari (WeatherAPI rejects them) -> tool arguments are
+   kept in English/Latin (cities, tickers, units); the spoken reply stays Hindi.
+ - Sentences not splitting for TTS -> sentence splitting handles the danda "।".
+ - English-only weather grounding misfiring on Hindi -> skipped for non-English
+   sessions.
+ - Automatic ASR language detection broke Hindi (run 2, 6/13) -> ASR is locked
+   to the session language by default. FRONTEND_BACKEND_FIXED_LANGUAGE_ASR=auto
+   opts back into detection (English input then works; Hindi accuracy worse).
+   Side effect: in a locked Hindi session English speech is not transcribed.
+ - Remote Omni rejected calls -> NVCF_API_KEY is used for LLMs on an NVCF
+   invocation host.
+ - Picker offered languages the Talker cannot speak (ar-AR, vi-VN) -> language
+   picker and Voice studio filter by the Talker's supported languages (image
+   dev-93ad689-20261015-language-picker pushed, NOT on Astra staging).
+ Failures that are NOT agent bugs: the ASR returns an empty transcript for some
+   Hindi sentences (stock question; "जयपुर में मौसम कैसा है?"; time and weather
+   clips on 10-16); the session-B "audio not Hindi" check is a suite false
+   positive (transcriber wrote Nemotron/ASR in Latin letters).
+ Still English (belongs to the prompt stage): Talker terminal messages ("I
+   could not complete that request...") and the English few-shots.
+
+STATE CHANGES SINCE THE 10-15 SNAPSHOT
+ - Super VL now runs as the NIM nvcr.io/nim/nvidia/nemotron-3.5-super-vl-120b-
+   a12b:2.0.13-variant-build.1 (vLLM inside); the vLLM-from-HF container is
+   gone. Reasoning is set with reasoning_effort (low/medium/high, default low),
+   not a token budget (thinking_token_budget makes it reason without answering).
+   NIM_MAX_MODEL_LEN must stay unset (the profile uses 1048576 with MTP).
+ - Staging function: version 1bb98484-d47b-4dbc-bc49-dac8c1b9b208, chart
+   0.1.142-dev.20261016.3, image dev-fc4801d-20261016-super-vl-nim, 8x H200.
+ - Standalone Super VL NIM function 91010bab-6b8c-4aca-8944-0f647a8069b2
+   (version d3065eed-db94-49dd-a8ca-7d79adf52f9b), min 3, 1x H200 per instance.
+ - Standalone Lightning and Chatterbox functions: undeployed, definitions kept.
+ - Regression on the new staging: Hindi SQA 11/13 (picker + ASR clipping);
+   converse generic 6/6; converse omni 2/3 (known strict digit check).
+   comprehensive A, restart, architecture-image not re-run on this build.
+ - Branch dev/nikkulkarni/nvcf-rebased-v3: 28 commits ahead, nothing pushed.
+
+Additional Plan instructions:
+1) On the UI, arrange the three cards in a grid and add a fourth example card for custom agent.
+2) For the custom agent, lets open a chat window, where user can chat and describe a agent use case they want. But this chat window should be quite guardrailed with limited domain of responses only related to building agent persona or domain.
+3) Based on the information collected from the user, the builder module will take the existing frontend backend prompts and basically add the user's customizations to those prompts and save them for that session.
+4) Lets have a concept of agent config yaml. The builder agent would know what all TTS/ASR models, TTS voices etc are supported, so from there itself, user can create a whole agent pipeline of their own and even customize the ASR/TTS/TTS voice and pronunciations etc that they would want to be customized in the bot.
+5) Currently we don't have an option for saving/loading an existing agent profile, so now, we will add support for it. Each of the agents we have can be saved as a downloaded yaml. And, it can be loaded by the user at the start in the same custom agent section.
+6) I believe, all of this logic can be handled within the UI itself. For the builder LLM, we can use the standalone super VL 3.5 model in reasoning on, which we previously deployed on NVCF.
+7) Ultimately, all of this configuration of the agent, is simply sent to the voice-agent-pipeline at the start of the session, using the session config right? So nothing of this logic need to touch the voice agent code. Am I right?
+8) But again, the builder chat window should be heavily guardrailed, its context/responses etc, everything must be strictly confined to the builder context. At the same time, it must not accept any morally wrong/profane/illegal building instructions from the user. It must also not provide any opinions, any other open question responses etc.
+9) And we should have a live animated architecture/schematic display which would show user's agent being built in realtime, showing all the components like which ASR? which TTS? what voice? What frontend? What backend? What persona/domain, What tools amongst the ones available right now? etc. More like an interactive shematic diagram.
+10) Apart from that, I would also want you to deploy  Gemma 27b it: google/gemma-2-27b-it https://huggingface.co/google/gemma-2-27b-it As the multi lingual assistant's frontend model. Frontend prompt for the hindi agent must give its own descriptioon in hindi, also hold full conversation with the user in hindi maintain context in hindi, and even the delation prompt for the hindi agent knows its supposed to translate information, entities, queries etc from the delegated query before creating tool call plan. Tools wont support hindi so to the tools, the information must go in english and comback in english.
+12) Lets also now have a models tab in the configure tabs section, where you can select Frontend/Backend models from the available LLMs within that deployment, default selection will be what the models are today for each of those agents.
+13) If you feel, the scope of the builder block is becoming too board and too much, we can define its scope and limit it to only that.
+14) Lets also remove the standing instructions tab from the prompts tab.
+15) In the builder / we can either have user customize the persona/domains only.
+16) Lets also make the response from tools always go to the talker for phrasing it before sending to TTS. I dont think we should keep direct mode.
+
+======================================================================
+REVIEW OF THE ADDITIONAL PLAN INSTRUCTIONS + BUILDER DESIGN - 2026-10-16
+======================================================================
+A. OPINION ON THE ADDITIONAL INSTRUCTIONS
+ - Item 10 (Gemma 2 27B as the multilingual Talker): risky. The Talker must
+   call tools (call_backend/cancel_backend); Gemma 2 has no native tool calling,
+   no system role and an 8k context; it is gated on HF. Bolt already passes Hindi
+   with working tool calls. If Gemma is wanted, probe Gemma 3 27B on a
+   standalone NVCF function (tool call + Hindi) before any chart work.
+   GPU: BF16 27B needs a full H200; the staging function is already 8/8, so it
+   must replace a model (Lightning or Chatterbox) or run standalone.
+ - Item 16 (tool results always via the Talker, drop direct mode): agree.
+   Measure time to first audio before/after (one extra LLM pass on English tool
+   turns) and add a number-preservation check (reply numbers == response_text
+   numbers), since the Talker re-voices every result.
+ - Item 14 (remove the standing-instructions tab): fine; persistent_prompt stays
+   as a server field and the builder can use it.
+ - Item 12 (Models tab): fine; filter each role's list (Talker: tool calls +
+   fast; Backend: reasoning). Choices come from the example's registry lists.
+ - Builder scope (items 1-9, 13, 15): limit it to persona, domain, tone,
+   language, and choices from EXISTING models, voices, tools, pronunciations.
+   It cannot create new tools (domain_profile picks from a fixed set).
+ - Builder reasoning: Super VL reasoning on with reasoning_effort low.
+ - Saved agent YAML (item 5): schema version, never any key; on load, flag any
+   model/voice the current deployment lacks instead of dropping it silently.
+ - Suggested order: item 16 + 14 -> Hindi/multilingual prompt stage (item 10
+   prompts = prompt-stage scope) -> Models tab -> Talker model probe (Gemma 3)
+   -> builder.
+
+B. BUILDER DESIGN
+ Transport (same pattern as the voice agent today):
+   The browser never holds a key. Today nginx in the Astra UI pod
+   (docker/nginx-nvcf.conf.template) injects NVIDIA_API_KEY + function-id,
+   both from Vault (external secret fusion/astra/nemotron-voice-agent-astra/
+   nemotron-voice-agent-deploy/stg), and the browser calls same-origin paths.
+   The builder uses the same model: browser -> same-origin /builder/* -> builder
+   service -> standalone Super VL NIM function
+   https://91010bab-6b8c-4aca-8944-0f647a8069b2.invocation.api.nvcf.nvidia.com/v1/chat/completions
+   Check first: whether the Vault NVIDIA_API_KEY may invoke 91010bab (keys can be
+   function-scoped; it was tested only with NVCF_API_KEY). Else widen scope or add
+   a second Vault secret.
+ Why a builder service, not a plain nginx proxy: nginx can only lock path,
+   method, body size and rate; it cannot enforce the system prompt, max_tokens
+   or the schema, so a plain proxy would be an open chat endpoint on our key.
+ Guarding the model without exposing the prompt:
+   1. The builder system prompt lives only in the builder service (image or
+      ConfigMap). The NVCF key comes from the same Vault secret.
+   2. Narrow API, data only:
+        POST /builder/session                       -> builder session id
+        POST /builder/turn {session_id, user_message} -> {reply, draft_config}
+      Conversation history is kept server-side, so the client cannot inject
+      system/assistant turns or rewrite history.
+   3. The service fixes model, system prompt, temperature, max_tokens,
+      reasoning_effort; client values are ignored.
+   4. Structured output only: response_format json_schema (enforced by the NIM's
+      vLLM). Schema = short reply + draft-config fields; models, voices, tools,
+      languages are enums built from the deployment catalog. Reasoning text is
+      stripped, never returned.
+   5. Output validation: schema + catalog check, length caps on free-text fields
+      (persona, domain), reject replies that echo the system prompt (overlap
+      check).
+   6. Input guards: message length and turn caps; rate limit per IP and session
+      (nginx limit_req + service). Refusal rules (off-topic, opinions, harmful,
+      profane or illegal personas) in the system prompt, re-checked on the final
+      config. Optional later: a content-safety NIM (costs a function + GPU);
+      add only if testing shows gaps.
+   7. Audit log of builder session ids and refusals (no user content unless
+      wanted).
+ What stays visible: this hides the BUILDER prompt. The generated agent prompt
+   still travels browser -> voice agent in the session config (as all prompts do
+   today; the Prompts tab already shows the base prompts). Hiding that too would
+   need a server-side renderer + token resolved by the voice agent, i.e. a
+   voice-agent change. Skipped unless agent prompts must be secret.
+ Hosting:
+   Astra, same deployment as the UI (nemotron-voice-agent-deploy, stg), Fusion
+   chart fusionv12. Add a second entry under apps: (e.g. "builder"): own pod and
+   Service, NO ingress (cluster-internal), CPU only (~100m-500m CPU,
+   256-512Mi), image in the same Artifactory repo as the UI, Vault key via
+   sharedSecrets. UI nginx proxies /builder/* to the builder Service.
+   Separate app (not a sidecar) because the apps: map is a pattern the chart
+   clearly supports, and it deploys/rolls back independently of the UI.
+   Fallback: run it inside the UI container next to nginx (needs a supervisor).
+   Astra STAGING only; Astra production untouched. Needs fusion login --reauth.
+   The repo's nemotron-voice-agent-values.yaml is stale (UI tag 2.0.75): export
+   the live stg values with fusion deploy export before editing.
+
+C. DOES THE BUILDER NEED A VOICE-AGENT CHANGE?  No, under these conditions:
+ The custom agent starts as an EXISTING example (generic-frontend-backend-agent,
+ or the multilingual one) and passes everything through the session config,
+ which the voice agent already accepts and validates (src/server.py,
+ src/examples/frontend_backend_agent/pipeline.py):
+   - prompt_content, thinker_prompt_content, persistent_prompt (<= 32000 chars
+     each). The server still appends its execution contracts for the generic
+     domain, so built personas keep the safety/tool rules.
+   - tools: the browser can only narrow the example's allowlist, never add.
+   - Talker/Thinker model ids from the example's registry lists; voice; ASR/TTS
+     ids; asr_language_code (validated against the Talker's languages).
+   - tts_pronunciations (<= 50 rules, Magpie only); llm_role_settings.
+ It WOULD need a voice-agent (config) change if:
+   - the custom card gets its own example key (examples_registry.yaml entry,
+     config only) instead of reusing an existing example;
+   - new tools or a new domain profile are wanted;
+   - the generated agent prompt must be hidden (see B).
+ Other items in the additional instructions DO change the voice agent:
+   item 16 (remove direct mode: tool_handlers.py, generic/backend.py), item 10
+   (Gemma: catalog, chart, Hindi/multilingual prompts in prompts.yaml, the
+   delegation/translation rules), and the Hindi prompt stage.
+ UI-only items: Models tab (12), remove standing instructions (14), the cards
+   grid + builder UI (1-5, 9).
+
+D. DECISION 2026-10-16: Gemma 3, not Gemma 2
+ Multilingual assistant Talker candidate = google/gemma-3-27b-it (replaces the
+ Gemma 2 27B request in item 10). Gemma 3: 128k context, broad multilingual
+ support, newer than Gemma 2. Still to verify by probe (tool calling in Gemma 3
+ is prompt-based, not native tool tokens, so vLLM parser + chat template must be
+ proven): call_backend/cancel_backend tool calls, Hindi self-description and
+ Hindi conversation, English tool arguments from Hindi input, TTFT on 1x H200.
+ Steps: accept the Gemma license on the HF account behind HF_TOKEN -> standalone
+ NVCF function (vLLM, 1x H200, BF16) -> probe -> only then catalog/chart work.
+ GPU: the staging function is 8/8; Gemma 3 replaces a model there (Lightning or
+ Chatterbox, user decision) or stays standalone. Bolt remains the Hindi Talker
+ until Gemma 3 passes the probe and the Hindi SQA.
+
+E. DECISION 2026-10-16 (supersedes D): Gemma 4, not Gemma 3
+ Multilingual Talker candidate = google/gemma-4-31B-it (31B dense, BF16 ~62 GB,
+ fits 1x H200). Not gated on HF (config downloads with HF_TOKEN). Same Gemma 4
+ architecture as Bolt, so the vLLM 0.31.0 gemma4 tool/reasoning parsers apply.
+ Replaces Bolt. Probe function nva-gemma4-experiment da82b85c-b5d7-4575-9796-ad2062a4ca76
+ (version 7c16d1b4-b4a2-4268-a9b2-7f691aa384f2), 1x H200, image vllm-hf:v0.31.0-exp4.
+ Same gate as D: tool calls, Hindi, English tool arguments, per-language probe, TTFT.
+
+
+======================================================================
+IMPLEMENTATION STATUS - 2026-10-16 (after the Gemma 4 / builder round)
+======================================================================
+ [done] Item 16: every tool result goes through the Talker (direct/hybrid modes and their
+        env vars and chart values removed). Number guard (numbers_dropped) for stock, time,
+        BMI and random-number results.
+ [done] Gemma 4 31B (google/gemma-4-31B-it) replaces Bolt: catalog key gemma-4-31b, chart
+        vllmModels.gemma4, languages en de es fr it ja hi ko pt zh ar vi. Probed live on NVCF:
+        native call_backend tool calls (6/6 with the real Hindi prompt), fluent Hindi, 12
+        languages, thinking on/off, streaming TTFT ~0.7 s with the full prompt.
+ [done] Prompt stage (consent given by approving the plan): hindi_talker, hindi_thinker,
+        multilingual_talker, multilingual_thinker with their own few-shots; Thinker translates
+        to English before planning, results come back in English and the Talker speaks them.
+ [done] Agent builder service (src/agent_builder, docker/Dockerfile.agent-builder): guarded
+        chat on the standalone Super VL; no voice-agent change. Live red-team and 48/48 build
+        turns ready with no false refusals after the moderation fixes.
+ [done] UI: four-card landing (one row from 1180 px), Build Your Own page with live schematic,
+        Models page, YAML save/load, standing-instructions card removed. 31/31 browser checks.
+ [done] Chart 0.1.143-dev.20261016.1, app image dev-0094b39-20261016-gemma4, staging function
+        version 83871913-01a1-462a-84b7-9c88c2838ec8 (8x H200). Astra STAGING: UI image
+        dev-eb0edea-20261016-builder plus the builder app (nemotron-voice-agent-builder:7870,
+        no ingress, key from the shared Vault secret). Astra production untouched.
+ [todo] Regression on the new staging function (Hindi SQA, English converse, comprehensive
+        A, restart), then tear down nva-gemma4-experiment (da82b85c...) and the old version.
+
+================================================================================
+STATUS 2026-10-16 (after the four-way review)
+================================================================================
+LIVE (staging only; production fa20412a... and Astra production untouched)
+- Staging function nemotron-voice-agent-staging 7355259c-c8e8-4338-930c-e3f6910a0689, active version
+  83871913-01a1-462a-84b7-9c88c2838ec8 (chart 0.1.143-dev.20261016.1, image dev-0094b39-20261016-gemma4,
+  8xH200: Lightning, Super VL, Gemma 4, ASR x2, Magpie TTS, Chatterbox). Warm.
+- Standalone Super VL NIM 91010bab-6b8c-4aca-8944-0f647a8069b2 and Omni b8b7a13c-a33d-4222-8dbe-024565689fb2: ACTIVE.
+- Astra staging: UI image dev-eb0edea-20261016-builder; builder app dev-ef55fa2-20261016-builder (internal, CPU only).
+- INACTIVE, not deleted: 9 old staging versions, nva-bolt-experiment, nva-super-vl-experiment, nva-gemma4-experiment,
+  standalone Lightning/Chatterbox definitions.
+
+TESTS (before the review fixes)
+- Unit 974 + builder 47; ruff clean; client tsc/build pass; client lint 24 errors that already existed upstream.
+- Live: Hindi SQA A 11/11 (the stock check was too loose, tightened below), Comprehensive A 17/17, English converse 6/6,
+  restart pass, Omni converse only the digit-regex false positive. Not run: concurrency, robustness, capture, Omni media.
+
+DONE AFTER THE REVIEW (committed locally, not yet deployed)
+- Hindi assistant is preselected; variant field tts_voice: Leo resolved against the TTS catalog (fallback: language default).
+- S1 number guard compares parsed values (sentence-final period, 182.10 vs 182.1, 15:05 vs 3:05 PM, UTC minus 3, negatives).
+- S2 non-Latin stock requests no longer rejected as "company name missing"; Hindi SQA stock turn must now contain a price.
+- S6 thinker session-language addon says response_text stays English; S7 variant LLM applies server-side.
+- B1 persona signing (AGENT_BUILDER_SIGNING_KEY; voice agent drops unsigned persistent_prompt when the key is set).
+- B2 real client IP (NGINX_REAL_IP_FROM), B3 per-client session cap, B4 pronunciation moderation + phoneme-only values,
+  B5 outage is not a refusal, B6/B7 turn deadline 75 s + per-session lock, B8-B12 body/config caps, pinned requirements.
+- U1 custom agent isolated from built-in selections, U2 webcam release, U3 resume last agent, U4 three-card grid,
+  U5 IME Enter, U6 /custom gated, U8 busy during load, U7 YAML anchors rejected, upload cap 16 KB, tour copy.
+- D1 Viking overlay within 8 GPUs (+ helm GPU-sum test), D3 CHANGELOG/stale docs. Chart 0.1.143-dev.20261016.2.
+
+NOT DONE / DECISIONS
+- D2 (runAsUser: 0 on GPU pods) left as is: NIM images and the vLLM cache volumes were not tested non-root.
+- S8 (stage_metrics entries kept when a result is superseded) left: bounded per session.
+- H1 PR prep (move internal files out, squash) waits for the user: root nemotron-voice-agent*-values.yaml, this plan file,
+  feedback-form .gs, tests/sqa/reports/**, screenshots, NGC org ids, duplicated skill. No push or PR without approval.
+- Key rotation (every key shown in chat), deleting inactive functions/versions, Magpie Zero-shot ONNX startup error.
+- Whether the Hindi TTS catalog has a Leo voice: verify live after the redeploy.
+
+STATUS 2026-10-17
+- Staging 7355259c version 77bdf592 (chart 0.1.143-dev.20261017.1, image dev-61aa991-20261017-leo3); first
+  deploy failed on a Gemma 4 vLLM startup crash loop, redeploy in progress. Fallback version 3d52ff17.
+- Astra stg UI/builder dev-de7721d-20261016-builder (2x2 grid, review fixes), builder signing live.
+- Leo voice: the chart's own registry lacked tts_voice; fixed with a chart/repo variant sync test.
+- Hindi stock: grounding now skipped for mostly non-Latin requests; live verification pending.
+- Live: English converse 6/6, Comprehensive A 17/17 (one flake), Hindi 10/11 before the stock fix.
+- Next: verify Hindi stock + Leo live, concurrency/robustness suites, live forged-persona test; fix the
+  Talker filler-without-tool flake and Hindi ASR leading-word clipping; S8, D2, Zero-shot ONNX error;
+  NGINX_REAL_IP_FROM (needs router CIDR); docs pass; user decisions on push/PR, H1 cleanup, function
+  deletion, key rotation, H200 quota.
+
+LIVE VERIFICATION 2026-10-17 (staging version 77bdf592, image dev-61aa991-20261017-leo3)
+- Leo voice live (voice=...HI-IN.Leo); forged persona dropped live; Hindi stock tool fires with a correct
+  transcript; converse 6/6, concurrent x4 pass, comprehensive A 16/17 (clipped "Search the web.").
+- Open: ASR end-of-utterance fragmentation/clipping (Hindi and English); Talker copies the few-shot query when
+  the user's words are clipped; SQA browser-closed crashes.

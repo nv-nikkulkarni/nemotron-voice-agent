@@ -21,6 +21,11 @@ backend. The upstream client in `client/` has a separate build.
   below the timer. A short, self-dismissing hint points to the latency button when it first becomes clickable.
 - **LLM settings**: tune each model role before starting or apply sampling changes
   to future requests during a conversation.
+- **Build your own agent**: when the builder is enabled, a fourth landing card opens a guarded
+  chat with a live schematic. Save the agent as YAML, load it again, or start it. Refer to
+  [Build a Custom Agent](../docs/how-to/build-a-custom-agent.md).
+- **Models page**: choose the frontend (Talker) and backend (Thinker) model for each example.
+  The default is the example's registry default, and the browser stores your choice.
 - **Voice studio**: choose a speech engine, preview voice cards, upload a
   zero-shot sample, and save pronunciation fixes.
 - **Audio visualizers**: real-time input and output waveform display.
@@ -58,6 +63,35 @@ the cards offers **Prompts**, **Tools**, **Voice**, and **Start conversation**.
 Use **Prompts** for frontend and backend instructions, **Tools** for agent
 capabilities, and **Voice** for speech configuration. Each page includes
 **Back to setup** to return to the cards.
+
+An example with launch variants in `examples_registry.yaml` shows one button
+per variant on its card instead of a single selection. The Multilingual
+Generic Frontend Backend Assistant card offers two variants:
+
+- **Hindi assistant** starts the capture dialog right away. The
+  session is locked to Hindi (`hi-IN`) and starts with the Gemma 4 Talker. The
+  server enforces the variant language, whatever language the browser sends.
+- **Multilingual assistant** selects the card and adds a **Language**
+  picker to the launch bar. Pick a language, then select **Start
+  conversation**. The list is the same one **Voice** offers, which is the set
+  of languages that the selected speech recognition, speech synthesis, and
+  Talker models all support.
+
+The landing page shows four cards in one row from 1,180 px wide and two by two on mid-size
+screens. The fourth card, **Build Your Own Agent**, appears only when `builderEnabled` is
+`true` and the `multilingual-generic-frontend-backend-agent` example is available. The launch
+bar also offers **Models**, which opens the `/models` page, and **Save agent**, which downloads the
+selected example's configuration as an agent YAML file. **Save agent** appears with the builder.
+The Prompts page no longer has a standing-instructions card, and the client does not send
+`persistent_prompt` from a saved value. The builder sets it for custom agents. The **Tools**
+page names the frontend and backend models in use. A frontend model that does not speak the
+language of a fixed-language launch is skipped for that launch.
+
+The client sends the variant as `example_variant` and the session language
+as `asr_language_code`. The NVCF UI image lists the curated examples in the
+`DEMO_EXAMPLES` environment variable. Its default includes
+`multilingual-generic-frontend-backend-agent`. A deployment that sets
+`DEMO_EXAMPLES` explicitly must add the example to show the card.
 
 Select **Start conversation** to choose capture permission before connecting.
 The dialog asks whether the NVIDIA team can save microphone and assistant
@@ -218,11 +252,39 @@ Conversation Orb. On wide layouts, selecting it opens a separately anchored,
 height-bounded breakdown in the blank area to the right. The breakdown expands
 downward and scrolls when needed instead of opening upward over the
 conversation. On narrower layouts, it appears below the trigger. The breakdown
-consumes `RTVIEvent.Metrics` and presents the agent stages as a waterfall. The
-**Before you heard a response** lane shows the critical path to first audio. The
-**After delegation** lane shows asynchronous planning, tool, and final-answer
-work that continues after progress speech can begin. The real-time voice
-pipeline remains below these lanes.
+starts with **How N ms adds up**, an ordered list of every part of **Time to
+first audio** with a stacked bar above it. The rows add up exactly to the
+headline value, and each row explains what spent the time:
+
+| Row | What It Measures |
+| --- | --- |
+| Silence wait before the turn ends | The voice activity detection (VAD) `stop_secs` silence wait, 800 ms by default for this example |
+| Speech recognition finalizes | Automatic speech recognition (ASR) turning your last words into final text |
+| Turn detection | The smart-turn model or turn strategy confirming you are done |
+| Talker LLM — first token | The frontend Talker reading the conversation and starting to answer |
+| Talker writes a tool call | The Talker streaming a delegation call |
+| Backend and tools | Backend Thinker planning and tool work that the spoken answer waited for |
+| Waiting for speakable text | Includes the time the speech gate held the reply until the full response arrived |
+| TTS text aggregation | Text collected into a full sentence before synthesis |
+| Text-to-speech — first audio | Synthesis of the first audio chunk |
+| Pipeline handoffs | Time between stages that no single service owns |
+| Other / unattributed | Any remaining gap between the named parts and the headline |
+
+Rows appear only for parts that happened in that turn. The server sends these
+parts as `contributions` in the `latency-breakdown` message, using the Pipecat
+`UserBotLatencyObserver` attribution, which sums to the measured latency. It
+also sends `config.vad_stop_ms`, `config.smart_turn_stop_ms`, and
+`speech_gate_hold_ms`. After the headline, the breakdown adds **Network and
+audio playout (your browser)** and the resulting **True felt latency**. An
+older server that sends only the `events` list shows the previous, unsummed
+**Realtime voice pipeline** rows instead.
+
+Below the sum, **Inside the agent** presents the Frontend/Backend stages as a
+waterfall. The **Before you heard a response** lane lists the stages that
+first audio waited for: the Talker selection, plus any backend, tool, or
+final-answer stage that finished before first audio. The **After first audio**
+lane lists work that continued after first audio, such as planning that runs
+while progress speech plays.
 
 The breakdown can show the following seven metric types:
 
@@ -237,7 +299,7 @@ The breakdown can show the following seven metric types:
 | Final-answer total and waterfall bar | `frontend_final_response_processing_time` |
 
 Values use milliseconds. Only stages executed and emitted for that turn appear.
-For example, direct result mode does not run the final Talker response stage.
+For example, a turn that needs no tool call has no backend stage.
 Each stage shows its total duration, with the corresponding time to first token
 inline when available. The total already includes the first-token time, so do
 not add them together. Parallel tool calls can also overlap. When structured
@@ -335,7 +397,10 @@ Rebuild the [Astra UI image](../docker/Dockerfile.nvcf-ui) after changing the
 client. The container listens on port `7860`; its published host port depends
 on your deployment. Set `BACKEND_ORIGIN` for a direct HTTP backend, or
 `NVCF_HOST` and `NVIDIA_API_KEY` for the NVCF proxy. Keep credentials in the
-container environment.
+container environment. Set `BUILDER_ORIGIN` to the cluster-internal URL of the
+[agent builder service](../docs/how-to/build-a-custom-agent.md#agent-builder-service-reference)
+to enable the rate-limited `/builder-api/` proxy and `builderEnabled`. Leave it unset to
+disable the builder. The client uses the `js-yaml` package to read and write agent files.
 
 ### Lint
 

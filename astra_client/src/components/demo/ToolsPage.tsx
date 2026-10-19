@@ -2,11 +2,19 @@
 import { useApp } from "../../context/useApp";
 import { useConnectionState } from "../../hooks/useConnectionState";
 import { ToolSelector } from "./ToolSelector";
+import { useThinkerLLMs } from "../../api";
+import { useAgentStore } from "../../demo/agentConfig";
 
 export function ToolsPage({ onClose, onLLM }: Readonly<{ onClose: () => void; onLLM: () => void }>) {
   const app = useApp();
   const { isConnected, isConnecting } = useConnectionState();
   const locked = isConnected || isConnecting;
+  const store = useAgentStore();
+  const { data: thinkers = [] } = useThinkerLLMs(app.selectedExample?.key ?? "");
+  const choice = store.modelChoices[app.selectedExample?.key ?? ""] ?? {};
+  const talkerName = app.llms.find((llm) => llm.id === choice.talker)?.name ?? app.selectedLLM?.name ?? "The frontend model";
+  const defaultBackendId = String((app.selectedExample?.defaults?.["thinker-llm"]?.[0] as { id?: string } | undefined)?.id ?? "");
+  const backendName = thinkers.find((model) => model.id === (choice.backend ?? defaultBackendId))?.name ?? thinkers[0]?.name ?? "The backend model";
   const generic = app.selectedExample?.domainProfile === "generic" || app.selectedExample?.key === "generic-frontend-backend-agent";
   return <section className="agent-studio agent-studio--tools" aria-label="Tool configuration">
     <header className="agent-studio__head">
@@ -23,7 +31,7 @@ export function ToolsPage({ onClose, onLLM }: Readonly<{ onClose: () => void; on
     <section className="studio-section">
       <div className="studio-section__head"><span className="studio-section__number" aria-hidden="true">◈</span><div><h3>Agent model roles</h3><p>{generic ? "A fast conversational voice with a reasoning planner behind its tools." : "A multimodal agent for speech, images, and video."}</p></div></div>
       <button type="button" className="btn-secondary llm-setup-trigger" disabled={locked} onClick={onLLM}>LLM settings</button>
-      {generic ? <div className="agent-roles"><div><strong>Nemotron 3.5 Lightning</strong><span>Talker · fast responses · reasoning off</span></div><div><strong>Nemotron 3 Super 120B-A12B</strong><span>Thinker · grounded planning · reasoning on</span></div></div>
+      {generic ? <div className="agent-roles"><div><strong>{talkerName}</strong><span>Frontend · fast responses · reasoning off</span></div><div><strong>{backendName}</strong><span>Backend · grounded planning · reasoning on</span></div></div>
         : <label className="studio-toggle"><input type="checkbox" disabled={locked || app.llmsLoading} checked={app.reasoning} onChange={event => app.setReasoning(event.target.checked)} /><span>Reasoning<small>Think before answering. Off by default; enabling it adds several seconds before speech starts.</small></span></label>}
     </section>
     {generic && <section className="studio-section">

@@ -202,8 +202,6 @@ export interface AppState {
   promptOverride: string;
   backendPromptOverride: string;
   setBackendPromptOverride: (value: string) => void;
-  persistentPrompt: string;
-  setPersistentPrompt: (value: string) => void;
   setPromptOverride: (v: string) => void;
 
   /** The prebuilt pipeline preset currently loaded, if any. */
@@ -378,8 +376,6 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
   }, [promptStorageKey]);
   const setPromptOverride = useCallback((value: string) => setPromptRole("frontend", value), [setPromptRole]);
   const setBackendPromptOverride = useCallback((value: string) => setPromptRole("backend", value), [setPromptRole]);
-  const [persistentPrompt, setPersistentPromptState] = useState(() => readLSString("nva-prompt-persistent"));
-  const setPersistentPrompt = useCallback((value: string) => { setPersistentPromptState(value); writeLSString("nva-prompt-persistent", value); }, []);
 
 
   const [pronunciationEdits, setPronunciationEdits] = useState<Record<string, Record<string, string>>>(() => {
@@ -690,7 +686,7 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   const value = useMemo<AppState>(() => ({
     selectedExample, selectExample, deploymentOptions,
-    recordSession, setRecordSession, storeConsent, setStoreConsent, reasoning, setReasoning, promptOverride, setPromptOverride, backendPromptOverride, setBackendPromptOverride, persistentPrompt, setPersistentPrompt,
+    recordSession, setRecordSession, storeConsent, setStoreConsent, reasoning, setReasoning, promptOverride, setPromptOverride, backendPromptOverride, setBackendPromptOverride,
     activePresetId, activePreset, applyPreset,
     selectedTools, toggleTool, setSelectedTools,
     demoPrompts, activePromptId, activePrompt, selectDemoPrompt, updateDemoPrompt, addDemoPrompt, removeDemoPrompt,
@@ -706,7 +702,7 @@ export function AppProvider({ children }: Readonly<{ children: ReactNode }>) {
     prompts, promptsLoading, selectedPromptKey: effectiveSelectedPromptKey, selectPrompt, addPrompt, updatePrompt, removePrompt, selectedPrompt,
     tools, toolsLoading,
   }), [selectedExample, selectExample, deploymentOptions,
-       recordSession, storeConsent, reasoning, promptOverride, setPromptOverride, backendPromptOverride, setBackendPromptOverride, persistentPrompt, setPersistentPrompt,
+       recordSession, storeConsent, reasoning, promptOverride, setPromptOverride, backendPromptOverride, setBackendPromptOverride,
        activePresetId, activePreset, applyPreset, selectedTools, toggleTool, setSelectedTools,
        demoPrompts, activePromptId, activePrompt, selectDemoPrompt, updateDemoPrompt, addDemoPrompt, removeDemoPrompt,
        deploymentSelectable, availableTransports, effectiveTransport, setTransport, currentSessionId,

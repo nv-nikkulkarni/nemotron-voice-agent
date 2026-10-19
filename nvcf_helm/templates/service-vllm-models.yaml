@@ -1,0 +1,23 @@
+{{- /* Service names are fixed per entry and must match the chart's services.yaml base_url. */ -}}
+{{- range $name, $model := .Values.vllmModels }}
+{{- if $model.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ required (printf "vllmModels.%s.serviceName is required" $name) $model.serviceName }}
+  labels:
+    {{- include "nemotron-voice-agent.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: vllm-{{ $name | lower }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "nemotron-voice-agent.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: vllm-{{ $name | lower }}
+  ports:
+    - name: http
+      port: {{ $model.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}
+{{- end }}

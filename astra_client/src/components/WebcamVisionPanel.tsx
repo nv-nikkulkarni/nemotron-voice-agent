@@ -106,6 +106,7 @@ export function WebcamVisionPanel({ sessionId }: Readonly<{ sessionId: string }>
   const client = usePipecatClient();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mountedRef = useRef(true);
   const streamRef = useRef<MediaStream | null>(null);
   const intervalRef = useRef<number | null>(null);
   const initialUploadTimeoutRef = useRef<number | null>(null);
@@ -252,6 +253,11 @@ export function WebcamVisionPanel({ sessionId }: Readonly<{ sessionId: string }>
         getWebcamConfig().then(normalizeWebcamConfig).catch(() => DEFAULT_WEBCAM_CONFIG),
         navigator.mediaDevices.getUserMedia({ video: true, audio: false }),
       ]);
+      if (!mountedRef.current) {
+        // The panel closed while the camera was starting: release it instead of leaving it on.
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
       configRef.current = config;
       stream.getVideoTracks().forEach((track) => {
@@ -339,6 +345,13 @@ export function WebcamVisionPanel({ sessionId }: Readonly<{ sessionId: string }>
       setError(err instanceof Error ? err.message : "Could not play webcam preview");
     });
   }, [enabled]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => stop, [stop]);
 

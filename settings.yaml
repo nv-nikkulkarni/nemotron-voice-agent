@@ -127,6 +127,29 @@ nemotron-super:
     path: extra_body.reasoning_budget
     requires: enable_thinking
 
+gemma-4-31b:
+  <<: *sampling
+  enable_thinking:
+    label: "Reasoning"
+    type: bool
+    default: false
+    path: extra_body.chat_template_kwargs.enable_thinking
+
+nemotron-super-vl:
+  <<: *sampling
+  enable_thinking:
+    label: "Reasoning"
+    type: bool
+    default: false
+    path: extra_body.chat_template_kwargs.enable_thinking
+  reasoning_effort:
+    label: "Reasoning Effort"
+    type: enum
+    options: [low, medium, high]
+    default: low
+    path: extra_body.reasoning_effort
+    requires: enable_thinking
+
 magpie-tts:
   synthesis_mode:
     label: "Synthesis Mode"

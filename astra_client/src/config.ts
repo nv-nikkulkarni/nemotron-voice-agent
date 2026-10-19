@@ -38,6 +38,8 @@ export interface DemoConfig {
   selfHostedOnly: boolean;
   /** Show the opt-in Record button. */
   recordEnabled: boolean;
+  /** The agent-builder service is deployed (set by the UI entrypoint from BUILDER_ORIGIN). */
+  builderEnabled: boolean;
   /** Container format for recordings ("webm" is universally supported by MediaRecorder). */
   recordFormat: "webm";
   /**
@@ -64,9 +66,10 @@ const DEFAULTS: DemoConfig = {
   deployedAt: "",
   demoMode: true,
   sessionSeconds: DEFAULT_SESSION_SECONDS,
-  examples: ["generic-frontend-backend-agent", "omni-assistant-subagents"],
+  examples: ["generic-frontend-backend-agent", "multilingual-generic-frontend-backend-agent", "omni-assistant-subagents"],
   selfHostedOnly: true,
   recordEnabled: true,
+  builderEnabled: false,
   recordFormat: "webm",
   gracefulTeardown: true,
   teardownGraceMs: 1500,

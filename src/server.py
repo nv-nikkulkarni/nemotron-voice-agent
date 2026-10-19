@@ -293,6 +293,15 @@ def _sanitize_session_config(data: dict, fallback_example_key: str = "") -> dict
     for key in ("prompt_content", "thinker_prompt_content", "persistent_prompt"):
         if key in config and (not isinstance(config[key], str) or len(config[key]) > 32000):
             raise ValueError(f"{key} must be text of at most 32000 characters")
+    persona_token = config.pop("persona_token", None)
+    signing_key = os.getenv("AGENT_BUILDER_SIGNING_KEY", "").strip()
+    if signing_key and config.get("persistent_prompt"):
+        from agent_builder.signing import verify_persona
+
+        # Only the agent builder moderates a persona; an unsigned one is dropped, not trusted.
+        if not verify_persona(signing_key, config["persistent_prompt"], persona_token):
+            logger.warning("Dropping persistent_prompt without a valid agent-builder signature")
+            config.pop("persistent_prompt")
     timezone = config.get("client_timezone", "UTC")
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -821,7 +830,7 @@ def create_app(host: str = "localhost", prompt_file: str = "") -> FastAPI:
         # just never finalizes (hangs forever, no error); without a shared store,
         # the finalizing pod reads only its OWN local disk, finds nothing, and
         # reports success while the pipeline pod's real artifacts are orphaned
-        # (refer to docs/current-deployed-pipeline-architecture.md section 14). The Helm chart
+        # The Helm chart
         # hard-fails both combinations at template time (P5.6); this is a
         # backstop for anyone running the app outside that chart.
         app_replicas = parse_env_int("APP_REPLICAS", 1, min_value=1)

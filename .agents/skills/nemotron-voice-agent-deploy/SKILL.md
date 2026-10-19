@@ -38,6 +38,8 @@ Do not use this skill to change `pipeline.py` or migrate Pipecat versions (use `
 | Server (`<example>/server`, including `server-perf`) | `NVIDIA_API_KEY` (NGC + NIM) | **Yes**, before `up` |
 | Single-GPU (`<example>/single-gpu`) | `HF_TOKEN` (Hugging Face download speed / rate limits) | **No**. Do not use `NVIDIA_API_KEY`. |
 
+`multilingual-generic-frontend-backend-agent/server` also needs `HF_TOKEN` for Gemma 4 31B, a vLLM container that downloads a Hugging Face checkpoint (about 62 GB of BF16 weights, so one GPU with 80 GB or more of memory). Super VL is a NIM (`nvidia-llm-super-vl`) that needs `NVIDIA_API_KEY`, not `HF_TOKEN` (3 GPUs; Super VL needs an H200-class GPU).
+
 `HF_TOKEN` is not a substitute for `NVIDIA_API_KEY`. The reverse is also false. `TURN_USERNAME` and `TURN_PASSWORD` are required only with `--profile turn`.
 
 Server NGC login:

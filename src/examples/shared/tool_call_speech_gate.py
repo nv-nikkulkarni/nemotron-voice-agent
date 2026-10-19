@@ -26,6 +26,8 @@ completion-generation latency while guaranteeing no leaked reasoning is spoken.
 
 from __future__ import annotations
 
+import time
+
 from loguru import logger
 from pipecat.frames.frames import (
     Frame,
@@ -47,6 +49,9 @@ class ToolCallSpeechGate(FrameProcessor):
         self._buffer: list[LLMTextFrame] = []
         self._in_response = False
         self._tool_call = False
+        self._first_buffered_at: float | None = None
+        self.last_hold_secs: float | None = None
+        """How long the most recently released response waited here, from its first text to release."""
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         """Buffer downstream LLM text until the response is known to be tool-free."""
@@ -61,6 +66,10 @@ class ToolCallSpeechGate(FrameProcessor):
             self._in_response = True
             self._tool_call = False
             self._buffer = []
+            self._first_buffered_at = None
+            # A new response supersedes the previous hold, so a stale value never
+            # describes audio this response did not produce.
+            self.last_hold_secs = None
             await self.push_frame(frame, direction)
             return
 
@@ -76,14 +85,19 @@ class ToolCallSpeechGate(FrameProcessor):
         if isinstance(frame, LLMTextFrame) and self._in_response:
             if self._tool_call:
                 return  # text from a tool-call response is never spoken
+            if not self._buffer:
+                self._first_buffered_at = time.monotonic()
             self._buffer.append(frame)
             return
 
         if isinstance(frame, LLMFullResponseEndFrame):
             if not self._tool_call:
+                if self._buffer and self._first_buffered_at is not None:
+                    self.last_hold_secs = time.monotonic() - self._first_buffered_at
                 for buffered in self._buffer:
                     await self.push_frame(buffered, direction)
             self._buffer = []
+            self._first_buffered_at = None
             self._in_response = False
             self._tool_call = False
             await self.push_frame(frame, direction)

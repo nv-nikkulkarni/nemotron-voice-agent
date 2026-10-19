@@ -13,7 +13,7 @@ The shared Pipecat pipeline separates low-latency conversation from slower task 
 5. For the generic domain, the planner appends a generated contract block for only the effective session tools. The registry defines the maximum allowlist, and the browser can narrow it.
    The airline domain keeps its existing prompt-owned contracts. Python validates the plan before dispatch.
 6. The backend returns structured response text.
-7. The runtime either speaks trusted response text directly or asks the Talker for a concise reply. Text-to-speech (TTS) then produces audio.
+7. The runtime returns the trusted response text to the Talker, which phrases a concise reply. Text-to-speech (TTS) then produces audio.
 
 The Talker sees only 2 functions. Internal functions, credentials, backend state, and tool results remain behind the domain boundary. The Thinker produces a bounded plan; the implementation does not use a ReAct observe-and-replan loop.
 
@@ -26,21 +26,20 @@ and `FRONTEND_BACKEND_SMART_TURN_STOP_SECS` after real-audio testing. Shorter
 values can split follow-ups before their final location transcript arrives;
 longer values add end-of-turn latency. Other examples retain their defaults.
 
-Use `FRONTEND_BACKEND_TOOL_RESULT_MODE=direct`, `hybrid`, or `talker` to
-control the grounded post-tool response. An explicit valid value overrides the
-selected backend default. Without this variable, the Generic backend uses
-`direct` and speaks trusted backend text without another Talker inference.
-The Airline backend retains `talker`, which sends speakable results through
-the guarded Talker pass. `hybrid` uses the Talker only for successful Generic weather results.
-Other successes, failures, and clarifications use deterministic speech.
+Every grounded result, cancel hint, missing-parameter hint, and terminal message
+returns to the Talker with `run_llm=true`, and the Talker phrases it before
+text-to-speech (TTS). No environment variable or chart value changes this
+routing. In a language-locked session, the payload also carries `reply_language`
+and `reply_instruction`, so the Talker speaks the result in the session language.
 
-The checked-in NVCF chart sets
-`app.frontendBackendToolResultMode: "direct"`, which renders
-`FRONTEND_BACKEND_TOOL_RESULT_MODE=direct` in the application pod. That
-explicit chart setting overrides the Generic source default. A source-only
-change does not alter this Helm behavior. The legacy
-`FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE` switch can force `direct` only when
-the explicit mode is absent.
+For `get_stock_price`, `get_current_time`, `calculate_bmi`, and
+`generate_random_number` results, the pipeline checks the Talker reply for the
+trusted numbers. A reply that contains digits but omits any number of the
+trusted result gets one retry with a correction (reason `numbers_dropped`). If
+the retry also fails, the pipeline falls back as for other rejected replies.
+The check normalizes native-script digits, such as Devanagari, and skips replies
+with no digits, for example spelled-out numbers. It does not check free-text
+tools such as `web_search` and `show_architecture`.
 
 Generic uses the `talker_authored` policy for optional, query-grounded
 `call_backend.filler_text`. The phrase must contain 3–12 words and at most
@@ -60,6 +59,7 @@ The following registry entries use the same `examples.frontend_backend_agent.pip
 | --- | --- | --- | --- | --- |
 | `frontend-backend-agent` | `airline` | `talker` | `thinker` | Domain-owned flight search, booking, and passenger name record (PNR) status |
 | `generic-frontend-backend-agent` | `generic` | `generic_talker` | `generic_thinker` | Registry-selected weather, stock price, current time, architecture, web search, body mass index (BMI), and random-number tools |
+| `multilingual-generic-frontend-backend-agent` | `generic` | `generic_talker` | `generic_thinker` | The same 7 generic tools, with the `session_languages` capability |
 
 The registry loader normalizes `domain_profile`, `thinker_prompt`, and `tools` as fields on each `ExampleEntry`. During `_sanitize_session_config`, the server binds those fields from the selected entry and overwrites client-supplied values. Domain resolution uses the fixed `_DOMAIN_FACTORIES` allowlist in `src/examples/frontend_backend_agent/src/domain.py`. Tool resolution uses the selected domain's code-owned registry.
 
@@ -105,6 +105,87 @@ EXAMPLE_SELECTION=generic-frontend-backend-agent docker compose --profile fronte
 ```
 
 The Compose profile still starts the booking server. The generic backend does not load or call it; the airline backend reaches it through `BOOKING_BACKEND_URL`, which defaults to the sidecar for the current runtime.
+
+## Run a Multilingual Session
+
+The `multilingual-generic-frontend-backend-agent` entry reuses the generic domain and adds the `session_languages` capability. Each session locks to one language. A launch variant with a `session_language` sets that language. Otherwise, the client selects it through `asr_language_code`. The registry default in `defaults.default_session_language` is `en-US`. For a locked session, the pipeline:
+
+- Sets the ASR and text-to-speech (TTS) language to the locked language and resolves a TTS voice for it.
+- Appends the Talker and Thinker prompt addons from `src/examples/frontend_backend_agent/prompts.yaml`. A launch variant names its own sections. Without a named section, the pipeline appends `fixed_session_language_addon` and `thinker_session_language_addon`.
+- Returns every tool result to the Talker, which speaks it in the session language.
+- Skips the English-only weather grounding check when the session language is not English.
+
+The Thinker addon requires tool arguments in English with Latin letters, such as `Delhi` or `Mumbai`, because WeatherAPI rejects Devanagari place names. Spoken tool results also split sentences at the Devanagari danda (`।` and `॥`) and the full-width marks `。`, `！`, and `？`.
+
+The UI language list is the intersection of the languages that the selected ASR, TTS, and Talker LLM support. Nemotron 3.5 Super VL declares `en`, `de`, `es`, `fr`, `it`, `ja`, `hi`, `ko`, `pt`, and `zh`. Gemma 4 31B declares those languages plus `ar` and `vi`, so the picker offers Arabic and Vietnamese with Gemma 4 because the ASR and TTS support them. Nemotron 3.5 Lightning declares `en`, `de`, `es`, `fr`, `it`, and `ja`.
+
+The registry offers these services for the entry. The first available option is the default:
+
+| Slot | Options |
+| --- | --- |
+| Talker `llm` | `gemma-4-31b`, `nemotron-super-vl`, `nemotron-lightning` (reasoning off) |
+| `thinker-llm` | `nemotron-super-vl` (reasoning on, effort `low`), `nemotron-lightning` (reasoning on, budget 1,024) |
+| `asr` | `nemotron-asr-streaming-multilingual`, `parakeet-rnnt` |
+| `tts` | `magpie-multilingual-tts`, `chatterbox-multilingual-tts`, `magpie-zeroshot-tts` |
+
+### Define Launch Variants
+
+An entry can declare launch presets under `variants`. The Astra client shows one launch button per variant. The built-in entry declares the following variants:
+
+```yaml
+variants:
+  hindi:
+    label: Hindi
+    description: Speaks and listens in Hindi, with the same tools.
+    session_language: hi-IN
+    llm: gemma-4-31b
+    talker_prompt_addon: hindi_talker
+    thinker_prompt_addon: hindi_thinker
+  multilingual:
+    label: Any language
+    description: Pick any supported language before you start.
+    llm: gemma-4-31b
+    talker_prompt_addon: multilingual_talker
+    thinker_prompt_addon: multilingual_thinker
+```
+
+Each variant accepts the following string fields:
+
+| Field | Purpose |
+| --- | --- |
+| `label` | Required button label |
+| `description` | Short card text |
+| `session_language` | Locks the session to this BCP-47 language, whatever language the client sends |
+| `llm` | Preselected Talker. It must appear in the entry's `services.llm` list |
+| `talker_prompt_addon` | Talker addon prompt key. Defaults to `fixed_session_language_addon` |
+| `thinker_prompt_addon` | Thinker addon prompt key. Defaults to `thinker_session_language_addon` |
+
+The built-in variants name these sections in `src/examples/frontend_backend_agent/prompts.yaml`: `hindi_talker` and `hindi_thinker` for the Hindi variant, and `multilingual_talker` and `multilingual_thinker` for the multilingual variant. Each Talker section tells the model to speak, converse, and keep context in the session language, to use a filler in that language, and to speak results with exact numbers, units, and names. A Talker section with `few_shots` replaces the English native-protocol demonstrations for that variant. Each Thinker section tells the model to translate the request and entities to English before planning. Tool arguments, queries, and every `response_text` stay in English, and the Talker speaks them in the session language. The older `fixed_session_language_addon` and `thinker_session_language_addon` sections remain the fallback when a variant names none.
+
+The registry loader rejects unknown fields, non-string values, a missing `label`, and an `llm` outside `services.llm`. The client sends the selected variant ID as the `example_variant` session configuration key. The server ignores an unknown ID and logs a warning.
+
+### Start the Multilingual Recipes
+
+Use the cloud profile for languages that Nemotron 3.5 Lightning supports. It runs Lightning, Parakeet RNNT, and Magpie TTS from NVIDIA cloud endpoints:
+
+```bash
+docker compose --profile multilingual-generic-frontend-backend-agent up -d
+```
+
+Use the Server profile for Hindi, Korean, Portuguese, or Chinese, and for the Hindi variant. Gemma 4 and Super VL have no NVIDIA cloud entry. The profile places Lightning, multilingual ASR, and Magpie TTS on GPU 0, Gemma 4 on GPU 1, and Super VL on GPU 2. Set `NVIDIA_API_KEY` for the NIM services, including Super VL, and `HF_TOKEN` for Gemma 4 in `.env`, and log in to `nvcr.io` before you start it:
+
+```bash
+docker compose --profile multilingual-generic-frontend-backend-agent/server up -d
+```
+
+The Server profile builds `docker/Dockerfile.vllm-hf`, downloads the Gemma 4 checkpoint from Hugging Face into `~/.cache/huggingface` at startup, and pulls the Super VL NIM image. Refer to [Configure LLM](configure-llm.md#gemma-4-and-nemotron-35-super-vl) for the model and serving details.
+
+The example has these known limitations:
+
+- The Hindi and multilingual prompts are interim addons that are pending a prompt review.
+- Hindi accuracy of the multilingual ASR has not been verified live.
+- The Talker few-shot demonstrations and output guards are in English.
+- A few deterministic terminal fallback messages, such as "I could not complete that request right now," remain in English.
 
 ## Understand Generic Tool Specifications
 
@@ -281,7 +362,7 @@ examples:
       - generic_thinker
     services:
       llm: [nemotron-lightning]
-      thinker-llm: [nemotron-super, nemotron-lightning]
+      thinker-llm: [nemotron-super-vl, nemotron-lightning]
       asr: [nemotron-asr-streaming-english]
       tts: [magpie-multilingual-tts]
     categories:
@@ -293,9 +374,9 @@ examples:
           temperature: 0.0
           max_tokens: 512
       thinker-llm:
-        nemotron-super:
+        nemotron-super-vl:
           enable_thinking: true
-          reasoning_budget: 256
+          reasoning_effort: low
           temperature: 0.0
           max_tokens: 2048
         nemotron-lightning:
@@ -435,8 +516,8 @@ The generic domain applies the following controls:
   grounded response before the outer callback expires.
 - A typed empty-plan error can retry once after 0.2 seconds. Each attempt
   keeps its 6-second limit inside the same 40-second backend deadline.
-  Generic Super server and cloud catalogs use `max_tokens: 2048`, temperature
-  `0.0`, and a 256-token reasoning budget. These are deployed defaults;
+  The Generic Super VL Thinker settings use `max_tokens: 2048`, temperature
+  `0.0`, and `low` reasoning effort. These are deployed defaults;
   validated, role-specific session overrides can change sampling and output
   limits through [LLM Session Controls](configure-llm.md#llm-session-controls).
 - With the default web-tool deadline, web search can make at most 2 attempts.
@@ -474,11 +555,9 @@ The generic domain applies the following controls:
 - It prevents the Talker from exposing private operating instructions,
   decision criteria, model roles, function names, or internal tool inventory.
   Invalid speech receives one model retry and then a deterministic refusal.
-- In generic `hybrid` result mode, it sends only successful weather results
-  through the Talker. Grounding validation requires the trusted city,
-  temperature, and unit. Missing facts trigger one retry and then the
-  deterministic weather response. Clarifications and failures never use the
-  model rephrasing path.
+- It sends every tool result through the Talker. Weather grounding validation
+  requires the trusted city, temperature, and unit. Missing facts trigger one
+  retry and then the deterministic weather response.
 
 The airline backend keeps its stateful booking workflow, booking-server integration, planner-authored filler, and shared call/cancellation contract for backward compatibility. `AIRLINE_PLANNER_TIMEOUT_SECONDS` and `AIRLINE_BACKEND_TIMEOUT_SECONDS` both default to `30.0` seconds. The planner deadline cannot exceed the overall deadline. A newer generation suppresses a superseded call's late result.
 

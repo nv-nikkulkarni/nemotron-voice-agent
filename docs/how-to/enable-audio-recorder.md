@@ -4,7 +4,7 @@ The audio recorder captures raw ASR/TTS audio for debugging and issue reproducti
 
 Audio is written through `session_store` (`src/session_store/`), the same pluggable
 object-store package session capture uses for logs and transcripts — not directly to a
-local path. Refer to [Session capture and NGC publication](../current-deployed-pipeline-architecture.md#14-session-capture-and-ngc-publication) for the full design.
+local path.
 
 ## Choose Capture Permission in the Astra Client
 
@@ -18,9 +18,7 @@ requires a new choice.
 Server recording depends on the deployment settings below. When session capture
 is enabled, an explicit decline discards the capture after the client reports
 the choice. This applies even when `SESSION_CAPTURE_REQUIRE_CONSENT=false`.
-Temporary server artifacts can exist while the pipeline runs. Refer to
-[browser-side capture reporting](../current-deployed-pipeline-architecture.md#144-browser-side-signal)
-for the retention boundary and teardown behavior.
+Temporary server artifacts can exist while the pipeline runs.
 
 ## Configuration
 

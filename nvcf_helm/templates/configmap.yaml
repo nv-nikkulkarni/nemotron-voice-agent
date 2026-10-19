@@ -20,6 +20,7 @@ data:
           health_path: "/v1/health/ready"
           extra_params: '{"extra_body":{"repetition_penalty":1.05}}'
           settings: nemotron-nim
+        {{- if .Values.llmSuper.enabled }}
         nemotron-super:
           name: "Nemotron 3 Super 120B A12B"
           model_id: "nvidia/nemotron-3-super-120b-a12b"
@@ -27,6 +28,28 @@ data:
           health_path: "/v1/health/ready"
           extra_params: '{"extra_body":{"repetition_penalty":1.05}}'
           settings: nemotron-super
+        {{- end }}
+        {{- if .Values.llmSuperVl.enabled }}
+        nemotron-super-vl:
+          name: "Nemotron 3.5 Super VL 120B A12B"
+          model_id: {{ .Values.llmSuperVl.servedModelName | quote }}
+          base_url: "http://nvidia-llm-super-vl:8000/v1"
+          health_path: "/v1/health/ready"
+          supported_languages: [en, de, es, fr, it, ja, hi, ko, pt, zh]
+          settings: nemotron-super-vl
+        {{- end }}
+        {{- with .Values.vllmModels.gemma4 }}
+        {{- if .enabled }}
+        gemma-4-31b:
+          name: "Gemma 4 31B"
+          model_id: {{ .servedModelName | quote }}
+          base_url: "http://{{ .serviceName }}:{{ .port }}/v1"
+          health_path: "/health"
+          supported_languages: [en, de, es, fr, it, ja, hi, ko, pt, zh, ar, vi]
+          settings: gemma-4-31b
+        {{- end }}
+        {{- end }}
+        {{- if .Values.omni.enabled }}
         nemotron-omni-nvfp4:
           name: "Nemotron 3 Nano Omni 30B A3B Reasoning"
           model_id: {{ .Values.omni.servedModelName | quote }}
@@ -34,6 +57,16 @@ data:
           health_path: "/health"
           extra_params: '{"extra_body":{"top_k":1,"chat_template_kwargs":{"enable_thinking":false},"repetition_penalty":1.05}}'
           settings: nemotron-omni-nim
+        {{- else if .Values.omniRemote.functionId }}
+        # Omni runs as its own NVCF function. No health_path: the NVCF gateway, not the
+        # app, gates readiness, and the app's readiness probe sends no credentials.
+        nemotron-omni-nvfp4:
+          name: "Nemotron 3 Nano Omni 30B A3B Reasoning"
+          model_id: {{ .Values.omni.servedModelName | quote }}
+          base_url: "https://{{ .Values.omniRemote.functionId }}.invocation.api.nvcf.nvidia.com/v1"
+          extra_params: '{"extra_body":{"top_k":1,"chat_template_kwargs":{"enable_thinking":false},"repetition_penalty":1.05}}'
+          settings: nemotron-omni-nim
+        {{- end }}
       tts:
         magpie-multilingual-tts:
           name: "Magpie TTS Multilingual"
@@ -60,6 +93,13 @@ data:
           name: "Nemotron ASR Streaming English"
           server: "nemotron-asr-streaming-english:50052"
           model: "cache-aware-parakeet-rnnt-multi-asr-streaming-sortformer"
+        {{- if .Values.asrMultilingual.enabled }}
+        nemotron-asr-streaming-multilingual:
+          name: "Nemotron ASR Streaming Multilingual"
+          server: "nemotron-asr-streaming-multilingual:50052"
+          model: "cache-aware-parakeet-rnnt-multi-asr-streaming-sortformer"
+          language_code: "auto"
+        {{- end }}
   # Mounted at /app/examples_registry.yaml inside the app container.
   # Controls which examples and transports the UI exposes.
   examples_registry.yaml: |
@@ -69,8 +109,9 @@ data:
     # TRANSPORT_SELECTION env var overrides `transports` at runtime.
     transports: {{ if .Values.app.transport }}{{ .Values.app.transport }}{{ else }}all{{ end }}
 
-    # Demo exposes exactly two examples. The generic experience has fixed,
-    # separately configured Lightning Talker and Super Thinker roles.
+    # Demo examples. Generic Frontend/Backend offers Lightning, Gemma 4, and Super VL
+    # Talkers with a Super VL Thinker; the multilingual flavor adds Hindi and
+    # any-language launch variants.
     examples:
       generic-frontend-backend-agent:
         label: Generic Frontend/Backend Assistant
@@ -89,27 +130,75 @@ data:
           - thinker
           - generic_thinker
         services:
-          llm: [nemotron-lightning]
-          thinker-llm: [nemotron-super]
+          llm: [{{ include "nemotron-voice-agent.talkerLlms" . }}]
+          thinker-llm: [{{ include "nemotron-voice-agent.thinkerLlm" . }}]
           asr: [nemotron-asr-streaming-english]
           tts: [magpie-multilingual-tts{{ if .Values.chatterboxTts.enabled }}, chatterbox-multilingual-tts{{ end }}{{ if .Values.zeroShotTts.enabled }}, magpie-zeroshot-tts{{ end }}]
         categories:
           thinker-llm: llm
         settings:
-          llm:
-            nemotron-lightning:
-              enable_thinking: false
-              temperature: 0.0
-              max_tokens: 512
-          thinker-llm:
-            nemotron-super:
-              enable_thinking: true
-              reasoning_budget: 256
-              temperature: 0.0
-              max_tokens: 2048
+          {{- include "nemotron-voice-agent.fbaLlmSettings" . | nindent 10 }}
         defaults:
           prompt: [generic_talker]
         bot: examples.frontend_backend_agent.pipeline:bot
+
+      {{- if and .Values.asrMultilingual.enabled .Values.vllmModels.gemma4.enabled }}
+      multilingual-generic-frontend-backend-agent:
+        label: Multilingual Frontend/Backend Assistant
+        domain_profile: generic
+        thinker_prompt: generic_thinker
+        capabilities: [session_languages]
+        tools:
+          - get_weather
+          - get_stock_price
+          - get_current_time
+          - show_architecture
+          - web_search
+          - calculate_bmi
+          - generate_random_number
+        agent_prompt_keys:
+          - talker
+          - thinker
+          - generic_thinker
+          - fixed_session_language_addon
+          - thinker_session_language_addon
+          - hindi_talker
+          - hindi_thinker
+          - multilingual_talker
+          - multilingual_thinker
+        services:
+          # Lightning declares fewer languages; the session language list is the
+          # intersection with the selected Talker, so Gemma 4 and Super VL come first.
+          llm: [gemma-4-31b{{ if .Values.llmSuperVl.enabled }}, nemotron-super-vl{{ end }}{{ if .Values.llmLightning.enabled }}, nemotron-lightning{{ end }}]
+          thinker-llm: [{{ include "nemotron-voice-agent.thinkerLlm" . }}]
+          asr: [nemotron-asr-streaming-multilingual]
+          tts: [magpie-multilingual-tts{{ if .Values.chatterboxTts.enabled }}, chatterbox-multilingual-tts{{ end }}{{ if .Values.zeroShotTts.enabled }}, magpie-zeroshot-tts{{ end }}]
+        categories:
+          thinker-llm: llm
+        settings:
+          {{- include "nemotron-voice-agent.fbaLlmSettings" . | nindent 10 }}
+        variants:
+          hindi:
+            label: Hindi
+            description: Speaks and listens in Hindi, with the same tools.
+            session_language: hi-IN
+            llm: gemma-4-31b
+            tts_voice: Leo
+            talker_prompt_addon: hindi_talker
+            thinker_prompt_addon: hindi_thinker
+          multilingual:
+            label: Any language
+            description: Pick any supported language before you start.
+            llm: gemma-4-31b
+            talker_prompt_addon: multilingual_talker
+            thinker_prompt_addon: multilingual_thinker
+        defaults:
+          default_session_language: en-US
+          prompt: [generic_talker]
+        bot: examples.frontend_backend_agent.pipeline:bot
+      {{- end }}
+
+      {{- if or .Values.omni.enabled .Values.omniRemote.functionId }}
 
       omni-assistant-subagents:
         label: Nemotron Omni Assistant Subagents
@@ -120,3 +209,4 @@ data:
         defaults:
           prompt: [omni_subagents_assistant]
         bot: examples.omni_assistant_subagents.pipeline:bot
+      {{- end }}

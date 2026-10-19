@@ -1,0 +1,108 @@
+{{- /*
+One vLLM Deployment per enabled `vllmModels` entry (Hugging Face checkpoints served
+from vllmHfImage). The image entrypoint exports HF_TOKEN from the NVCF secrets file
+and runs `vllm serve` with these args.
+*/ -}}
+{{- range $name, $model := .Values.vllmModels }}
+{{- if $model.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" $ }}-vllm-{{ $name | lower }}
+  labels:
+    {{- include "nemotron-voice-agent.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: vllm-{{ $name | lower }}
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 7200
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "nemotron-voice-agent.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: vllm-{{ $name | lower }}
+  template:
+    metadata:
+      labels:
+        {{- include "nemotron-voice-agent.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: vllm-{{ $name | lower }}
+    spec:
+      {{- include "nemotron-voice-agent.imagePullSecrets" $ | nindent 6 }}
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - name: vllm
+          image: "{{ $.Values.vllmHfImage.repository }}:{{ $.Values.vllmHfImage.tag }}"
+          imagePullPolicy: {{ $.Values.vllmHfImage.pullPolicy }}
+          args:
+            - {{ required (printf "vllmModels.%s.model is required" $name) $model.model | quote }}
+            - "--served-model-name={{ required (printf "vllmModels.%s.servedModelName must match the chart services.yaml model_id" $name) $model.servedModelName }}"
+            - "--host=0.0.0.0"
+            - "--port={{ $model.port }}"
+            {{- range $model.args }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $model.port }}
+              protocol: TCP
+          # Weights download from Hugging Face at startup — allow a long warmup (90 min).
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            failureThreshold: 180
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 3
+          volumeMounts:
+            - name: model-cache
+              mountPath: /cache
+            - name: shm
+              mountPath: /dev/shm
+          {{- with $model.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: model-cache
+          {{- if $model.cache.nvcf }}
+          emptyDir:
+            sizeLimit: {{ $model.cache.size }}
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ include "nemotron-voice-agent.fullname" $ }}-vllm-{{ $name | lower }}-cache
+          {{- end }}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ $model.shmSize }}
+      {{- with $model.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $model.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $model.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}

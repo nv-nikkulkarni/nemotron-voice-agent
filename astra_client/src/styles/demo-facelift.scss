@@ -95,9 +95,81 @@
 .example-card .ex-tag { border-radius: var(--radius-full); padding: 5px 8px; font-family: var(--font-sans); font-size: 10px; border-color: rgba(255, 255, 255, 0.075); }
 .example-card__feature { font-family: var(--font-sans); font-size: 12px; background: color-mix(in srgb, var(--ex-accent) 5%, transparent); border-color: color-mix(in srgb, var(--ex-accent) 18%, transparent); margin: 0; }
 .example-card__samples { margin-top: auto; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+// Example cards with launch variants (e.g. Hindi vs. multilingual) end in a button row.
+.example-card--variants { cursor: pointer; }
+.example-card--variants .example-card__samples { margin-top: 0; }
+.example-card__variants {
+  margin-top: auto; display: flex; flex-wrap: wrap; gap: 10px;
+  .btn-primary, .btn-secondary { flex: 1 1 180px; min-height: 44px; border-radius: var(--radius-full); }
+  .btn-secondary[aria-pressed="true"] { border-color: var(--ex-accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--ex-accent) 45%, transparent); }
+}
+.startview__language {
+  margin: 0; display: flex; flex-direction: column; gap: 5px; text-align: left; flex-shrink: 0;
+  .set-select { min-width: 220px; min-height: 40px; border-radius: var(--radius-full); padding: 0 34px 0 14px; font-size: 13px; }
+}
 .ex-samples-label { font-size: 10px; letter-spacing: 0.1em; }
 .example-card__samples ul { gap: 6px; margin-top: 10px; }
 .example-card__samples li { font-size: 12px; line-height: 1.5; font-style: normal; color: var(--text-secondary); }
+
+// Desktop landing fits one screen: three compact cards side by side, a tighter hero,
+// and a slimmer launch bar. Narrower screens keep the stacked, scrollable layout.
+@media (min-width: 980px) {
+  .startview { gap: 18px; padding: clamp(16px, 3.2vh, 40px) 28px 20px; }
+  .startview__eyebrow { margin-bottom: 6px; }
+  .startview__title { font-size: clamp(30px, 3.4vw, 48px); line-height: 1.1; }
+  .startview__subtitle { margin-top: 8px; font-size: 14px; line-height: 1.5; }
+  .startview__steps { margin: 14px 0 0; }
+  .example-grid { max-width: 1240px; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .example-card { padding: 18px; gap: 12px; border-radius: 18px; }
+  .example-card__header { gap: 12px; }
+  .example-card__logo { width: 34px; height: 39px; }
+  .example-card__title { font-size: 19px; }
+  .example-card__blurb {
+    font-size: 12.5px; line-height: 1.55;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .example-card__tags { gap: 6px; }
+  .example-card .ex-tag { padding: 4px 7px; }
+  .example-card__feature { font-size: 11.5px; line-height: 1.5; padding: 8px 10px; }
+  .example-card__samples { padding-top: 12px; }
+  .example-card__samples ul { gap: 4px; margin-top: 6px; }
+  .example-card__variants {
+    gap: 8px;
+    .btn-primary, .btn-secondary { flex: 1 1 140px; min-height: 38px; font-size: 13px; padding-inline: 12px; white-space: nowrap; }
+  }
+  .startview__launch { width: min(1240px, 100%); padding: 12px 18px; }
+}
+// Narrow desktops: smaller card type so the three columns wrap less.
+@media (min-width: 980px) and (max-width: 1180px) {
+  .startview { padding-inline: 20px; }
+  .example-grid { gap: 12px; }
+  .example-card { padding: 16px; gap: 10px; }
+  .example-card__topline { flex-wrap: nowrap; }
+  .example-card__category { font-size: 9px; letter-spacing: 0.06em; }
+  .example-card__state { font-size: 9px; padding: 3px 6px; white-space: nowrap; }
+  .example-card__logo { width: 30px; height: 34px; }
+  .example-card__title { font-size: 17px; }
+  .example-card__blurb { font-size: 12px; -webkit-line-clamp: 2; }
+  .example-card .ex-tag { font-size: 9.5px; padding: 3px 6px; }
+  .example-card__feature { font-size: 11px; padding: 6px 8px; }
+  .example-card__variants { flex-wrap: nowrap; }
+}
+// Short laptop screens: drop the step hints, which repeat the card actions.
+@media (min-width: 980px) and (max-height: 820px) {
+  .startview { gap: 14px; }
+  .startview__steps { display: none; }
+  .startview__title { font-size: clamp(28px, 3vw, 40px); }
+}
+// 720p-class screens: also drop the eyebrow and tighten the cards and launch bar.
+@media (min-width: 980px) and (max-height: 740px) {
+  .startview { gap: 12px; padding-top: 12px; padding-bottom: 12px; }
+  .startview__eyebrow { display: none; }
+  .startview__subtitle { margin-top: 4px; }
+  .example-card { padding: 16px; gap: 10px; }
+  .example-card__samples { padding-top: 10px; }
+  .startview__launch { padding: 10px 16px; }
+  .startview__actions button { min-height: 38px; }
+}
 
 .startview__launch {
   width: min(1000px, 100%); margin-top: 0; padding: 18px 20px;
@@ -577,3 +649,411 @@
   &::before { content: ""; position: absolute; top: -5px; left: 50%; width: 8px; height: 8px; transform: translateX(-50%) rotate(45deg); background: rgba(10, 11, 14, 0.95); border-top: 1px solid rgba(163, 230, 53, 0.28); border-left: 1px solid rgba(163, 230, 53, 0.28); } }
 @keyframes latency-hint { 0% { opacity: 0; transform: translate(-50%, -4px); } 8%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .conv-latency__hint { animation: none; } }
+
+// ---------------------------------------------------------------------------------------
+// Four-card landing grid, agent builder, schematic, and Models page.
+// ---------------------------------------------------------------------------------------
+
+// The fourth card (build your own) joins the grid: 2x2 on mid-size screens, one row of four
+// from 1180px, where card copy is trimmed so the landing stays on one screen.
+@media (min-width: 980px) {
+  .example-grid { max-width: 1040px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .example-card { padding: 16px 18px; gap: 10px; }
+  .example-card__blurb { font-size: 12px; line-height: 1.55; }
+}
+@media (min-width: 1180px) and (max-height: 999px) {
+  .example-grid { max-width: 1360px; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  .example-card { padding: 16px; }
+  .example-card__samples { display: none; }
+  .example-card__header { align-items: flex-start; }
+  .example-card__logo { width: 30px; height: 34px; }
+  .example-card__title { font-size: 18px; }
+  .example-card__variants .btn-primary, .example-card__variants .btn-secondary { flex: 1 1 100%; }
+  .startview { gap: 14px; padding-top: clamp(12px, 2.4vh, 28px); }
+  .startview__steps { margin-top: 10px; }
+}
+@media (min-width: 980px) and (max-width: 1179px) and (max-height: 800px) {
+  .example-card__tags { display: none; }
+  .example-card { gap: 8px; padding: 14px 16px; }
+}
+@media (min-width: 980px) and (max-height: 860px) {
+  .startview { gap: 10px; padding-top: 10px; }
+  .startview__steps { display: none; }
+  .example-card__samples { display: none; }
+}
+@media (min-width: 980px) and (max-height: 800px) {
+  .example-card__feature { display: none; }
+}
+@media (min-width: 980px) and (max-height: 760px) {
+  .startview__subtitle { display: none; }
+  .example-card__feature { display: none; }
+}
+.example-card--builder {
+  text-align: left; cursor: pointer; font: inherit; color: inherit;
+  .example-card__variants { margin-top: auto; }
+  .example-card__variants .btn-primary { display: inline-flex; align-items: center; justify-content: center; flex: 1 1 180px; min-height: 44px; }
+  &:disabled { opacity: 0.6; cursor: not-allowed; }
+}
+
+// Screen-reader-only text (the legacy sheets define this only inside two dialogs).
+.agent-builder .sr-only, .schematic .sr-only, .models .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+// --- Builder page ---
+.agent-builder__grid { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 20px; align-items: start; }
+.agent-builder__chat { display: flex; flex-direction: column; gap: 12px; min-height: 520px; }
+.agent-builder__log { display: flex; flex-direction: column; gap: 10px; max-height: 420px; min-height: 260px; overflow-y: auto; padding-right: 4px; }
+.agent-builder__bubble {
+  max-width: 92%; padding: 10px 14px; border-radius: 16px; font-size: 14px; line-height: 1.55; overflow-wrap: anywhere;
+  animation: pop-in 220ms var(--ease-out-soft);
+  &--assistant { align-self: flex-start; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-top-left-radius: 4px; }
+  &--user { align-self: flex-end; background: color-mix(in srgb, #76b900 18%, transparent); border: 1px solid color-mix(in srgb, #76b900 40%, transparent); border-top-right-radius: 4px; }
+  &.is-declined { border-color: color-mix(in srgb, #f59e0b 45%, transparent); background: color-mix(in srgb, #f59e0b 8%, transparent); }
+}
+.agent-builder__typing { display: inline-flex; gap: 5px; align-items: center; padding: 14px 16px; }
+.agent-builder__typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); animation: builder-dot 1s ease-in-out infinite; }
+.agent-builder__typing span:nth-child(2) { animation-delay: 0.15s; }
+.agent-builder__typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes builder-dot { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+.agent-builder__suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
+.agent-builder__suggestion {
+  border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.03); color: var(--text-secondary);
+  border-radius: var(--radius-full); padding: 7px 12px; font-size: 12px; cursor: pointer; text-align: left;
+  transition: border-color 160ms ease, color 160ms ease, transform 200ms var(--ease-spring);
+  &:hover:not(:disabled) { border-color: #76b900; color: var(--text-primary); transform: translateY(-1px); }
+}
+.agent-builder__error { color: #fca5a5; font-size: 13px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.agent-builder__form { display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
+.agent-builder__form-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; small { color: var(--text-muted); font-size: 11px; } }
+.agent-builder__preview { display: flex; flex-direction: column; gap: 14px; }
+.agent-builder__facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 18px; margin: 0;
+  div { min-width: 0; }
+  dt { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+  dd { margin: 2px 0 0; font-size: 13px; color: var(--text-primary); overflow-wrap: anywhere; }
+}
+.agent-builder__warnings { margin: 0; padding-left: 18px; font-size: 12px; color: #fcd34d; li + li { margin-top: 4px; } }
+.agent-builder__actions { display: flex; flex-wrap: wrap; gap: 10px; .btn-primary { flex: 1 1 220px; min-height: 44px; } }
+
+// --- Schematic ---
+.schematic { position: relative; margin: 0; width: 100%; aspect-ratio: 100 / 70; min-height: 280px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.08); background: radial-gradient(ellipse at 50% 0%, rgba(118, 185, 0, 0.07), transparent 70%), rgba(10, 12, 16, 0.5); overflow: hidden; }
+.schematic__edges { position: absolute; inset: 0; width: 100%; height: 100%; }
+.schematic__edge { stroke: rgba(255, 255, 255, 0.16); stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-dasharray: 4 4; &.is-dashed { stroke-dasharray: 2 5; } }
+.schematic__edge.is-live { stroke: #76b900; animation: dashdraw 1.2s linear infinite; }
+.schematic.is-busy .schematic__edge.is-live { animation-duration: 0.5s; }
+.schematic__node {
+  position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center;
+  padding: 7px 8px; border-radius: 12px; border: 1px dashed rgba(255, 255, 255, 0.18); background: rgba(23, 26, 34, 0.82); color: var(--text-muted);
+  transition: border-color 220ms ease, box-shadow 220ms ease, background 220ms ease; min-width: 0;
+  &.is-filled { border: 1px solid color-mix(in srgb, var(--node-accent) 60%, transparent); color: var(--text-primary); background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--node-accent) 14%, transparent), transparent 80%), rgba(23, 26, 34, 0.92); box-shadow: 0 0 18px color-mix(in srgb, var(--node-accent) 14%, transparent); }
+  &:hover, &:focus-visible { outline: none; z-index: 2; border-color: var(--node-accent); box-shadow: 0 0 0 1px var(--node-accent), 0 0 22px color-mix(in srgb, var(--node-accent) 28%, transparent); }
+}
+.schematic__title { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: color-mix(in srgb, var(--node-accent) 70%, white); }
+.schematic__value { font-size: 12px; line-height: 1.25; font-weight: 600; overflow-wrap: anywhere; animation: pop-in 320ms var(--ease-spring); }
+.schematic__sub { font-size: 10px; line-height: 1.3; color: var(--text-secondary); overflow-wrap: anywhere; }
+.schematic__chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; margin-top: 3px; }
+.schematic__chip { font-size: 9px; padding: 2px 6px; border-radius: var(--radius-full); border: 1px solid color-mix(in srgb, var(--node-accent) 35%, transparent); color: var(--text-secondary); }
+
+// --- Models page ---
+.models__choices { border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.models__choice {
+  display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.03);
+  transition: border-color 160ms ease, transform 200ms var(--ease-spring), background 160ms ease;
+  input { margin-top: 4px; accent-color: #76b900; }
+  &:hover { transform: translateY(-1px); border-color: rgba(255, 255, 255, 0.28); }
+  &.is-selected { border-color: #76b900; background: color-mix(in srgb, #76b900 8%, transparent); }
+}
+.models__choice-body { display: flex; flex-direction: column; gap: 3px; strong { font-size: 14px; } small { font-size: 11px; color: var(--text-secondary); } }
+.models__badge { font-style: normal; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; margin-left: 8px; padding: 2px 6px; border-radius: var(--radius-full); border: 1px solid rgba(118, 185, 0, 0.4); color: #a3d94e; }
+.models__footer { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; }
+
+@media (max-width: 860px) {
+  .agent-builder__grid { grid-template-columns: minmax(0, 1fr); }
+  .agent-builder__chat { min-height: 0; }
+  // Narrow screens: the diagram becomes a stacked list.
+  .schematic { aspect-ratio: auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+  .schematic__edges { display: none; }
+  .schematic__node { position: static; transform: none; width: auto !important; flex-direction: column; align-items: flex-start; text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .schematic__edge.is-live, .agent-builder__typing span, .agent-builder__bubble, .schematic__value { animation: none; }
+  .models__choice, .agent-builder__suggestion { transition: none; }
+}
+
+// Without the builder card the grid has three cards: use all of the row instead of leaving a gap.
+@media (min-width: 980px) {
+  .example-grid.example-grid--three { max-width: 1240px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+// Tall, wide screens: keep the four cards as a roomy 2x2 square instead of one cramped row, so the page
+// fills the screen. The launch bar stays pinned so it never drops below the fold on shorter windows.
+@media (min-width: 1180px) and (min-height: 1000px) {
+  .example-grid:not(.example-grid--three) { max-width: 1120px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .example-grid:not(.example-grid--three) .example-card { padding: 16px 20px; gap: 10px; }
+  .example-grid:not(.example-grid--three) .example-card__blurb { font-size: 13px; line-height: 1.5; }
+  .example-grid:not(.example-grid--three) .example-card__logo { width: 32px; height: 36px; }
+  .example-grid:not(.example-grid--three) .example-card__title { font-size: 20px; }
+  .startview__scroll { gap: 14px; padding-top: clamp(14px, 2.5vh, 28px); }
+  .startview__title { font-size: clamp(30px, 3.4vw, 48px); line-height: 1.1; }
+  .startview__eyebrow { margin-bottom: 6px; }
+  .startview__subtitle { margin-top: 8px; }
+  .startview__launch { max-width: 1180px; margin-top: 12px; }
+}
+
+// Start page structure: the hero and cards scroll inside their own region and the launch dock sits below
+// it in normal flow, so a card can never slide underneath the dock.
+.startview { padding: 0; gap: 0; align-items: stretch; justify-content: flex-start; min-height: 0; overflow: hidden; }
+.startview__scroll {
+  flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 28px;
+  padding: clamp(24px, 5vh, 56px) 28px 28px;
+  scrollbar-gutter: stable both-edges;
+}
+.startview__scroll > * { flex-shrink: 0; }
+.startview__error { text-align: center; }
+.startview__launch {
+  flex: none; align-self: center; width: min(1240px, calc(100% - 40px)); max-width: none; margin: 0 0 18px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 18px;
+  padding: 12px 16px 12px 20px; border-radius: 20px; position: static;
+  background: linear-gradient(110deg, rgba(118, 185, 0, 0.1), rgba(34, 211, 238, 0.035)), #14181f;
+}
+.startview__selection { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.startview__selection strong { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.startview__chip {
+  font-size: 11px; line-height: 1; padding: 6px 10px; border-radius: var(--radius-full);
+  color: #cfeaa0; background: rgba(118, 185, 0, 0.12); border: 1px solid rgba(118, 185, 0, 0.3);
+}
+.startview__customise { display: flex; align-items: center; gap: 2px; }
+.btn-ghost {
+  min-height: 38px; padding: 0 12px; border-radius: var(--radius-full); border: 1px solid transparent; background: transparent;
+  color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+  &:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); color: var(--text-primary, #fff); }
+  &:focus-visible { outline: 2px solid #b3e76a; outline-offset: 2px; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+.startview__start { min-height: 48px; padding-inline: 28px; font-size: 15px; white-space: nowrap; }
+.startview__more { position: relative; }
+.startview__more summary {
+  list-style: none; cursor: pointer; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%;
+  color: var(--text-secondary); font-size: 20px; line-height: 1;
+  &::-webkit-details-marker { display: none; }
+  &:hover { background: rgba(255, 255, 255, 0.07); }
+  &:focus-visible { outline: 2px solid #b3e76a; outline-offset: 2px; }
+}
+.startview__more-menu {
+  position: absolute; right: 0; bottom: calc(100% + 8px); min-width: 180px; padding: 6px; z-index: 6;
+  background: #11151d; border: 1px solid rgba(118, 185, 0, 0.25); border-radius: 14px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  .btn-ghost { width: 100%; justify-content: flex-start; text-align: left; border-radius: 10px; }
+}
+
+// Steps read as progress, not as controls.
+.startview__steps li.is-done span { background: rgba(118, 185, 0, 0.25); border-color: rgba(118, 185, 0, 0.6); color: #d8f5a2; }
+.startview__steps li.is-next { color: var(--text-primary, #fff); }
+.startview__steps em { font-style: normal; font-size: 10px; color: var(--text-muted); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--radius-full); padding: 2px 7px; margin-left: 2px; }
+
+// Mode switch inside a card: a segmented control, visibly a choice and not a launch button.
+.example-card__modes { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+.example-card__modes .startview__language { flex-direction: row; align-items: center; gap: 10px; .set-select { flex: 1; min-width: 0; } }
+.segmented {
+  display: flex; padding: 4px; gap: 4px; border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.segmented__option {
+  flex: 1 1 0; min-height: 38px; padding: 0 12px; border: 0; border-radius: var(--radius-full); background: transparent;
+  color: var(--text-secondary); font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+  &:hover:not(:disabled):not(.is-active) { background: rgba(255, 255, 255, 0.07); }
+  &.is-active { background: color-mix(in srgb, var(--ex-accent) 22%, #1b212b); color: #fff; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ex-accent) 60%, transparent); }
+  &:focus-visible { outline: 2px solid #b3e76a; outline-offset: 2px; }
+  &:disabled { opacity: 0.55; cursor: not-allowed; }
+}
+.example-card__link {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 18px;
+  border-radius: var(--radius-full); border: 1px solid color-mix(in srgb, var(--ex-accent) 55%, transparent);
+  color: color-mix(in srgb, var(--ex-accent) 55%, white); font-size: 13px;
+}
+.example-card--builder:hover .example-card__link { background: color-mix(in srgb, var(--ex-accent) 14%, transparent); }
+.example-card:focus-visible { outline: 2px solid #b3e76a; outline-offset: 3px; }
+
+@media (max-width: 900px) {
+  .startview__launch { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 12px 14px; }
+  .startview__customise { flex-wrap: wrap; }
+  .startview__start { width: 100%; }
+}
+@media (max-width: 700px) {
+  .startview__scroll { padding: 24px 18px 18px; gap: 24px; }
+  .startview__launch { width: calc(100% - 24px); margin-bottom: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .segmented__option, .btn-ghost { transition: none; }
+}
+
+// Selection marker: a radio dot on every card instead of "Select assistant" pills.
+.example-card__state { display: inline-flex; align-items: center; gap: 7px; border-color: transparent; padding: 3px 4px; }
+.example-card__state:not(.is-selected) { background: none; }
+.example-card__radio {
+  width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.35); display: inline-block; flex: none;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+.example-card.selected .example-card__radio, .example-card__state.is-selected .example-card__radio {
+  border-color: var(--ex-accent); background: radial-gradient(circle, var(--ex-accent) 0 45%, transparent 50%);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--ex-accent) 50%, transparent);
+}
+.example-card:hover .example-card__radio { border-color: var(--ex-accent); }
+.example-card--builder .example-card__state { display: none; }
+// The language picker inside a card is labelled by the mode switch above it; hide its duplicate caption.
+.example-card__modes .startview__language .startview__selection-label { display: none; }
+
+// Tall screens: give the cards the room the dock took.
+@media (min-width: 1180px) and (min-height: 1000px) {
+  .startview__scroll { padding-top: clamp(14px, 2.4vh, 30px); gap: 20px; }
+  .startview__steps { margin-top: 14px; }
+  .example-grid:not(.example-grid--three) .example-card { padding: 18px 22px; gap: 11px; }
+  .example-grid:not(.example-grid--three) .example-card__logo { width: 36px; height: 41px; }
+}
+
+// 1000-1100px tall windows: the 2x2 grid plus steps is a little taller than the region, so drop the steps.
+@media (min-width: 1180px) and (min-height: 1000px) and (max-height: 1100px) {
+  .startview__steps { display: none; }
+}
+
+// One card anatomy for all four cards: the same neutral surface and border, a footer pinned to the bottom, and
+// identity from ONE accent per card used in three places (top line, logo tile, category). Green means "selected".
+.example-grid .example-card {
+  --ex-accent: #76b900;
+  border: 1px solid rgba(255, 255, 255, 0.12); border-top: 2px solid var(--ex-accent);
+  background: rgba(21, 25, 32, 0.9);
+  text-align: left; font: inherit; color: inherit;
+}
+.example-grid .example-card.selected { border-color: #76b900; border-top-color: #76b900; box-shadow: 0 0 0 1px rgba(118, 185, 0, 0.55), 0 12px 36px rgba(0, 0, 0, 0.3); }
+// Hover stays neutral so it can't be mistaken for the green selected state.
+.example-grid .example-card:hover:not(.selected) {
+  border-color: rgba(255, 255, 255, 0.3); border-top-color: var(--ex-accent); box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
+  .example-card__radio { border-color: rgba(255, 255, 255, 0.7); }
+}
+.example-grid .example-card::before { opacity: 0 !important; }
+.example-grid .example-card__category { color: color-mix(in srgb, var(--ex-accent) 70%, white); }
+.example-card__tile {
+  display: grid; place-items: center; flex: none; width: 48px; height: 48px; border-radius: 14px;
+  background: color-mix(in srgb, var(--ex-accent) 16%, #151920);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ex-accent) 35%, transparent);
+}
+.example-grid .example-card__tile .example-card__logo { width: 28px; height: 32px; filter: none; }
+// The card's own select button sits under the content; clicks on the content bubble up to the card.
+.example-card > .example-card__select {
+  position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit;
+  background: transparent; cursor: pointer;
+}
+.example-card:has(.example-card__select:focus-visible) { outline: 2px solid #b3e76a; outline-offset: 3px; }
+.example-grid .example-card { cursor: pointer; }
+.example-card__title span { display: inline; }
+.example-card__title span + span::before { content: " "; }
+.example-card--variants .example-card__modes, .example-card__modes { margin-top: auto; }
+.example-card__modes + .example-card__footer { margin-top: 0; }
+.example-card__footer,
+.example-card--variants .example-card__footer {
+  margin-top: auto; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08);
+  min-height: 78px; display: flex; flex-direction: column; justify-content: flex-start; gap: 6px;
+}
+.example-card__footer ul { margin-top: 0; }
+.example-card__footer .example-card__link { align-self: stretch; min-height: 38px; }
+// Segmented controls are neutral: the only strong greens on the page are the selection and Start.
+.segmented__option.is-active {
+  background: rgba(255, 255, 255, 0.14); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+// Every card starts the same way: a one-line topline of the same height, so headers line up across a row.
+.example-grid .example-card__topline { flex-wrap: nowrap; min-height: 24px; }
+.example-grid .example-card__category { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.example-grid .example-card__state { flex: none; }
+.example-card .segmented__option { padding: 0 8px; font-size: 12.5px; min-height: 34px; }
+// Short windows keep the footers (so every card still ends the same way) but trim them to one line.
+@media (min-width: 980px) and (max-height: 860px) {
+  .example-card__footer, .example-card--variants .example-card__footer { display: flex; min-height: 58px; padding-top: 8px; gap: 4px; }
+  .example-card__footer li:nth-child(n + 2) { display: none; }
+  .example-card__footer .example-card__link { min-height: 28px; font-size: 12px; }
+}
+@media (min-width: 980px) and (max-height: 760px) {
+  .example-card__tags { display: none; }
+}
+@media (min-width: 980px) and (max-width: 1179px) and (max-height: 800px) {
+  .example-card__tags, .startview__eyebrow, .startview__subtitle { display: none; }
+  .startview__scroll { gap: 12px; padding-top: 12px; }
+  .example-grid { gap: 10px; }
+}
+
+// Selection is always NVIDIA green, whatever the card's own accent is.
+.example-grid .example-card.selected .example-card__radio, .example-grid .example-card__state.is-selected .example-card__radio {
+  border-color: #76b900; background: radial-gradient(circle, #76b900 0 45%, transparent 50%); box-shadow: 0 0 10px rgba(118, 185, 0, 0.5);
+}
+.example-grid .example-card__state.is-selected { color: #cfeaa0; background: rgba(118, 185, 0, 0.1); border-color: rgba(118, 185, 0, 0.3); }
+// Fit: a little less height per card on tall windows and on 1024-wide ones.
+@media (min-width: 1180px) and (min-height: 1000px) {
+  .example-card__footer, .example-card--variants .example-card__footer { min-height: 76px; }
+  .example-card__tile { width: 44px; height: 44px; }
+}
+@media (min-width: 980px) and (max-width: 1179px) and (max-height: 800px) {
+  .example-card .segmented__option { min-height: 30px; }
+  .example-card__tile { width: 40px; height: 40px; }
+  .example-card__modes .ex-samples-label { display: none; }
+  .example-card__footer, .example-card--variants .example-card__footer { min-height: 56px; }
+}
+
+// The bottom cards fill the slot the top cards use for a switch, and every row is the same height.
+.example-grid { grid-auto-rows: 1fr; }
+.example-card__slot { margin-top: auto; margin-bottom: 0; }
+.example-card__feature.example-card__slot { padding: 10px 12px; font-size: 12px; line-height: 1.5; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.04); }
+.example-card__how {
+  list-style: none; padding: 9px 10px; margin: auto 0 0; display: flex; justify-content: space-between; gap: 6px; border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.04); font-size: 12px; color: var(--text-secondary);
+  li { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  b { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-size: 10px; color: #fff; background: color-mix(in srgb, var(--ex-accent) 45%, #1b212b); }
+}
+.example-card__slot + .example-card__footer { margin-top: 0; }
+@media (min-width: 980px) and (max-height: 860px) { .example-card__slot { display: none; } .example-card__slot + .example-card__footer { margin-top: auto; } }
+@media (min-width: 1180px) and (min-height: 1000px) {
+  .example-grid:not(.example-grid--three) .example-card { padding: 14px 18px; gap: 8px; }
+  .example-grid { gap: 12px; }
+}
+@media (min-width: 1180px) and (min-height: 1000px) and (max-height: 1100px) {
+  .startview__eyebrow { display: none; }
+  .startview__scroll { gap: 20px; }
+}
+@media (min-width: 980px) and (max-width: 1179px) and (max-height: 800px) {
+  .example-grid .example-card { padding: 12px 16px; gap: 7px; }
+  .startview__title { font-size: 34px; }
+}
+
+// Colour with charm, one recipe for every card: a soft wash of the card's accent from the top-left corner, a glowing
+// logo tile, accent-tinted tags and divider, and an accent glow on hover. Only the accent differs between cards, and
+// the selected card is outlined in NVIDIA green on top of it.
+.example-grid .example-card {
+  background:
+    radial-gradient(ellipse 85% 60% at 0% 0%, color-mix(in srgb, var(--ex-accent) 17%, transparent), transparent 70%),
+    radial-gradient(ellipse 60% 45% at 100% 100%, color-mix(in srgb, var(--ex-accent) 7%, transparent), transparent 75%),
+    rgba(20, 24, 31, 0.92);
+  border-top: 0; box-shadow: inset 0 2px 0 var(--ex-accent), 0 10px 28px rgba(0, 0, 0, 0.25);
+}
+.example-grid .example-card.selected {
+  box-shadow: inset 0 2px 0 var(--ex-accent), 0 0 0 1px rgba(118, 185, 0, 0.6), 0 14px 40px rgba(0, 0, 0, 0.35), 0 0 34px rgba(118, 185, 0, 0.14);
+}
+.example-grid .example-card:hover:not(.selected) {
+  border-color: color-mix(in srgb, var(--ex-accent) 50%, transparent);
+  box-shadow: inset 0 2px 0 var(--ex-accent), 0 16px 38px rgba(0, 0, 0, 0.35), 0 0 30px color-mix(in srgb, var(--ex-accent) 20%, transparent);
+}
+.example-card__tile {
+  background: radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--ex-accent) 38%, #151920), color-mix(in srgb, var(--ex-accent) 14%, #12161c) 75%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ex-accent) 45%, transparent), 0 0 18px color-mix(in srgb, var(--ex-accent) 28%, transparent);
+}
+.example-grid .example-card .ex-tag {
+  color: color-mix(in srgb, var(--ex-accent) 35%, white);
+  background: color-mix(in srgb, var(--ex-accent) 9%, transparent);
+  border-color: color-mix(in srgb, var(--ex-accent) 26%, transparent);
+}
+.example-grid .example-card__footer { border-top-color: color-mix(in srgb, var(--ex-accent) 22%, transparent); }
+.example-grid .example-card .ex-samples-label { color: color-mix(in srgb, var(--ex-accent) 55%, var(--text-muted)); }
+.example-card__feature.example-card__slot, .example-card__how {
+  background: color-mix(in srgb, var(--ex-accent) 8%, transparent); border-color: color-mix(in srgb, var(--ex-accent) 28%, transparent);
+}
+.example-card__link { border-color: color-mix(in srgb, var(--ex-accent) 65%, transparent); color: color-mix(in srgb, var(--ex-accent) 45%, white); }
+.segmented { border-color: color-mix(in srgb, var(--ex-accent) 22%, transparent); }
+.example-grid .segmented__option.is-active { background: rgba(255, 255, 255, 0.2); color: #fff; font-weight: 600; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35); }

@@ -55,6 +55,12 @@ def _source_grounding_missing(call: ValidatedToolCall, source_query: str) -> lis
     """Reject planner-authored subjects that are absent from the delegated request."""
     required = _SOURCE_GROUNDED_PARAMS.get(call.name, ())
     query_words = set(_WORD_RE.findall(source_query.casefold()))
+    letters = [char for char in source_query if char.isalpha()]
+    if letters and sum(not char.isascii() for char in letters) * 2 > len(letters):
+        # A request written mostly in another script (Hindi, Japanese, ...) is translated by the
+        # Thinker, so literal overlap with its English arguments cannot be checked. Stray Latin
+        # words or digits in it (a unit, an earlier number) must not turn that into a refusal.
+        return []
     missing: list[str] = []
     for name in required:
         argument_words = _distinctive_words(call.arguments.get(name))

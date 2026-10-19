@@ -107,6 +107,13 @@ Full image reference for the ASR NIM container.
 {{- end }}
 
 {{/*
+Full image reference for the Super VL LLM NIM container.
+*/}}
+{{- define "nemotron-voice-agent.llmSuperVlImage" -}}
+{{ .Values.llmSuperVlImage.repository }}:{{ .Values.llmSuperVlImage.tag }}
+{{- end -}}
+
+{{/*
 Full image reference for the Super 120B LLM NIM container.
   nvcr.io/0491162300748285/nemotron-3-super-120b-a12b:2.0.5
 */}}
@@ -195,3 +202,45 @@ command:
 {{ .Values.zeroShotImage.repository }}:{{ .Values.zeroShotImage.tag }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Generic Frontend/Backend Talker choices: Lightning, Gemma 4, and Super VL (reasoning off),
+in that order, limited to the LLMs this chart deploys.
+*/}}
+{{- define "nemotron-voice-agent.talkerLlms" -}}
+{{- $llms := list -}}
+{{- if .Values.llmLightning.enabled }}{{ $llms = append $llms "nemotron-lightning" }}{{ end -}}
+{{- if .Values.vllmModels.gemma4.enabled }}{{ $llms = append $llms "gemma-4-31b" }}{{ end -}}
+{{- if .Values.llmSuperVl.enabled }}{{ $llms = append $llms "nemotron-super-vl" }}{{ end -}}
+{{- if not $llms }}{{ fail "Generic Frontend/Backend needs llmLightning, vllmModels.gemma4, or llmSuperVl" }}{{ end -}}
+{{- join ", " $llms -}}
+{{- end }}
+
+{{/*
+Generic Frontend/Backend Thinker: Super VL (reasoning on) when deployed, else Super
+120B, with Lightning as the fallback.
+*/}}
+{{- define "nemotron-voice-agent.thinkerLlm" -}}
+{{- $llms := list -}}
+{{- if .Values.llmSuperVl.enabled }}{{ $llms = append $llms "nemotron-super-vl" }}{{ else if .Values.llmSuper.enabled }}{{ $llms = append $llms "nemotron-super" }}{{ end -}}
+{{- if .Values.llmLightning.enabled }}{{ $llms = append $llms "nemotron-lightning" }}{{ end -}}
+{{- if not $llms }}{{ fail "Generic Frontend/Backend needs a Thinker: llmSuperVl, llmSuper, or llmLightning" }}{{ end -}}
+{{- join ", " $llms -}}
+{{- end }}
+
+{{/*
+Per-role LLM settings shared by the Generic Frontend/Backend examples. Talkers never
+reason; the Thinker reasons with a small budget.
+*/}}
+{{- define "nemotron-voice-agent.fbaLlmSettings" -}}
+{{- $talker := dict "enable_thinking" false "temperature" 0.0 "max_tokens" 512 -}}
+{{- $thinker := dict "enable_thinking" true "reasoning_budget" 256 "temperature" 0.0 "max_tokens" 2048 -}}
+{{- $llm := dict -}}
+{{- if .Values.llmLightning.enabled }}{{ $_ := set $llm "nemotron-lightning" $talker }}{{ end -}}
+{{- if .Values.vllmModels.gemma4.enabled }}{{ $_ := set $llm "gemma-4-31b" $talker }}{{ end -}}
+{{- if .Values.llmSuperVl.enabled }}{{ $_ := set $llm "nemotron-super-vl" $talker }}{{ end -}}
+{{- $thinkerLlm := dict -}}
+{{- if .Values.llmSuperVl.enabled }}{{ $_ := set $thinkerLlm "nemotron-super-vl" (dict "enable_thinking" true "reasoning_effort" "low" "temperature" 0.0 "max_tokens" 2048) }}{{ else if .Values.llmSuper.enabled }}{{ $_ := set $thinkerLlm "nemotron-super" $thinker }}{{ end -}}
+{{- if .Values.llmLightning.enabled }}{{ $_ := set $thinkerLlm "nemotron-lightning" (dict "enable_thinking" true "reasoning_budget" 1024) }}{{ end -}}
+{{- toYaml (dict "llm" $llm "thinker-llm" $thinkerLlm) -}}
+{{- end }}

@@ -47,15 +47,6 @@ export function PromptPage({ onClose }: Readonly<{ onClose: () => void }>) {
           </label>
           <button disabled={active} className="btn-ghost" onClick={() => app.setBackendPromptOverride("")}>Restore {backendName.toLowerCase()} default</button>
         </section>}
-        <section className="prompt-studio-card prompt-studio-card--persistent" aria-label="Persistent instructions">
-          <div className="prompt-studio-card__head"><span className="prompt-studio-card__number" aria-hidden="true">✚</span><div><h3>Your standing instructions</h3><p>Keep your preferences across prompt edits and demos.</p></div><span className="prompt-studio-card__badge">Always appended</span></div>
-          <label className="set-field"><span id="persistent-prompt-label" className="set-field__label">{omni ? "Persistent instructions · appended to Speaker and Thinker prompts" : "Persistent instructions · appended to both prompts"}</span>
-            <textarea disabled={active} className="set-textarea" rows={5} maxLength={32000} aria-labelledby="persistent-prompt-label" value={app.persistentPrompt}
-              placeholder="Your demo persona, tone, or standing preferences"
-              onChange={(event) => app.setPersistentPrompt(event.target.value)} />
-          </label>
-          <p className="set-hint">Persistent instructions remain when you restore a default prompt. Tool permissions and model roles are configured separately.</p>
-        </section>
       </div>
       {expanded && <ExpandedPromptEditor
         role={expanded}

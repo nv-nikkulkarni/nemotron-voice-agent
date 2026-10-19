@@ -1,8 +1,7 @@
 # SQA Test Plan — Concurrent Voice Stability (Generic Assistant + Omni Subagents)
 
-**Target:** the staging NVCF function `d67e6989` (chart 0.1.54 / app 2.0.12) via the demo UI,
-driven through the local NVCF-proxy (`http://localhost:7863`) and/or the Astra preview URL
-`https://nemotron-voice-agent-preview-deploy-backend.stg.astra.nvidia.com`.
+**Target:** the staging NVCF function via the demo UI, driven through the local NVCF-proxy
+(`http://localhost:7863`) and/or the staging UI URL.
 
 **Method:** 30 concurrent real browser clients (Playwright + Chromium), each with an
 **independent** virtual mic/speaker, **speaking** queries via inference-hub TTS and
@@ -26,7 +25,7 @@ driven through the local NVCF-proxy (`http://localhost:7863`) and/or the Astra p
 
 | | |
 |---|---|
-| Staging fn | `d67e6989`, chart 0.1.54 / app 2.0.12, valid Perplexity key (post-restore) |
+| Staging fn | chart 0.1.54 / app 2.0.12, valid Perplexity key (post-restore) |
 | Transports | WebSocket (NVCF WS gateway) |
 | Examples under test | `generic-assistant`, `omni-assistant-subagents` |
 | Host | 16 vCPU / 31 GB (27 free) — 30 headless Chromium + 30 audio graphs |

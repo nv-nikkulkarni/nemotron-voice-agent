@@ -87,12 +87,16 @@ export function attachSignals(page, sig) {
   }));
 }
 
+// SQA_IGNORE_CERT=1 accepts an internal TLS certificate the container does not trust (Astra
+// staging); it is off by default and never set for a public target.
 export async function launchBrowser({ headless = false, extraArgs = [], env } = {}) {
+  const certArgs = process.env.SQA_IGNORE_CERT && !extraArgs.includes("--ignore-certificate-errors")
+    ? ["--ignore-certificate-errors"] : [];
   return chromium.launch({
     headless,
     ...(env ? { env: { ...process.env, ...env } } : {}),
     args: ["--no-sandbox", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required",
-      "--disable-gpu", "--disable-dev-shm-usage", ...extraArgs],
+      "--disable-gpu", "--disable-dev-shm-usage", ...certArgs, ...extraArgs],
   });
 }
 
@@ -177,15 +181,18 @@ export async function selectExample(page, { example = "generic", model = "lightn
   const skipTour = page.getByRole('button',{name:/skip tour/i});
   if (await skipTour.isVisible().catch(()=>false)) await skipTour.click();
   const card=page.locator('.example-card').filter({hasText:isOmni ? /omni/i : /generic/i}).first();
-  await card.click();
-  if(await card.getAttribute('aria-pressed')!=='true') throw new Error('Example selection did not apply');
+  // Click the card's corner: the middle can hold a switch (Talker or mode) that would change a setting.
+  await card.click({position:{x:12,y:12}});
+  if(await card.locator('.example-card__select').getAttribute('aria-pressed')!=='true') throw new Error('Example selection did not apply');
   if(!isOmni && model && model!=='lightning') throw new Error(`Generic model roles are fixed; unsupported requested model: ${model}`);
   await page.getByRole('button',{name:'Tools',exact:true}).click();
   const studio=page.getByRole('region',{name:'Tool configuration',exact:true});
   await studio.waitFor();
   if(!isOmni) {
+    // The model names fill in once the LLM catalog has loaded.
+    await page.waitForFunction(()=>{const t=document.querySelector('.agent-roles')?.textContent??'';return /lightning|gemma/i.test(t)&&/super/i.test(t);},null,{timeout:15000}).catch(()=>{});
     const roles=await studio.locator('.agent-roles').innerText();
-    if(!/lightning/i.test(roles)||!/super/i.test(roles)) throw new Error('Generic model roles are missing');
+    if(!/lightning|gemma/i.test(roles)||!/super/i.test(roles)) throw new Error('Generic model roles are missing');
   }
   if(!isOmni && Array.isArray(tools)) {
     const want=new Set(tools.map(name=>name.trim().toLowerCase()));

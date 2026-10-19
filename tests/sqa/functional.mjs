@@ -59,7 +59,7 @@ async function landingChecks(browser) {
     rec("landing/title", /nemotron/i.test(title), JSON.stringify(title.replace(/\n/g, " ")));
     rec("landing/deployment-ready", deploymentReady, "example cards rendered");
     const cards = await page.locator(".example-card").count();
-    rec("landing/two-cards", cards === 2, `found ${cards}`);
+    rec("landing/example-cards", cards >= 3, `found ${cards} (three examples, plus the builder card when enabled)`);
     rec("landing/launch-bar-visible", await page.locator(".startview__launch").isVisible().catch(() => false));
     rec("landing/no-in-card-actions", (await page.locator(".example-card__actions, .example-card__cta, .example-card__configure").count()) === 0);
     rec("landing/config-controls-hidden", (await page.locator(".consent-toggle, .record-toggle").count()) === 0);
@@ -70,11 +70,13 @@ async function landingChecks(browser) {
 
     // Any point on a card selects it without opening configuration.
     const genericCard = page.locator(".example-card").filter({ hasText: /generic/i });
-    await genericCard.click(); await H.sleep(300);
-    rec("select/full-card-selected", (await genericCard.getAttribute("aria-pressed")) === "true");
+    await genericCard.click({ position: { x: 12, y: 12 } }); await H.sleep(300);
+    rec("select/full-card-selected", (await genericCard.locator(".example-card__select").getAttribute("aria-pressed")) === "true");
     rec("select/card-does-not-open-modal", (await page.getByRole("dialog").count()) === 0);
     rec("landing/conversation-utilities-hidden", (await page.locator('[data-tour="settings"], [data-tour="pipeline"]').count()) === 0);
     const launch = page.locator(".startview__launch");
+    // The Start label reads "Preparing…" while the catalogs reload after a card is selected.
+    await launch.getByRole("button",{name:"Start conversation",exact:true}).waitFor({timeout:30000});
     for (const name of ["Prompts", "Tools", "Voice", "Start conversation"]) rec(`landing/action-${name}`,await launch.getByRole("button",{name,exact:true}).isVisible());
     await launch.getByRole("button",{name:"Tools",exact:true}).click();
     const roles=await page.locator(".agent-roles").innerText();

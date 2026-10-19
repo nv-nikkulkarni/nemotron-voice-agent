@@ -15,6 +15,7 @@ import {
   createSessionConfig,
   createWebRTCSession,
   type DeploymentOption,
+  type ExampleVariant,
   type LLMService,
   type SimpleService,
   type SessionConfigBody,
@@ -22,6 +23,7 @@ import {
 import { demoConfig } from "../config";
 import type { PipelinePreset } from "../demo/presets";
 import { advanceBotAudioSession } from "../demo/turnAwareMediaManager";
+import { getModelChoice } from "../demo/agentConfig";
 
 type StartBotClient = {
   connect: (args: { wsUrl?: string; webrtcUrl?: string }) => Promise<void>;
@@ -127,7 +129,17 @@ function sessionIdFromWebRTCUrl(url: string): string {
 export interface StartOptions {
   /** Start a prebuilt preset directly (landing page), bypassing edited state. */
   preset?: PipelinePreset;
+  /** Launch one of the example's registry variants (e.g. the Hindi assistant). */
+  variant?: ExampleVariant;
+  /** Session-config fields of a custom agent from the builder (validated by the builder service). */
+  custom?: Record<string, unknown>;
 }
+
+/** The only fields a custom agent may set; everything else keeps the example's own session config. */
+const CUSTOM_SESSION_KEYS = [
+  "example_variant", "asr_language_code", "llm_id", "thinker_llm_id", "tools_available", "persistent_prompt", "persona_token",
+  "asr_id", "tts_id", "tts_voice_id", "tts_pronunciations",
+] as const;
 
 export function useVoiceSession() {
   const client = usePipecatClient() as StartBotClient | undefined;
@@ -138,21 +150,42 @@ export function useVoiceSession() {
   const clearError = useCallback(() => setConnectionError(""), []);
 
   const buildConfig = useCallback(
-    (example: DeploymentOption, preset?: PipelinePreset): SessionConfigBody => {
+    (example: DeploymentOption, preset?: PipelinePreset, variant?: ExampleVariant, custom?: Record<string, unknown>): SessionConfigBody => {
       const slots = new Set(example.slots);
       const config: SessionConfigBody = { pipeline_mode: example.key };
+      if (custom) {
+        // A custom agent is exactly what the builder produced: nothing from the built-in example's
+        // selections (voice, prompts, model overrides, voice sample) may leak into it.
+        config.client_timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+        if (example.backendHistory) config.backend_history_turn_limit = app.backendHistoryTurnLimit;
+        for (const key of CUSTOM_SESSION_KEYS) {
+          if (custom[key] !== undefined) config[key] = custom[key] as SessionConfigBody[string];
+        }
+        return config;
+      }
+      if (variant) config.example_variant = variant.id;
+      // A session-language example locks ASR, TTS, and prompts to one language. A
+      // variant with a fixed language wins over the picker (the server enforces it too).
+      const sessionLanguage = example.capabilities?.includes("session_languages")
+        ? variant?.session_language || app.selectedSessionLanguage
+        : "";
+      if (sessionLanguage) config.asr_language_code = sessionLanguage;
       if (Object.keys(app.llmOverrides).length) config.llm_role_settings = app.llmOverrides;
       config.client_timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
       if (example.backendHistory) config.backend_history_turn_limit = app.backendHistoryTurnLimit;
       if (app.backendPromptOverride.trim()) config.thinker_prompt_content = app.backendPromptOverride;
-      if (app.persistentPrompt.trim()) config.persistent_prompt = app.persistentPrompt;
 
       // Resolve services: a preset's preferred NIM (by key) wins for a direct
       // launch; otherwise the user's current selection from context.
-      const llm: LLMService | undefined = (preset && byKey(app.llms, preset.llmKey)) || app.selectedLLM;
+      const llm: LLMService | undefined =
+        (preset && byKey(app.llms, preset.llmKey)) || (variant && byKey(app.llms, variant.llm)) || app.selectedLLM;
       const asr: SimpleService | undefined = (preset && byKey(app.asrServices, preset.asrKey)) || app.selectedASR;
       const tts: SimpleService | undefined = (preset && byKey(app.ttsServices, preset.ttsKey)) || app.selectedTTS;
-      const voiceId = preset?.voiceId || app.selectedVoiceId || tts?.voiceId;
+      // A voice picked for another language would be wrong for a fixed-language
+      // variant; leave it to the server, which resolves a voice for the language.
+      const languageChanged = !!variant?.session_language && variant.session_language !== app.selectedSessionLanguage;
+      // A variant with its own default voice (Hindi: Leo) is not overridden by the catalog default.
+      const voiceId = preset?.voiceId || (languageChanged ? "" : app.selectedVoiceId || (variant?.tts_voice ? "" : tts?.voiceId));
 
       if (slots.has("llm") && llm) {
         config.llm_id = llm.id;
@@ -170,6 +203,19 @@ export function useVoiceSession() {
           config.extra_params = buildExtraParams(llm.extraParams, app.reasoning);
         }
       }
+      // The variant's Talker may not be in the LLM list yet when the card launches a
+      // session right after switching examples; the catalog id is stable, so send it.
+      if (slots.has("llm") && variant?.llm && !byKey(app.llms, variant.llm)) config.llm_id = `self-hosted:${variant.llm}`;
+      // Models page choices for this example. A Talker that does not speak the session
+      // language is ignored, so a fixed-language launch never fails on a saved choice.
+      const choice = getModelChoice(example.key);
+      const pickedTalker = choice.talker ? app.llms.find((item) => item.id === choice.talker) : undefined;
+      const sessionBase = sessionLanguage.split("-")[0].toLowerCase();
+      if (slots.has("llm") && pickedTalker?.builtIn
+        && (!sessionBase || !pickedTalker.supportedLanguages?.length || pickedTalker.supportedLanguages.includes(sessionBase))) {
+        config.llm_id = pickedTalker.id;
+      }
+      if (choice.backend) config.thinker_llm_id = choice.backend;
       applyService(config, slots.has("asr"), "asr", asr, { model: asr?.model, function_id: asr?.functionId });
       applyService(config, slots.has("tts"), "tts", tts, { function_id: tts?.functionId });
       if (slots.has("tts") && /magpie/i.test(tts?.model ?? "") && Object.keys(app.pronunciationOverrides).length) {
@@ -214,7 +260,7 @@ export function useVoiceSession() {
         const example = app.selectedExample;
         if (!example) throw new Error("Pipeline not loaded yet. Please retry in a moment.");
 
-        const config = buildConfig(example, opts.preset);
+        const config = buildConfig(example, opts.preset, opts.variant, opts.custom);
 
         // The transport retains its microphone setting after disconnect. A new
         // session must reacquire audio even when the previous session ended

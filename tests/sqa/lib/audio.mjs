@@ -18,6 +18,7 @@ const KEY = process.env.SQA_KEY || "";
 const TTS_MODEL = process.env.SQA_TTS_MODEL || "openai/openai/gpt-4o-mini-tts";
 const ASR_PATH = process.env.SQA_ASR_PATH || "/audio/nvidia/parakeet-1-1b-ctc-en-us/transcriptions";
 const TTS_VOICE = process.env.SQA_TTS_VOICE || "coral";
+const MULTILINGUAL_ASR_MODEL = process.env.SQA_MULTILINGUAL_ASR_MODEL || "openai/openai/gpt-4o-mini-transcribe";
 
 if (!KEY) console.warn("[audio] SQA_KEY not set — ASR/TTS calls will 401");
 
@@ -66,6 +67,27 @@ export async function transcribe(wavPath) {
   fd.append("file", new Blob([buf], { type: "audio/wav" }), "audio.wav");
   fd.append("language", "en-US");
   const res = await fetch(`${BASE}${ASR_PATH}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${KEY}` },
+    body: fd,
+  });
+  if (!res.ok) throw new Error(`ASR HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const j = await res.json();
+  return (j.text || "").trim();
+}
+
+// Transcribe a WAV in any language with a multilingual hub model (default
+// gpt-4o-mini-transcribe). `language` is an ISO 639-1 code such as "hi".
+export async function transcribeMultilingual(wavPath, { language, model = MULTILINGUAL_ASR_MODEL } = {}) {
+  const norm = `${wavPath}.16k.wav`;
+  await to16kMonoWav(wavPath, norm);
+  const buf = await readFile(norm);
+  await fs.unlink(norm).catch(() => {});
+  const fd = new FormData();
+  fd.append("file", new Blob([buf], { type: "audio/wav" }), "audio.wav");
+  fd.append("model", model);
+  if (language) fd.append("language", language);
+  const res = await fetch(`${BASE}/audio/transcriptions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${KEY}` },
     body: fd,

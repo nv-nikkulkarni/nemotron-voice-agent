@@ -14,7 +14,7 @@ from examples.frontend_backend_agent.src.tools import ToolSpec
 
 _UNSPEAKABLE_RE = re.compile(r"(?:</?(?:think|tool_call|function|parameter)[^>]*>|```|[*#]{2,})", re.IGNORECASE)
 _SPACE_RE = re.compile(r"\s+")
-_SENTENCE_BOUNDARY_RE = re.compile(r"[.!?][\"'”’)\]]*\s+")
+_SENTENCE_BOUNDARY_RE = re.compile(r"[.!?।॥。！？][\"'”’)\]]*\s+")
 _MAX_SPOKEN_RESULT_CHARS = 450
 _SENTENCE_ABBREVIATIONS = frozenset(
     {

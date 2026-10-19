@@ -1,0 +1,44 @@
+# Nemotron 3.5 Super VL 120B A12B served as a NIM for the Generic Frontend/Backend
+# Thinker (reasoning on) and an optional Talker (reasoning off). Needs NVIDIA_API_KEY in
+# .env and one H200-class GPU.
+services:
+  nvidia-llm-super-vl:
+    image: nvcr.io/nim/nvidia/nemotron-3.5-super-vl-120b-a12b:2.0.13-variant-build.1
+    profiles:
+      - multilingual-generic-frontend-backend-agent/server
+    container_name: nvidia-llm-super-vl
+    user: "0:0"
+    ports:
+      - "8004:8000"
+    volumes:
+      - super_vl_cache:/opt/nim/.cache
+    shm_size: 32GB
+    ulimits:
+      nofile: 2048
+    environment:
+      NGC_API_KEY: ${NVIDIA_API_KEY:-not-needed}
+      NIM_HTTP_API_PORT: "8000"
+      NIM_KVCACHE_PERCENT: ${NIM_KVCACHE_PERCENT:-0.85}
+      NIM_PASSTHROUGH_ARGS: --chat-template /opt/nim/etc/chat_templates/nemotron-3.5-super-vl-reasoning-effort.jinja --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser nemotron_v3 --max-num-seqs ${LLM_MAX_NUM_SEQS:-64}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/v1/health/ready\").read()' || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 1800s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['2']
+              capabilities: [gpu]
+
+volumes:
+  super_vl_cache:

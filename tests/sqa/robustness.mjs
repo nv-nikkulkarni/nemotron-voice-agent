@@ -123,6 +123,10 @@ async function testDrop(browser) {
     await page.evaluate(() => window.__botReset());
     await reconnectButton.click();
     reconnectClicked = true;
+    // Reconnect starts a new session, so the capture-consent choice is asked again.
+    const consent = page.getByRole("dialog", { name: "Help improve the conversation?", exact: true });
+    await consent.waitFor({ timeout: 10000 });
+    await consent.getByRole("button", { name: "Continue without saving", exact: true }).click();
     for (let i = 0; i < 75; i++) { // up to ~30s
       await H.sleep(400);
       const caption = (await H.orbCaption(page)).toLowerCase();

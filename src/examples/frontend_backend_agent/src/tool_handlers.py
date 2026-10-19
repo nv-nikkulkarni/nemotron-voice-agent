@@ -24,6 +24,8 @@ from examples.frontend_backend_agent.src.conversation_history import (
 )
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent, is_speakable_payload, response_hint
 from examples.frontend_backend_agent.src.runtime_context import runtime_today
+from examples.frontend_backend_agent.src.session_language import SCRIPT_RE, is_english, session_fallback_filler
+from examples.multilingual.multilingual_processor import describe_language
 
 _ISO_DATE_PATTERN = re.compile(r"(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)")
 _NAMED_DATE_PATTERN = re.compile(
@@ -40,7 +42,6 @@ if TYPE_CHECKING:
 
     from examples.frontend_backend_agent.src.domain import FillerPolicy
     from examples.frontend_backend_agent.src.stage_metrics import StageMetricsCoordinator
-
 
 _FILLER_WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’-]*")
 _FILLER_TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -111,11 +112,14 @@ def build_handlers(
     max_query_chars: int = 4000,
     enforce_future_travel_dates: bool = True,
     stage_metrics: StageMetricsCoordinator | None = None,
+    session_language: str = "",
 ) -> dict[str, Callable]:
-    """Return tool handlers bound to one session-local backend agent."""
+    """Return tool handlers bound to one session-local backend agent.
+
+    Every grounded result, hint, and terminal message goes back to the Talker, which
+    phrases it (in ``session_language`` when the session is language-locked) before TTS.
+    """
     consecutive_planner_errors = 0
-    tool_result_mode_default = getattr(thinker, "tool_result_mode_default", "talker")
-    talker_result_tools = frozenset(getattr(thinker, "talker_result_tools", ()))
 
     async def handle_call_backend(params: FunctionCallParams) -> None:
         nonlocal consecutive_planner_errors
@@ -124,14 +128,17 @@ def build_handlers(
         if not query or len(query) > max_query_chars:
             consecutive_planner_errors = 0
             await params.result_callback(
-                {
-                    "type": "response_hint",
-                    "reason": "params_missing" if not query else "params_invalid",
-                    "action": "req_params",
-                    "params_needed": ["query"],
-                    "response_text": "What would you like me to check?",
-                    "context": "call_backend",
-                }
+                _talker_result_projection(
+                    {
+                        "type": "response_hint",
+                        "reason": "params_missing" if not query else "params_invalid",
+                        "action": "req_params",
+                        "params_needed": ["query"],
+                        "response_text": "What would you like me to check?",
+                        "context": "call_backend",
+                    },
+                    session_language,
+                )
             )
             return
         past_date = _past_date_in_query(query) if enforce_future_travel_dates else None
@@ -146,11 +153,13 @@ def build_handlers(
                 ),
                 context="flight_search",
             )
-            await _emit_terminal_payload(params, payload)
+            await _emit_terminal_payload(params, payload, session_language)
             return
         try:
             if filler_policy == "talker_authored":
-                filler_text = _validated_talker_filler(query, arguments.get("filler_text"))
+                filler_text = _validated_talker_filler(query, arguments.get("filler_text"), session_language)
+                fallback_filler = "" if filler_text else _session_fallback_filler(session_language)
+                filler_text = filler_text or fallback_filler
             elif filler_policy == "planner_authored":
                 filler_text = " ".join(str(arguments.get("filler_text") or "").split()).strip()
             elif filler_policy == "code_authored":
@@ -162,9 +171,13 @@ def build_handlers(
                 logger.bind(
                     event="talker_filler_candidate",
                     mode=filler_mode,
-                    accepted=bool(filler_text),
+                    accepted=bool(filler_text) and not fallback_filler,
+                    fallback=bool(fallback_filler),
                     word_count=len(_FILLER_WORD_RE.findall(filler_text)),
-                ).info("Processed Talker-authored filler candidate")
+                ).info(
+                    "Processed Talker-authored filler candidate"
+                    + (" (session-language fallback)" if fallback_filler else "")
+                )
             if filler_mode != "emit":
                 filler_text = ""
             slots = {key: value for key, value in arguments.items() if key not in {"query", "intent", "filler_text"}}
@@ -177,12 +190,17 @@ def build_handlers(
             filler_task: asyncio.Task | None = None
             filler_started = False
             filler_emitted = False
+            # The Talker's post-result guard rejects a reply that repeats this call's filler.
+            with suppress(AttributeError):
+                params.llm.spoken_filler = ""
 
             async def emit_filler_once() -> None:
                 nonlocal filler_emitted
                 if filler_emitted or not filler_text:
                     return
                 filler_emitted = True
+                with suppress(AttributeError):
+                    params.llm.spoken_filler = filler_text
                 await _emit_talker_response(params.llm, filler_text, append_to_context=False)
 
             async def emit_filler_after_threshold() -> None:
@@ -262,7 +280,7 @@ def build_handlers(
                         ),
                     }
                 )
-                await _emit_terminal_payload(params, terminal_payload)
+                await _emit_terminal_payload(params, terminal_payload, session_language)
                 consecutive_planner_errors = 0
                 if stage_metrics is not None:
                     await stage_metrics.cleanup_tool_call(params.tool_call_id)
@@ -272,9 +290,8 @@ def build_handlers(
         await _deliver_tool_payload(
             params,
             payload,
-            default_mode=tool_result_mode_default,
-            talker_result_tools=talker_result_tools,
             stage_metrics=stage_metrics,
+            session_language=session_language,
         )
 
     async def handle_cancel_backend(params: FunctionCallParams) -> None:
@@ -302,13 +319,7 @@ def build_handlers(
             "response_text": "Okay, I stopped that." if did_cancel else "There is nothing pending right now.",
             "context": "cancel_backend",
         }
-        if _tool_result_mode(tool_result_mode_default) == "direct":
-            await _emit_talker_response(params.llm, str(payload["response_text"]), append_to_context=False)
-            await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
-            if stage_metrics is not None:
-                await stage_metrics.cleanup_tool_call(params.tool_call_id)
-            return
-        await params.result_callback(payload)
+        await params.result_callback(_talker_result_projection(payload, session_language))
 
     return {"call_backend": handle_call_backend, "cancel_backend": handle_cancel_backend}
 
@@ -329,10 +340,14 @@ async def _emit_talker_response(llm, text: str, *, append_to_context: bool = Tru
             await llm.push_frame(LLMFullResponseEndFrame())
 
 
-async def _emit_terminal_payload(params: FunctionCallParams, payload: dict[str, Any]) -> None:
-    """Speak a validated terminal payload without asking the Talker to reinterpret it."""
-    await _emit_talker_response(params.llm, str(payload.get("response_text") or ""))
-    await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
+async def _emit_terminal_payload(
+    params: FunctionCallParams, payload: dict[str, Any], session_language: str = ""
+) -> None:
+    """Hand a terminal payload to the Talker, which phrases it in the session language."""
+    await params.result_callback(
+        _talker_result_projection(payload, session_language),
+        properties=FunctionCallResultProperties(run_llm=True),
+    )
 
 
 async def _cancel_pending_filler(task: asyncio.Task | None) -> None:
@@ -396,19 +411,14 @@ def _past_date_in_query(query: str, *, today: date | None = None) -> date | None
     return max(dates)
 
 
-def _direct_tool_response_enabled() -> bool:
-    return os.getenv("FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE", "").strip().lower() in {"1", "true", "yes", "on"}
-
-
 async def _deliver_tool_payload(
     params: FunctionCallParams,
     payload: dict[str, Any],
     *,
-    default_mode: object = "talker",
     stage_metrics: StageMetricsCoordinator | None = None,
-    talker_result_tools: frozenset[str] = frozenset(),
+    session_language: str = "",
 ) -> None:
-    """Deliver one grounded payload through the configured final-response path."""
+    """Hand one grounded payload to the Talker for phrasing before TTS."""
     if not is_speakable_payload(payload):
         await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
         if stage_metrics is not None:
@@ -432,59 +442,19 @@ async def _deliver_tool_payload(
         )
     response_text = str(payload.get("response_text") or "")
     _remember_backend_response(params.llm, response_text, payload)
-    if _should_deliver_directly(payload, default_mode=default_mode, talker_result_tools=talker_result_tools):
-        await _emit_talker_response(params.llm, response_text, append_to_context=False)
-        await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
-        if stage_metrics is not None:
-            await stage_metrics.cleanup_tool_call(params.tool_call_id)
-        return
     await params.result_callback(
-        _talker_result_projection(payload),
+        _talker_result_projection(payload, session_language),
         properties=FunctionCallResultProperties(run_llm=True),
     )
 
 
-def _tool_result_mode(default_mode: object = "talker") -> str:
-    raw = os.getenv("FRONTEND_BACKEND_TOOL_RESULT_MODE", "").strip().lower()
-    if raw in {"direct", "hybrid", "talker"}:
-        return raw
-    if _direct_tool_response_enabled():
-        return "direct"
-    normalized_default = str(default_mode or "").strip().lower()
-    return normalized_default if normalized_default in {"direct", "hybrid", "talker"} else "talker"
+def _talker_result_projection(payload: dict[str, Any], session_language: str = "") -> dict[str, Any]:
+    """Expose the trusted spoken contract plus a bounded weather fact projection.
 
-
-def _should_deliver_directly(
-    payload: dict[str, Any],
-    *,
-    default_mode: object = "talker",
-    talker_result_tools: frozenset[str] = frozenset(),
-) -> bool:
-    mode = _tool_result_mode(default_mode)
-    if mode == "direct":
-        return True
-    if mode == "hybrid":
-        if talker_result_tools:
-            dynamic_success = _payload_outcome(payload) == "success" and payload.get("tool") in talker_result_tools
-            return not dynamic_success
-        return _payload_outcome(payload) == "success"
-    return False
-
-
-def _payload_outcome(payload: dict[str, Any]) -> str:
-    if payload.get("type") == "tool_result":
-        status = str(payload.get("status") or "error")
-        return "success" if status == "success" else "partial" if status == "partial" else "failure"
-    reason = str(payload.get("reason") or "")
-    if reason in {"params_missing", "params_invalid"}:
-        return "needs_input"
-    if reason in {"aborted", "cancelled"}:
-        return "cancelled"
-    return "failure"
-
-
-def _talker_result_projection(payload: dict[str, Any]) -> dict[str, Any]:
-    """Expose the trusted spoken contract plus a bounded weather fact projection."""
+    For a session locked to a language other than English, also state the reply language:
+    ``response_text`` is an English summary of the trusted facts that the Talker must say
+    in the session language.
+    """
     allowed = {"type", "tool", "status", "response_text", "reason", "action", "context", "params_needed"}
     projected = {key: value for key, value in payload.items() if key in allowed}
     data = payload.get("data")
@@ -500,6 +470,14 @@ def _talker_result_projection(payload: dict[str, Any]) -> dict[str, Any]:
             "wind_kph",
         }
         projected["data"] = {key: result[key] for key in weather_keys if key in result}
+    if not is_english(session_language):
+        language = describe_language(session_language)
+        projected["reply_language"] = language
+        projected["reply_instruction"] = (
+            f"Say this result to the user only in {language}, in its native script. response_text is an "
+            "English summary of trusted facts: express it naturally in that language, keep every number, "
+            "name, and unit exact, and never read the English aloud."
+        )
     return projected
 
 
@@ -508,12 +486,28 @@ def _talker_filler_mode() -> str:
     return raw if raw in {"off", "observe", "emit"} else "emit"
 
 
-def _validated_talker_filler(query: str, raw_filler: object) -> str:
-    """Accept a short grounded progress phrase or suppress it without replacement."""
+_SESSION_SCRIPT_RE = SCRIPT_RE
+_ENGLISH_FILLER_RE = re.compile(
+    r"\b(?:let me|i'll|i will|i am|i'm|one moment|give me|just a|checking|looking|getting|pulling|"
+    r"please wait|hold on|that|what|the|for you)\b",
+    re.IGNORECASE,
+)
+
+
+def _validated_talker_filler(query: str, raw_filler: object, session_language: str = "") -> str:
+    """Accept a short grounded progress phrase or suppress it without replacement.
+
+    In a session locked to a language other than English, the filler must be in that
+    language. The English word-overlap grounding is skipped there because the query may
+    be in another language than the filler.
+    """
     original = str(raw_filler or "")
     filler = " ".join(original.split()).strip()
     if not filler or len(filler) > 96 or "\n" in original:
         return ""
+    language = session_language.split("-", 1)[0].casefold()
+    if language and language != "en":
+        return _validated_foreign_filler(filler, language)
     words = _FILLER_WORD_RE.findall(filler)
     if not 3 <= len(words) <= 12:
         return ""
@@ -526,6 +520,35 @@ def _validated_talker_filler(query: str, raw_filler: object) -> str:
     filler_tokens = set(_FILLER_TOKEN_RE.findall(filler.casefold())) - _FILLER_PROGRESS_WORDS
     query_tokens = set(_FILLER_TOKEN_RE.findall(query.casefold()))
     if not filler_tokens or filler_tokens.isdisjoint(query_tokens):
+        return ""
+    return filler
+
+
+def _session_fallback_filler(session_language: str) -> str:
+    """Return the fixed filler for a non-English session language, or "" for English."""
+    return session_fallback_filler(session_language)
+
+
+def _validated_foreign_filler(filler: str, language: str) -> str:
+    """Validate a filler for a session locked to a non-English language."""
+    letters = [character for character in filler if character.isalpha()]
+    if not letters:
+        return ""
+    script = _SESSION_SCRIPT_RE.get(language)
+    if script is not None:
+        if sum(1 for character in letters if script.match(character)) < len(letters) / 2:
+            return ""
+    elif filler.isascii() and _ENGLISH_FILLER_RE.search(filler):
+        return ""
+    # Count space-separated words: \w splits Devanagari words at their vowel signs.
+    if script is None or language == "hi":
+        if not 2 <= len(filler.split()) <= 14:
+            return ""
+    elif not 2 <= len(letters) <= 40:
+        return ""
+    if any(mark in filler for mark in "?？") or any(character.isdigit() for character in filler):
+        return ""
+    if _FILLER_INTERNAL_RE.search(filler) or _FILLER_RESULT_CLAIM_RE.search(filler):
         return ""
     return filler
 

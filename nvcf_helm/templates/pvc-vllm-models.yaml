@@ -1,0 +1,23 @@
+{{- range $name, $model := .Values.vllmModels }}
+{{- if and $model.enabled (not $model.cache.nvcf) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "nemotron-voice-agent.fullname" $ }}-vllm-{{ $name | lower }}-cache
+  labels:
+    {{- include "nemotron-voice-agent.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: vllm-{{ $name | lower }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if $model.cache.storageClass }}
+  storageClassName: {{ $model.cache.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $model.cache.size }}
+{{- end }}
+{{- end }}

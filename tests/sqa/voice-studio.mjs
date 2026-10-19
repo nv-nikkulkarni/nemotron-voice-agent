@@ -39,7 +39,8 @@ try {
   const {ctx,page}=await context();const sessionConfigs=[];
   page.on('request',request=>{if(new URL(request.url()).pathname==='/api/session-config'&&request.method()==='POST')sessionConfigs.push(request.postDataJSON());});
   await page.goto(base);await ready(page);
-  assert.deepEqual(await page.locator('.startview__actions button').allTextContents(),['Prompts','Tools','Voice','Start conversation']);
+  assert.deepEqual(await page.locator('.startview__customise > button').allTextContents(),['Prompts','Tools','Voice','Models']);
+  assert.equal((await page.locator('.startview__start').innerText()).trim(),'Start conversation');
   assert.equal(await page.locator('[data-tour="settings"], [data-tour="pipeline"]').count(),0);
   assert.equal(await page.evaluate(()=>window.__studioMicRequests),0,'No microphone acquisition before choice');
   await page.getByRole('button',{name:'Tools',exact:true}).click();
@@ -121,7 +122,7 @@ try {
     await page.getByRole('button',{name:'Remove sample',exact:true}).click();await page.locator('.voice-studio__filename').waitFor({state:'detached'});
   }
   await page.getByRole('button',{name:'Back to setup',exact:true}).click();
-  await page.locator('.example-card').filter({hasText:/omni/i}).click();await ready(page);
+  await page.locator('.example-card').filter({hasText:/omni/i}).click({position:{x:12,y:12}});await ready(page);
   await page.getByRole('button',{name:'Voice',exact:true}).click();
   await page.getByRole('heading',{name:'Pronunciation fixes',exact:true}).waitFor();
   assert.equal(await page.getByRole('listitem').filter({hasText:'Spookotron'}).count(),0,'IPA edits are assistant-specific');
@@ -129,7 +130,7 @@ try {
   report.checks.push({name:'assistant-isolation',pass:true});
   if(live) {
     for(const [example,consent] of [['Generic Frontend/Backend',true],['Nemotron Omni',false]]) {
-      await page.locator('.example-card').filter({hasText:example}).click();await ready(page);
+      await page.locator('.example-card').filter({hasText:example}).click({position:{x:12,y:12}});await ready(page);
       await page.evaluate(()=>{window.__studioRms=0;});
       await page.getByRole('button',{name:'Start conversation',exact:true}).click();
       const dialog=page.getByRole('dialog',{name:'Help improve the conversation?',exact:true});await dialog.waitFor();

@@ -155,7 +155,7 @@ async def bot(runner_args: RunnerArguments) -> None:
     tts_zero_shot_audio_prompt_file = body.get("tts_zero_shot_audio_prompt_file", "") or default_tts.get(
         "zero_shot_audio_prompt_file", ""
     )
-    api_key = nvidia_api_key()
+    api_key = nvidia_api_key(base_url=base_url)
 
     runner = WorkerRunner(handle_sigint=runner_args.handle_sigint)
     transport_agent = OmniTransportAgent(

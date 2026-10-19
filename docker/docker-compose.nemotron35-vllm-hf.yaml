@@ -1,0 +1,51 @@
+# Gemma 4 31B (instruction-tuned) served by vLLM from Hugging Face (docker/Dockerfile.vllm-hf).
+# Needs HF_TOKEN in .env. About 62 GB of BF16 weights: one 80 GB or larger GPU.
+# Super VL runs as a NIM: docker-compose.nemotron35-super-vl-nim.yaml.
+# https://huggingface.co/google/gemma-4-31B-it
+x-vllm-hf: &vllm-hf
+  build:
+    context: .
+    dockerfile: Dockerfile.vllm-hf
+  image: nemotron-voice-agent/vllm-hf:v0.31.0
+  pull_policy: build
+  ipc: host
+  env_file:
+    - ../.env
+  environment:
+    - HF_HOME=/cache/hf
+    - HF_HUB_CACHE=/cache/hf/hub
+  volumes:
+    - ${HOME}/.cache/huggingface:/cache/hf
+  ulimits:
+    memlock: -1
+    stack: 67108864
+  restart: unless-stopped
+
+services:
+  nvidia-llm-vllm-gemma4:
+    <<: *vllm-hf
+    profiles:
+      - multilingual-generic-frontend-backend-agent/server
+    container_name: vllm-gemma4
+    shm_size: 16GB
+    ports:
+      - "8003:8003"
+    command:
+      - google/gemma-4-31B-it
+      - --served-model-name=google/gemma-4-31b-it
+      - --host=0.0.0.0
+      - --port=8003
+      - --max-model-len=16384
+      - --gpu-memory-utilization=0.90
+      - --max-num-seqs=64
+      - --enable-prefix-caching
+      - --enable-auto-tool-choice
+      - --tool-call-parser=gemma4
+      - --reasoning-parser=gemma4
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1']
+              capabilities: [gpu]

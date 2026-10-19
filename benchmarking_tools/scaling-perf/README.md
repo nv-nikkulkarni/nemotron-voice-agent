@@ -337,9 +337,8 @@ stage processor names before the generic LLM classifier, so stage samples do
 not inflate `llm_ttft` or `llm_processing_time`.
 
 `frontend_final_response_ttft` and
-`frontend_final_response_processing_time` are unavailable in `direct` result
-mode. In `hybrid` mode, they appear only for non-success results that use the
-Talker final-response pass.
+`frontend_final_response_processing_time` are reported for every tool result,
+because each result now goes through the Talker final-response pass.
 
 The Nemotron Realtime gateway maps Pipecat token accounting to the standard
 `response.done.response.usage` object. It also places response-scoped server

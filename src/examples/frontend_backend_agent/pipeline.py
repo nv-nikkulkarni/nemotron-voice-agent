@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import os
 
 from dotenv import load_dotenv
 from loguru import logger
 from pipecat.frames.frames import TTSUpdateSettingsFrame
-from pipecat.observers.user_bot_latency_observer import UserBotLatencyObserver
+from pipecat.observers.user_bot_latency_observer import LatencyBreakdown, UserBotLatencyObserver
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineWorker, ProcessorUnusablePolicy
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -19,7 +20,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
 )
 from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
-from pipecat.runner.types import RunnerArguments
+from pipecat.runner.types import EvalRunnerArguments, RunnerArguments
 from pipecat.services.nvidia.llm import NvidiaLLMSettings
 from pipecat.services.nvidia.stt import NvidiaSTTSettings
 from pipecat.services.nvidia.tts import NvidiaTTSSettings
@@ -39,6 +40,7 @@ from examples.frontend_backend_agent.src.reliable_talker import ReliableNvidiaLL
 from examples.frontend_backend_agent.src.response_policy import GENERIC_SESSION_BOUNDARY
 from examples.frontend_backend_agent.src.stage_metrics import StageMetricsCoordinator
 from examples.frontend_backend_agent.src.tool_handlers import build_handlers
+from examples.multilingual.multilingual_processor import describe_language
 from examples.shared.audio_recorder import create_audio_recorder
 from examples.shared.demo_speech import DemoNvidiaTTSService, validate_voice_sample
 from examples.shared.nemotron_speech_text_filter import NemotronSpeechTextFilter
@@ -50,6 +52,7 @@ from examples.shared.pipeline_utils import (
     register_session_start_handlers,
     with_realtime_observers,
 )
+from examples.shared.prewarm import prewarm_tts, resolve_voice_for_language, validate_llm_session_language
 from examples.shared.sampling_llm import SamplingNvidiaLLMService
 from examples.shared.tool_call_speech_gate import ToolCallSpeechGate
 from session_capture.capture import mark_pipeline_finished, run_finalize
@@ -58,11 +61,13 @@ from utils import (
     is_nvcf,
     load_prompt_catalog,
     load_service_entry,
+    load_service_entry_by_id,
     normalize_lang_code,
     nvidia_api_key,
     parse_env_float,
     parse_env_int,
     parse_json_dict,
+    render_prompt_addon,
     resolve_ipa_dictionary,
     resolve_prompt,
 )
@@ -146,6 +151,128 @@ def _apply_chat_history_sliding_window(
     context.set_messages(messages[:preserve] + conversation[starts[-chat_history_limit] :])
 
 
+FIXED_SESSION_LANGUAGE_ADDON_KEY = "fixed_session_language_addon"
+THINKER_SESSION_LANGUAGE_ADDON_KEY = "thinker_session_language_addon"
+
+
+def _talker_protocol_prompt_key(domain_key: str, variant: examples_registry.VariantEntry | None) -> str:
+    """Return the prompt key whose ``few_shots`` demonstrate the native tool protocol.
+
+    A variant's Talker addon may carry its own few-shots (for example Hindi demonstrations);
+    otherwise the domain's own demonstrations are used.
+    """
+    addon_key = variant["talker_prompt_addon"] if variant else ""
+    if addon_key:
+        entry = load_prompt_catalog(__file__).get(addon_key)
+        if isinstance(entry, dict) and entry.get("few_shots"):
+            return addon_key
+    return domain_key
+
+
+FALLBACK_SESSION_LANGUAGE = "en-US"
+
+
+def _resolve_variant(body: dict) -> examples_registry.VariantEntry | None:
+    """Return the launch variant the client selected, or ``None``."""
+    variant_id = str(body.get("example_variant", "") or "")
+    variant = examples_registry.find_variant(body.get("pipeline_mode", ""), variant_id)
+    if variant_id and variant is None:
+        logger.warning(f"Ignoring unknown example variant {variant_id!r}")
+    return variant
+
+
+def _resolve_session_language(
+    body: dict, default_asr: dict, variant: examples_registry.VariantEntry | None = None
+) -> str:
+    """Return the locked BCP-47 session language, or "" when the example has none.
+
+    A variant with a ``session_language`` fixes the language regardless of the client's choice.
+    """
+    pipeline_mode = body.get("pipeline_mode", "")
+    if "session_languages" not in examples_registry.find(pipeline_mode)["capabilities"]:
+        return ""
+    if variant and variant["session_language"]:
+        return normalize_lang_code(variant["session_language"])
+    code = str(body.get("asr_language_code", "") or default_asr.get("language_code", "") or "").strip()
+    if not code or code.lower() == "auto":
+        code = examples_registry.default_session_language(pipeline_mode) or FALLBACK_SESSION_LANGUAGE
+    return normalize_lang_code(code)
+
+
+def _fixed_session_asr_language(fixed_session_language: str, default_asr: dict) -> str:
+    """Return the ASR language for a fixed-language session.
+
+    By default the ASR recognizes only the session language. Set
+    ``FRONTEND_BACKEND_FIXED_LANGUAGE_ASR=auto`` to keep automatic language detection when
+    the ASR supports it (catalog ``language_code: auto``), so a Hindi session also
+    transcribes English or Hinglish speech; Hindi recognition was measurably worse that way
+    on Nemotron ASR Streaming Multilingual, so it is opt-in.
+    """
+    if not fixed_session_language:
+        return ""
+    mode = os.getenv("FRONTEND_BACKEND_FIXED_LANGUAGE_ASR", "locked").strip().lower()
+    if mode == "auto" and str(default_asr.get("language_code", "")).strip().lower() == "auto":
+        return "auto"
+    return fixed_session_language
+
+
+def _selected_llm_supported_languages(body: dict, default_llm: dict):
+    """Return the selected Talker LLM's declared languages (None when undeclared or custom)."""
+    llm_id = str(body.get("llm_id", "") or "")
+    if llm_id.startswith("custom-") or (not llm_id and body.get("model_id")):
+        return None
+    if not llm_id:
+        return default_llm.get("supported_languages")
+    entry = load_service_entry_by_id("llm", llm_id)
+    if not entry:
+        raise ValueError(f"Unknown built-in LLM selection: {llm_id}")
+    return entry.get("supported_languages")
+
+
+def _ms(secs: float | None) -> int | None:
+    return None if secs is None else round(secs * 1000)
+
+
+def latency_breakdown_message(
+    breakdown: LatencyBreakdown,
+    *,
+    vad_stop_secs: float,
+    smart_turn_stop_secs: float,
+    speech_gate_hold_secs: float | None,
+) -> dict:
+    """Build the ``latency-breakdown`` RTVI message for one user-to-bot cycle.
+
+    ``contributions`` name every part of the measured interval in order, and their
+    ``duration_ms`` sum to ``total_ms``; time no stage claims is the ``pipeline``
+    contribution. ``config`` carries the waits that are settings rather than
+    services. ``vad_smart_turn`` and ``events`` are kept for older clients.
+    """
+    start = breakdown.contributions[0].start_time if breakdown.contributions else 0.0
+    return {
+        "type": "latency-breakdown",
+        "vad_smart_turn": round(breakdown.user_turn_secs, 3) if breakdown.user_turn_secs is not None else None,
+        "events": breakdown.chronological_events(),
+        "measured_from": str(breakdown.measured_from) if breakdown.measured_from else None,
+        "total_ms": _ms(breakdown.total_secs),
+        "contributions": [
+            {
+                "key": part.key,
+                "label": part.label,
+                "owner": part.owner,
+                "owner_kind": str(part.owner_kind),
+                "offset_ms": _ms(part.start_time - start),
+                "duration_ms": _ms(part.duration_secs),
+            }
+            for part in breakdown.contributions
+        ],
+        "config": {
+            "vad_stop_ms": _ms(vad_stop_secs),
+            "smart_turn_stop_ms": _ms(smart_turn_stop_secs),
+        },
+        "speech_gate_hold_ms": _ms(speech_gate_hold_secs),
+    }
+
+
 async def bot(runner_args: RunnerArguments) -> None:
     """Build and run the Frontend/Backend Agent cascaded pipeline for one session."""
     logger.info("Starting Frontend/Backend Agent cascaded pipeline")
@@ -173,7 +300,7 @@ async def bot(runner_args: RunnerArguments) -> None:
     talker_few_shots = _load_prompt_few_shots(
         prompt_key,
         custom_prompt=bool(body.get("prompt_content")),
-        protocol_prompt_key=domain.talker_protocol_prompt_key,
+        protocol_prompt_key=_talker_protocol_prompt_key(domain.talker_protocol_prompt_key, _resolve_variant(body)),
     )
     if domain.key == "generic":
         talker_prompt += (
@@ -228,6 +355,25 @@ async def bot(runner_args: RunnerArguments) -> None:
     default_asr = load_service_entry("asr", "")
     default_thinker_llm = load_service_entry("thinker-llm", "")
 
+    variant = _resolve_variant(body)
+    fixed_session_language = _resolve_session_language(body, default_asr, variant)
+    if variant and variant["llm"] and not body.get("llm_id") and not body.get("model_id"):
+        # The variant's own Talker applies when the client did not pick one.
+        default_llm = load_service_entry("llm", variant["llm"])
+    if fixed_session_language:
+        validate_llm_session_language(fixed_session_language, _selected_llm_supported_languages(body, default_llm))
+        prompt_catalog = load_prompt_catalog(__file__)
+        language_replacements = {"fixed_language_name": describe_language(fixed_session_language)}
+        talker_addon_key = (variant and variant["talker_prompt_addon"]) or FIXED_SESSION_LANGUAGE_ADDON_KEY
+        thinker_addon_key = (variant and variant["thinker_prompt_addon"]) or THINKER_SESSION_LANGUAGE_ADDON_KEY
+        talker_prompt = render_prompt_addon(talker_prompt, prompt_catalog, talker_addon_key, language_replacements)
+        thinker_prompt = render_prompt_addon(thinker_prompt, prompt_catalog, thinker_addon_key, language_replacements)
+        logger.info(
+            f"Session language locked to {fixed_session_language} "
+            f"(variant={body.get('example_variant') or '-'}, talker_addon={talker_addon_key}, "
+            f"thinker_addon={thinker_addon_key})"
+        )
+
     asr_server = body.get("asr_server", "") or default_asr.get("server", "grpc.nvcf.nvidia.com:443")
     asr_ssl = is_nvcf(asr_server)
     asr_kwargs: dict = {
@@ -237,7 +383,11 @@ async def bot(runner_args: RunnerArguments) -> None:
     }
     asr_function_id = body.get("asr_function_id", "") or default_asr.get("function_id", "")
     asr_model = body.get("asr_model", "") or default_asr.get("model", "")
-    asr_language_code = body.get("asr_language_code", "") or default_asr.get("language_code", "")
+    asr_language_code = (
+        _fixed_session_asr_language(fixed_session_language, default_asr)
+        or body.get("asr_language_code", "")
+        or default_asr.get("language_code", "")
+    )
     asr_automatic_punctuation = str(body.get("asr_automatic_punctuation", "true")).lower() != "false"
     if asr_function_id or asr_model:
         asr_kwargs["model_function_map"] = {
@@ -279,6 +429,8 @@ async def bot(runner_args: RunnerArguments) -> None:
         settings=llm_settings,
         stage_metrics=stage_metrics,
         stage_model_name=model_id,
+        english_grounding=not fixed_session_language or fixed_session_language.lower().startswith("en"),
+        session_language=fixed_session_language,
         sampling_session_id=str(body.get("session_id") or ""),
         sampling_role="frontend",
         sampling_initial=body.get("llm_role_settings", {}).get("frontend", {}),
@@ -370,6 +522,7 @@ async def bot(runner_args: RunnerArguments) -> None:
         max_query_chars=domain.max_query_chars,
         enforce_future_travel_dates=domain.key == "airline",
         stage_metrics=stage_metrics,
+        session_language=fixed_session_language,
     ).items():
         cancel_on_interruption = name != "call_backend"
         talker_llm.register_function(
@@ -383,6 +536,9 @@ async def bot(runner_args: RunnerArguments) -> None:
     tts_server = body.get("tts_server", "") or default_tts.get("server", "grpc.nvcf.nvidia.com:443")
     tts_ssl = is_nvcf(tts_server)
     tts_voice = body.get("tts_voice_id", "") or default_tts.get("voice_id", "")
+    # The client sends the catalog default voice when the user never chose one; only a different
+    # voice is an explicit pick that overrides the variant's default voice.
+    user_picked_voice = bool(body.get("tts_voice_id")) and body.get("tts_voice_id") != default_tts.get("voice_id", "")
     tts_synthesis_mode = body.get("tts_synthesis_mode", "") or default_tts.get("synthesis_mode", "")
     raw_tts_function_id = body.get("tts_function_id")
     tts_function_id = (
@@ -396,6 +552,21 @@ async def bot(runner_args: RunnerArguments) -> None:
     tts_settings_kwargs: dict = {"voice": tts_voice}
     if tts_synthesis_mode:
         tts_settings_kwargs["synthesis_mode"] = tts_synthesis_mode
+    if fixed_session_language:
+        if not isinstance(runner_args, EvalRunnerArguments):
+            await asyncio.to_thread(prewarm_tts, tts_server, tts_voice, tts_function_id, tts_model)
+        tts_settings_kwargs["language"] = fixed_session_language
+        resolved_voice = resolve_voice_for_language(
+            fixed_session_language,
+            tts_voice,
+            server=tts_server,
+            function_id=tts_function_id,
+            model=tts_model,
+            preferred_voice_name=(variant or {}).get("tts_voice", "") if not user_picked_voice else "",
+        )
+        if resolved_voice:
+            tts_voice = resolved_voice
+            tts_settings_kwargs["voice"] = resolved_voice
     tts_kwargs: dict = {
         "api_key": nvidia_api_key(),
         "server": tts_server,
@@ -441,17 +612,19 @@ async def bot(runner_args: RunnerArguments) -> None:
         thinker.conversation_start_index = len(messages)
     context = LLMContext(messages, tools=domain.talker_tools_schema, tool_choice="auto")
     preserve_prompt_messages = len(messages)
+    smart_turn_stop_secs = parse_env_float("FRONTEND_BACKEND_SMART_TURN_STOP_SECS", 2.0, min_value=0.8)
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,
         user_params=build_user_aggregator_params(
             welcome_enabled,
             vad_stop_secs=FRONTEND_BACKEND_VAD_STOP_SECS,
-            smart_turn_stop_secs=parse_env_float("FRONTEND_BACKEND_SMART_TURN_STOP_SECS", 2.0, min_value=0.8),
+            smart_turn_stop_secs=smart_turn_stop_secs,
             interruption_min_words=2 if domain.key == "generic" else None,
             on_interruption_trigger=(stage_metrics.record_interruption_trigger if domain.key == "generic" else None),
         ),
     )
     audio_recorder = create_audio_recorder(body.get("session_id", ""))
+    speech_gate = ToolCallSpeechGate()
 
     pipeline = Pipeline(
         [
@@ -460,7 +633,7 @@ async def bot(runner_args: RunnerArguments) -> None:
             stt,
             user_aggregator,
             talker_llm,
-            ToolCallSpeechGate(),
+            speech_gate,
             tts,
             transport.output(),
             *([audio_recorder] if audio_recorder else []),
@@ -499,13 +672,12 @@ async def bot(runner_args: RunnerArguments) -> None:
     async def on_breakdown(observer, breakdown):
         await task.queue_frame(
             RTVIServerMessageFrame(
-                data={
-                    "type": "latency-breakdown",
-                    "vad_smart_turn": round(breakdown.user_turn_secs, 3)
-                    if breakdown.user_turn_secs is not None
-                    else None,
-                    "events": breakdown.chronological_events(),
-                }
+                data=latency_breakdown_message(
+                    breakdown,
+                    vad_stop_secs=FRONTEND_BACKEND_VAD_STOP_SECS,
+                    smart_turn_stop_secs=smart_turn_stop_secs,
+                    speech_gate_hold_secs=speech_gate.last_hold_secs,
+                )
             )
         )
 

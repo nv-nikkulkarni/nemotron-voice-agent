@@ -190,7 +190,6 @@ def test_session_api_accepts_and_stores_override_and_rejects_bad_limits(monkeypa
 
 
 def test_handler_passes_trusted_recent_turns_excludes_seed_examples_and_replaces_spoof(monkeypatch):
-    monkeypatch.setenv("FRONTEND_BACKEND_TOOL_RESULT_MODE", "talker")
     monkeypatch.setenv("FRONTEND_BACKEND_TALKER_FILLER_MODE", "off")
     seed = [{"role": "system", "content": "policy"}, *dialogue(1)]
     history = dialogue(4, replies=3)

@@ -19,6 +19,9 @@
 #   ./sqa.sh capture                # consent/decline/close/drop lifecycle matrix
 #   ./sqa.sh pronunciation          # Magpie and Chatterbox exact-word probes
 #   ./sqa.sh restart                # no-refresh End/Start welcome-audio regression
+#   ./sqa.sh hindi                  # Hindi assistant: language lock, tools, filler, audio
+#   ./sqa.sh languages [es de fr ja] # other languages through Any language
+#   ./sqa.sh builder                # build an agent in chat, start it, check its persona
 #   ./sqa.sh concurrent [N]        # N simultaneous users
 #   ./sqa.sh video                 # record an mp4 conversation
 #   ./sqa.sh shell                 # interactive debug shell
@@ -54,6 +57,10 @@ declare -A CMD=(
   [stress]="node stress.mjs ${1:-5} ${2:-3}"
   [robustness]="node robustness.mjs"
   [restart]="node test_teardown.mjs"
+  [hindi]="node hindi_multilingual.mjs"
+  [languages]="node multilingual_languages.mjs $*"
+  [builder]="node builder.mjs"
+  [asrvariants]="node asr_variants.mjs $*"
   [video]="node record_video.mjs"
   [shell]="bash"
 )
@@ -71,6 +78,7 @@ fi
 export SQA_KEY
 exec docker run --rm --network host "${DOCKER_ARGS[@]}" \
   -e SQA_KEY -e SQA_BASE="$BASE" -e SQA_RUN_ID="$RUN_ID" -e SQA_OUT=/sqa-run \
+  -e SQA_IGNORE_CERT="${SQA_IGNORE_CERT:-}" \
   -v "$HERE":/sqa -w /sqa \
   -v "$HOST_OUT":/sqa-run \
   sqa-harness:latest \

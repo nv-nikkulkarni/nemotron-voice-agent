@@ -11,14 +11,14 @@ const slot = await H.createAudioSlot(92);
 const browser = await H.launchBrowser({ env: slot.env });
 const { page } = await H.newPage(browser, signals, { timezoneId: "Asia/Kolkata" });
 const frontendPrompt = "You are a friendly voice assistant. Keep spoken answers brief.";
-const persistentPrompt = "Use calm, friendly language for this demo.";
 page.on("request", (request) => {
   if (!request.url().endsWith("/api/session-config") || request.method() !== "POST") return;
   const config = request.postDataJSON();
   result.sessionConfigs.push({ pipeline: config.pipeline_mode, voiceId: config.tts_voice_id,
     frontendEdited: config.prompt_content === frontendPrompt,
     backendEdited: String(config.thinker_prompt_content ?? "").endsWith("Keep tool plans valid JSON."),
-    persistent: config.persistent_prompt === persistentPrompt,
+    // A custom persona only comes from the signed agent builder; the prompt studio no longer sends one.
+    noPersona: !config.persistent_prompt,
     sampleBytes: config.tts_voice_sample?.length ?? 0 });
 });
 
@@ -78,12 +78,11 @@ try {
   const backend = await editors.nth(1).inputValue();
   await editors.nth(0).fill(frontendPrompt);
   await editors.nth(1).fill(backend + "\nKeep tool plans valid JSON.");
-  await editors.nth(2).fill(persistentPrompt);
+  assert.equal(await editors.count(), 2, "prompt studio edits the frontend and backend prompts only");
   await page.reload();
   await page.locator(".prompt-studio label").filter({ hasText: "Backend system prompt · planning and tools" }).locator("textarea").waitFor({ timeout: 30000 });
   assert.equal(await editors.nth(0).inputValue(), frontendPrompt);
   assert((await editors.nth(1).inputValue()).endsWith("Keep tool plans valid JSON."));
-  assert.equal(await editors.nth(2).inputValue(), persistentPrompt);
   assert.equal(await page.locator("[data-tour=settings], [data-tour=pipeline]").count(), 0);
   assert(new URL(page.url()).pathname === "/prompts");
   assert.equal(await editors.nth(0).inputValue(), frontendPrompt);
@@ -135,8 +134,8 @@ try {
   await page.mouse.move(0, 0);
   await launch.scrollIntoViewIfNeeded();
   await page.waitForFunction(() => {
-    const buttons = [...document.querySelectorAll(".startview__actions .btn-secondary")];
-    return buttons.length === 3 && buttons.every(button => Number(getComputedStyle(button).opacity) > 0.99)
+    const buttons = [...document.querySelectorAll(".startview__customise > button")];
+    return buttons.length === 4 && buttons.every(button => Number(getComputedStyle(button).opacity) > 0.99)
       && Math.max(...buttons.map(button => button.getBoundingClientRect().y)) - Math.min(...buttons.map(button => button.getBoundingClientRect().y)) < 2;
   }, null, { timeout: 5000 });
   await H.shot(page, `${H.OUT}/launch-mobile.png`);
@@ -192,7 +191,7 @@ try {
   assert((await H.startConversation(page)).connected);
   assert.deepEqual(result.sessionConfigs.at(-1), { pipeline: "generic-frontend-backend-agent",
     voiceId: "Magpie-Multilingual.EN-US.Aria", frontendEdited: true, backendEdited: true,
-    persistent: true, sampleBytes: 0 });
+    noPersona: true, sampleBytes: 0 });
   await page.locator(".conversation-hints").waitFor({state:"hidden",timeout:4000});
   assert(await H.waitForSettledWelcome(page));
   assert.equal(await page.getByRole("button", { name: "Prompts", exact: true }).count(), 0);

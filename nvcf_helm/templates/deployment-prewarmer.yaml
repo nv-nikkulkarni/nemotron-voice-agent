@@ -58,6 +58,11 @@ data:
                      model="{{ .Values.prewarm.grpc.asr.model }}")
     ok = one("ASR", lambda: not _a.get("error")) and ok
     {{- end }}
+    {{- if .Values.asrMultilingual.enabled }}
+    _m = prewarm_asr("nemotron-asr-streaming-multilingual:50052",
+                     model="{{ .Values.prewarm.grpc.asr.model }}")
+    ok = one("ASR multilingual", lambda: not _m.get("error")) and ok
+    {{- end }}
     sys.exit(0 if ok else 1)
 ---
 {{- end }}
@@ -122,8 +127,16 @@ spec:
                 {{- if .Values.llmSuper.enabled }}
                 if warm_llm super "{{ .Values.prewarm.llm.super.baseUrl }}" "{{ .Values.prewarm.llm.super.model }}"; then echo "prewarmer: llm super hot"; else echo "prewarmer: llm super not ready"; _rc=1; fi
                 {{- end }}
+                {{- if .Values.llmSuperVl.enabled }}
+                if warm_llm superVl "{{ .Values.prewarm.llm.superVl.baseUrl }}" "{{ .Values.prewarm.llm.superVl.model }}"; then echo "prewarmer: llm superVl hot"; else echo "prewarmer: llm superVl not ready"; _rc=1; fi
+                {{- end }}
                 {{- if .Values.omni.enabled }}
                 if warm_omni; then echo "prewarmer: llm omni hot"; else echo "prewarmer: llm omni not ready"; _rc=1; fi
+                {{- end }}
+                {{- range $name, $model := .Values.vllmModels }}
+                {{- if $model.enabled }}
+                if warm_llm {{ $name }} "http://{{ $model.serviceName }}:{{ $model.port }}/v1" "{{ $model.servedModelName }}"; then echo "prewarmer: llm {{ $name }} hot"; else echo "prewarmer: llm {{ $name }} not ready"; _rc=1; fi
+                {{- end }}
                 {{- end }}
                 return $_rc
               }

@@ -4629,6 +4629,38 @@ button.clean-brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--n
 .lat-breakdown__felt > span:last-child { font-family: var(--font-mono, var(--font-grotesk)); }
 .lat-breakdown__playout-note { margin: 7px 0 0; font-size: 9.5px; line-height: 1.35; color: var(--text-muted); }
 
+// "How it adds up": ordered parts of time to first audio, summing to the headline.
+.lat-sum {
+  padding: 10px; margin-bottom: 9px; border-radius: 9px;
+  background: color-mix(in srgb, var(--bg-app) 54%, transparent);
+  border: 1px solid color-mix(in srgb, var(--nvidia-green) 28%, var(--border-subtle));
+}
+.lat-sum__bar {
+  display: flex; gap: 2px; height: 10px; margin-bottom: 10px; overflow: hidden;
+  border-radius: var(--radius-full); background: color-mix(in srgb, var(--text-muted) 10%, transparent);
+}
+.lat-sum__seg {
+  --lat-sum-color: var(--text-faint); flex: 1 1 0; min-width: 3px;
+  background: color-mix(in srgb, var(--lat-sum-color) 72%, transparent);
+  transition: flex-grow 320ms var(--ease-out-soft);
+}
+.lat-sum__row { --lat-sum-color: var(--text-faint); }
+.lat-sum__seg--setting, .lat-sum__row--setting { --lat-sum-color: #38bdf8; }
+.lat-sum__seg--service, .lat-sum__row--service { --lat-sum-color: var(--nvidia-green); }
+.lat-sum__seg--bot, .lat-sum__row--bot { --lat-sum-color: #a78bfa; }
+.lat-sum__seg--remainder, .lat-sum__row--remainder { --lat-sum-color: #facc15; }
+.lat-sum__seg--remainder {
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, #facc15 70%, transparent) 0 4px, transparent 4px 7px);
+}
+.lat-sum__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.lat-sum__row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: start; gap: 8px; }
+.lat-sum__dot { width: 8px; height: 8px; margin-top: 4px; border-radius: 50%; background: var(--lat-sum-color); }
+.lat-sum__text { display: grid; gap: 2px; min-width: 0; }
+.lat-sum__label { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.lat-sum__text small { font-size: 9.5px; line-height: 1.35; color: var(--text-muted); }
+.lat-sum__ms { font-family: var(--font-mono, var(--font-grotesk)); font-size: 11.5px; font-weight: 650; color: var(--text-primary); }
+.lat-sum__note { margin: 8px 0 0; font-size: 9.5px; line-height: 1.35; color: #facc15; }
+
 @media (max-width: 1320px) {
   .lat-breakdown {
     position: relative; inset: auto;

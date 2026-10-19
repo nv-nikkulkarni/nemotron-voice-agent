@@ -35,11 +35,8 @@ from examples.frontend_backend_agent.generic.tools import TOOLS, resolve_enabled
 from examples.frontend_backend_agent.src.domain import DomainBuildContext, resolve_domain_spec
 from examples.frontend_backend_agent.src.protocol import ThinkerLifecycleEvent
 from examples.frontend_backend_agent.src.tool_handlers import (
-    _payload_outcome,
-    _should_deliver_directly,
     _talker_filler_mode,
     _talker_result_projection,
-    _tool_result_mode,
     _validated_talker_filler,
     build_handlers,
 )
@@ -293,8 +290,8 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
         self.assertEqual(generic["domain_profile"], "generic")
         self.assertEqual(airline["bot"], generic["bot"])
         self.assertEqual(generic["defaults"]["prompt"], ["generic_talker"])
-        self.assertEqual(generic["services"]["llm"], ["nemotron-lightning"])
-        self.assertEqual(generic["services"]["thinker-llm"], ["nemotron-super", "nemotron-lightning"])
+        self.assertEqual(generic["services"]["llm"], ["nemotron-lightning", "gemma-4-31b", "nemotron-super-vl"])
+        self.assertEqual(generic["services"]["thinker-llm"], ["nemotron-super-vl", "nemotron-lightning"])
         self.assertEqual(airline["thinker_prompt"], "thinker")
         self.assertEqual(airline["tools"], [])
         self.assertEqual(generic["thinker_prompt"], "generic_thinker")
@@ -314,12 +311,14 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
                 clear_service_context()
 
         self.assertEqual(talker["model_id"], "nvidia/nemotron-3.5-lightning-30b-a3b")
-        self.assertEqual(thinker["model_id"], "nvidia/nemotron-3-super-120b-a12b")
+        self.assertEqual(thinker["model_id"], "nvidia/nemotron-3.5-super-vl-120b-a12b")
         talker_extra = json.loads(talker["extra_params"])
         thinker_extra = json.loads(thinker["extra_params"])
         self.assertFalse(talker_extra["extra_body"]["chat_template_kwargs"]["enable_thinking"])
         self.assertTrue(thinker_extra["extra_body"]["chat_template_kwargs"]["enable_thinking"])
-        self.assertEqual(thinker_extra["extra_body"]["reasoning_budget"], 256)
+        # The Super VL NIM ignores reasoning budgets (thinking_token_budget makes it run on),
+        # so the Thinker limits reasoning with reasoning_effort.
+        self.assertEqual(thinker_extra["extra_body"]["reasoning_effort"], "low")
         self.assertEqual((talker_extra["max_tokens"], talker_extra["temperature"]), (512, 0.0))
         self.assertEqual((thinker_extra["max_tokens"], thinker_extra["temperature"]), (2048, 0.0))
 
@@ -340,7 +339,7 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
             set_service_context(examples_registry.find("generic-frontend-backend-agent"))
             try:
                 self.assertEqual(load_service_entry("llm", "")["name"], "Nemotron 3.5 Lightning 30B A3B")
-                self.assertEqual(load_service_entry("thinker-llm", "")["name"], "Nemotron 3 Super 120B A12B")
+                self.assertEqual(load_service_entry("thinker-llm", "")["name"], "Nemotron 3.5 Super VL 120B A12B")
                 set_service_context(examples_registry.find("frontend-backend-agent"))
                 self.assertEqual(load_service_entry("thinker-llm", "")["name"], "Nemotron 3.5 Lightning 30B A3B")
             finally:
@@ -479,7 +478,6 @@ class FrontendBackendDomainConfigTests(unittest.TestCase):
 
         self.assertEqual(backend._overall_timeout_seconds, 40.0)
         self.assertEqual(backend._planner_timeout_seconds, 6.0)
-        self.assertEqual(backend.tool_result_mode_default, "direct")
         self.assertEqual(TOOLS["web_search"].timeout_s, 20.0)
         retry_budget = (
             services._WEB_SEARCH_ATTEMPT_TIMEOUT_SECONDS * services._WEB_SEARCH_MAX_ATTEMPTS
@@ -716,6 +714,32 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls, 0)
         self.assertEqual(payload["reason"], "params_missing")
         self.assertEqual(payload["params_needed"], ["company_name"])
+
+    async def test_stock_subject_grounding_accepts_translated_non_latin_requests(self) -> None:
+        async def fixed_stock(arguments):
+            return {"status": "success", "company": "NVIDIA", "symbol": "NVDA", "price": 100, "currency": "USD"}
+
+        tools = _tool_registry(get_stock_price=fixed_stock)
+        for query in (
+            "एनविडिया का शेयर भाव क्या चल रहा है?",
+            "エヌビディアの株価はいくらですか",
+            "एनविडिया का शेयर भाव, 2 बजे के बाद का, USD में बताइए",
+        ):
+            payload = await dispatcher.dispatch_plan(
+                {"tool": "get_stock_price", "params": {"company_name": "NVIDIA"}},
+                tools,
+                ("get_stock_price",),
+                source_query=query,
+            )
+            self.assertEqual(payload["status"], "success")
+        # Latin-script requests are still grounded: an invented company is rejected.
+        payload = await dispatcher.dispatch_plan(
+            {"tool": "get_stock_price", "params": {"company_name": "Tesla"}},
+            tools,
+            ("get_stock_price",),
+            source_query="What is NVIDIA trading at?",
+        )
+        self.assertEqual(payload["reason"], "params_missing")
 
     async def test_stock_subject_grounding_accepts_literal_company_or_ticker(self) -> None:
         calls: list[str] = []
@@ -989,10 +1013,7 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.dict(
             os.environ,
-            {
-                "FRONTEND_BACKEND_TALKER_FILLER_MODE": "emit",
-                "FRONTEND_BACKEND_TOOL_RESULT_MODE": "talker",
-            },
+            {"FRONTEND_BACKEND_TALKER_FILLER_MODE": "emit"},
             clear=False,
         ):
             await handler(params)
@@ -1020,10 +1041,7 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.dict(
             os.environ,
-            {
-                "FRONTEND_BACKEND_TALKER_FILLER_MODE": "emit",
-                "FRONTEND_BACKEND_TOOL_RESULT_MODE": "talker",
-            },
+            {"FRONTEND_BACKEND_TALKER_FILLER_MODE": "emit"},
             clear=False,
         ):
             await handler(params)
@@ -1084,10 +1102,7 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
                 )
                 with patch.dict(
                     os.environ,
-                    {
-                        "FRONTEND_BACKEND_TALKER_FILLER_MODE": mode,
-                        "FRONTEND_BACKEND_TOOL_RESULT_MODE": "talker",
-                    },
+                    {"FRONTEND_BACKEND_TALKER_FILLER_MODE": mode},
                     clear=False,
                 ):
                     await handler(params)
@@ -1098,37 +1113,11 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertEqual(params.results[0][0]["status"], "success")
 
-    def test_result_and_filler_modes_fail_to_safe_defaults(self) -> None:
+    def test_filler_mode_fails_to_safe_default(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(_talker_filler_mode(), "emit")
-            self.assertEqual(_tool_result_mode(), "talker")
-            self.assertEqual(_tool_result_mode("direct"), "direct")
-        with patch.dict(
-            os.environ,
-            {
-                "FRONTEND_BACKEND_TALKER_FILLER_MODE": "invalid",
-                "FRONTEND_BACKEND_TOOL_RESULT_MODE": "invalid",
-                "FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE": "true",
-            },
-            clear=True,
-        ):
+        with patch.dict(os.environ, {"FRONTEND_BACKEND_TALKER_FILLER_MODE": "invalid"}, clear=True):
             self.assertEqual(_talker_filler_mode(), "emit")
-            self.assertEqual(_tool_result_mode(), "direct")
-        self.assertEqual(_payload_outcome({"type": "tool_result", "status": "success"}), "success")
-        self.assertEqual(_payload_outcome({"type": "tool_result", "status": "partial"}), "partial")
-        self.assertEqual(_payload_outcome({"type": "response_hint", "reason": "params_missing"}), "needs_input")
-        self.assertEqual(_payload_outcome({"type": "response_hint", "reason": "timeout"}), "failure")
-
-    def test_weather_only_hybrid_routes_clean_weather_success_through_talker(self) -> None:
-        dynamic_tools = frozenset({"get_weather"})
-        weather = {"type": "tool_result", "tool": "get_weather", "status": "success"}
-        stock = {"type": "tool_result", "tool": "get_stock_price", "status": "success"}
-        unavailable = {"type": "tool_result", "tool": "get_weather", "status": "unavailable"}
-
-        with patch.dict(os.environ, {"FRONTEND_BACKEND_TOOL_RESULT_MODE": "hybrid"}, clear=True):
-            self.assertFalse(_should_deliver_directly(weather, talker_result_tools=dynamic_tools))
-            self.assertTrue(_should_deliver_directly(stock, talker_result_tools=dynamic_tools))
-            self.assertTrue(_should_deliver_directly(unavailable, talker_result_tools=dynamic_tools))
 
     def test_weather_projection_exposes_only_bounded_grounding_facts(self) -> None:
         payload = {
@@ -1152,18 +1141,17 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
         projected = _talker_result_projection(payload)
         self.assertEqual(projected["data"]["city"], "Pune")
 
-    async def test_generic_backend_defaults_to_direct_grounded_delivery(self) -> None:
+    async def test_generic_backend_results_always_go_through_the_talker(self) -> None:
         thinker = _DelayedThinker(delay=0)
-        thinker.tool_result_mode_default = "direct"
         handler = build_handlers(thinker, filler_policy="talker_authored")["call_backend"]
         params = _FunctionParams({"query": "Generate a random number."})
 
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {"FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE": "true"}, clear=True):
             await handler(params)
 
-        spoken = [frame.text for frame in params.llm.frames if isinstance(frame, LLMTextFrame)]
-        self.assertEqual(spoken, ["The result is five."])
-        self.assertFalse(params.results[0][1].run_llm)
+        self.assertEqual(params.llm.frames, [])
+        self.assertTrue(params.results[0][1].run_llm)
+        self.assertEqual(params.results[0][0]["response_text"], "The result is five.")
 
     async def test_generic_historical_query_reaches_backend(self) -> None:
         thinker = _DelayedThinker(delay=0)
@@ -1175,18 +1163,6 @@ class FrontendBackendDomainAsyncTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(params.results[0][0]["response_text"], "The result is five.")
         self.assertNotEqual(params.results[0][0].get("reason"), "past_date")
-
-    async def test_explicit_talker_mode_overrides_generic_direct_default(self) -> None:
-        thinker = _DelayedThinker(delay=0)
-        thinker.tool_result_mode_default = "direct"
-        handler = build_handlers(thinker, filler_policy="talker_authored")["call_backend"]
-        params = _FunctionParams({"query": "Generate a random number."})
-
-        with patch.dict(os.environ, {"FRONTEND_BACKEND_TOOL_RESULT_MODE": "talker"}, clear=True):
-            await handler(params)
-
-        self.assertEqual(params.llm.frames, [])
-        self.assertTrue(params.results[0][1].run_llm)
 
     async def test_airline_compatible_filler_policy_uses_planner_text(self) -> None:
         handler = build_handlers(

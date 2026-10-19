@@ -42,7 +42,7 @@ fi
 # fall back to the values baked into the client build.
 DEMO_MODE="${DEMO_MODE:-true}"
 DEMO_SESSION_SECONDS="${DEMO_SESSION_SECONDS:-600}"
-DEMO_EXAMPLES="${DEMO_EXAMPLES:-generic-frontend-backend-agent,omni-assistant-subagents}"
+DEMO_EXAMPLES="${DEMO_EXAMPLES:-generic-frontend-backend-agent,multilingual-generic-frontend-backend-agent,omni-assistant-subagents}"
 DEMO_SELF_HOSTED_ONLY="${DEMO_SELF_HOSTED_ONLY:-true}"
 DEMO_RECORD_ENABLED="${DEMO_RECORD_ENABLED:-true}"
 UI_BUILD_TIMESTAMP="${UI_BUILD_TIMESTAMP:-unknown}"
@@ -94,10 +94,51 @@ else
   echo "# feedback disabled (FEEDBACK_FORM_URL unset)" > /etc/nginx/snippets/feedback.conf
   FEEDBACK_STATE="disabled"
 fi
+# Behind a router or load balancer every request would share its address, so the per-client
+# rate limit needs the real client IP: trust X-Forwarded-For only from the listed CIDRs.
+if [ -n "${NGINX_REAL_IP_FROM:-}" ]; then
+  : > /etc/nginx/snippets/realip.conf
+  for cidr in $(echo "${NGINX_REAL_IP_FROM}" | tr ',' ' '); do
+    case "$cidr" in
+      *[!0-9a-fA-F:./]*) echo "Ignoring invalid NGINX_REAL_IP_FROM entry: $cidr" >&2 ;;
+      *) echo "set_real_ip_from $cidr;" >> /etc/nginx/snippets/realip.conf ;;
+    esac
+  done
+  printf 'real_ip_header X-Forwarded-For;\nreal_ip_recursive on;\n' >> /etc/nginx/snippets/realip.conf
+else
+  echo "# real client IP not configured (NGINX_REAL_IP_FROM unset)" > /etc/nginx/snippets/realip.conf
+fi
+
+# Agent builder proxy: same-origin /builder-api/* goes to the cluster-internal builder
+# service, which holds the builder prompt and the model key. Rate-limited and size-capped.
+if [ -n "${BUILDER_ORIGIN:-}" ]; then
+  # A trailing slash would make proxy_pass strip the /builder-api/ prefix.
+  BUILDER_ORIGIN="${BUILDER_ORIGIN%/}"
+  cat > /etc/nginx/snippets/builder.conf <<EOF
+location /builder-api/ {
+    limit_req zone=builder burst=10 nodelay;
+    limit_req_status 429;
+    client_max_body_size 16k;
+    proxy_pass ${BUILDER_ORIGIN};
+    proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-For \$remote_addr;
+    proxy_set_header Cookie "";
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 90s;
+}
+EOF
+  BUILDER_ENABLED=true
+  BUILDER_STATE="proxied -> ${BUILDER_ORIGIN}"
+else
+  echo "# builder disabled (BUILDER_ORIGIN unset)" > /etc/nginx/snippets/builder.conf
+  BUILDER_ENABLED=false
+  BUILDER_STATE="disabled"
+fi
+sed -i "s/^  recordEnabled: \(.*\)\$/  recordEnabled: \1,\n  builderEnabled: ${BUILDER_ENABLED}/" /usr/share/nginx/html/config.js
 # Session consent+transcript now go to the app's POST /api/session-capture, which is
 # already proxied by the /api rule — no separate capture proxy needed.
 
-echo "Demo config: mode=${DEMO_MODE} session=${DEMO_SESSION_SECONDS}s examples=${DEMO_EXAMPLES} feedback=${FEEDBACK_STATE}"
+echo "Demo config: mode=${DEMO_MODE} session=${DEMO_SESSION_SECONDS}s examples=${DEMO_EXAMPLES} feedback=${FEEDBACK_STATE} builder=${BUILDER_STATE}"
 
 echo "Proxying UI:"
 if [ -n "$BACKEND_ORIGIN" ]; then

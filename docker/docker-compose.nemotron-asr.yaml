@@ -64,6 +64,7 @@ services:
     profiles:
       - nemotron-asr-streaming-multilingual/server
       - multilingual-assistant/server
+      - multilingual-generic-frontend-backend-agent/server
     ports:
       - "50252:50052"
       - "9101:9001"

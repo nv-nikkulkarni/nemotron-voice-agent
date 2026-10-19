@@ -16,6 +16,8 @@ import { demoConfig } from "./config";
 import { VoicePage } from "./components/demo/VoicePage";
 import { ToolsPage } from "./components/demo/ToolsPage";
 import { PromptPage } from "./components/demo/PromptPage";
+import { ModelsPage } from "./components/demo/ModelsPage";
+import { BuilderPage } from "./components/demo/BuilderPage";
 import { ArchitecturePresentation } from "./components/demo/ArchitecturePresentation";
 import { TopBar } from "./components/demo/TopBar";
 import { ConversationStage } from "./components/demo/ConversationStage";
@@ -37,9 +39,10 @@ const EMPTY_ICE_SERVERS: RTCIceServer[] = [];
 const DEFAULT_AUDIO_INPUT_SAMPLE_RATE = 16000;
 const DEFAULT_AUDIO_OUTPUT_SAMPLE_RATE = 22050;
 type ProviderClient = ComponentProps<typeof PipecatClientProvider>["client"];
-type View = "main" | "prompts" | "tools" | "voice";
+const VIEWS = ["prompts", "tools", "voice", "models", "custom"] as const;
+type View = "main" | (typeof VIEWS)[number];
 function viewFromPath(): View {
-  return location.pathname === "/prompts" ? "prompts" : location.pathname === "/tools" ? "tools" : location.pathname === "/voice" ? "voice" : "main";
+  return VIEWS.find((view) => location.pathname === `/${view}`) ?? "main";
 }
 type Overlay = "settings" | "pipeline" | "llm" | null;
 type Tour = "introduction" | null;
@@ -146,8 +149,8 @@ function AppInner() {
             }}
           />
           <main className="clean-main">
-            {view === "prompts" ? <PromptPage onClose={() => navigate("main")} /> : view === "voice" ? <VoicePage onClose={() => navigate("main")} /> : view === "tools" ? <ToolsPage onClose={() => navigate("main")} onLLM={() => setOverlay("llm")} /> : (
-              <><ConversationStage onLiveChange={handleLiveChange} onPrompts={() => navigate("prompts")} onTools={() => navigate("tools")} onVoice={() => navigate("voice")} onLLM={() => setOverlay("llm")} /><ArchitecturePresentation /></>
+            {view === "prompts" ? <PromptPage onClose={() => navigate("main")} /> : view === "voice" ? <VoicePage onClose={() => navigate("main")} /> : view === "models" ? <ModelsPage onClose={() => navigate("main")} /> : view === "custom" && demoConfig.builderEnabled ? <BuilderPage onClose={() => navigate("main")} /> : view === "tools" ? <ToolsPage onClose={() => navigate("main")} onLLM={() => setOverlay("llm")} /> : (
+              <><ConversationStage onLiveChange={handleLiveChange} onPrompts={() => navigate("prompts")} onTools={() => navigate("tools")} onVoice={() => navigate("voice")} onModels={() => navigate("models")} onBuild={() => navigate("custom")} onLLM={() => setOverlay("llm")} /><ArchitecturePresentation /></>
             )}
           </main>
           {view === "main" && <SessionControls />}

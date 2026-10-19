@@ -33,9 +33,6 @@ app:
   existingSecretKey: NVIDIA_API_KEY
   # Expose all reachable examples (the client allow-lists the two we want:
   # generic-frontend-backend-agent + omni-assistant-subagents).
-  # Viking canary: only successful weather results use the guarded Talker rewrite.
-  # All other tools and every non-success outcome remain deterministic.
-  frontendBackendToolResultMode: hybrid
   genericPlannerTimeoutSeconds: "6"
 
   example: all
@@ -97,3 +94,10 @@ chatterboxTts:
 omni:
   enabled: true
   cache: { nvcf: true }
+# Viking is an 8-GPU node: the Nemotron Super NIM (2) and Omni (1) above already fill it with ASR,
+# TTS, Chatterbox and Lightning, so the Super VL and Gemma 4 pods of the multilingual stack stay off.
+llmSuperVl:
+  enabled: false
+vllmModels:
+  gemma4:
+    enabled: false

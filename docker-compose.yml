@@ -39,6 +39,8 @@ name: nemotron-voice-agent
 #   docker compose --profile omni-assistant-subagents/single-gpu up
 #   docker compose --profile frontend-backend-agent/server up
 #   docker compose --profile frontend-backend-agent/single-gpu up
+#   docker compose --profile multilingual-generic-frontend-backend-agent up
+#   docker compose --profile multilingual-generic-frontend-backend-agent/server up
 #
 # Observability profiles compose orthogonally with any recipe:
 #   docker compose --profile <recipe> --profile tracing up   # Phoenix OTel
@@ -55,6 +57,8 @@ include:
   - path: docker/docker-compose.chatterbox-tts.yaml
   - path: docker/docker-compose.magpie-zeroshot-tts.yaml
   - path: docker/docker-compose.nemotron3-omni.yaml
+  - path: docker/docker-compose.nemotron35-super-vl-nim.yaml
+  - path: docker/docker-compose.nemotron35-vllm-hf.yaml
   - path: docker/docker-compose.nemo-speech-cpp.yaml
   - path: docker/docker-compose.coturn.yaml
   - path: docker/docker-compose.phoenix.yaml
@@ -139,7 +143,7 @@ services:
   # SESSION_STORE_BACKEND=s3 set to actually be used). Single-binary standalone
   # mode (master+volume+filer+s3 in one process) -- fine for local/dev; NVCF/Astra
   # point session_store at a real SeaweedFS/MinIO/S3 deployment instead (see
-  # docs/current-deployed-pipeline-architecture.md section 13). No auth enforced by default, hence
+  # docs/deployment-architecture.md). No auth enforced by default, hence
   # the placeholder access/secret keys above -- boto3 requires non-empty values to
   # sign requests even though this server doesn't validate them. No host port
   # published: only other containers on this compose network need to reach it
@@ -310,7 +314,24 @@ services:
       SERVICE_RECIPE: single-gpu
       EXAMPLE_SELECTION: ${EXAMPLE_SELECTION:-frontend-backend-agent}
       THINKER_TOOL_TIMEOUT_SECONDS: ${THINKER_TOOL_TIMEOUT_SECONDS:-90}
-      FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE: ${FRONTEND_BACKEND_DIRECT_TOOL_RESPONSE:-true}
+
+  multilingual-generic-frontend-backend-agent:
+    <<: *app-base
+    profiles:
+      - multilingual-generic-frontend-backend-agent
+    environment:
+      <<: *app-env
+      EXAMPLE_SELECTION: ${EXAMPLE_SELECTION:-multilingual-generic-frontend-backend-agent}
+      SERVICE_RECIPE: cloud
+
+  multilingual-generic-frontend-backend-agent-server:
+    <<: *app-base
+    profiles:
+      - multilingual-generic-frontend-backend-agent/server
+    environment:
+      <<: *app-env
+      SERVICE_RECIPE: server
+      EXAMPLE_SELECTION: ${EXAMPLE_SELECTION:-multilingual-generic-frontend-backend-agent}
 
 volumes:
   seaweedfs-data:

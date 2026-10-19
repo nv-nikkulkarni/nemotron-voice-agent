@@ -34,6 +34,7 @@ plus the **staging (“preview”) lane** that mirrors prod for safe pre-release
 │     /api/*  /health       ─► https://<fn-id>.invocation.api.nvcf… (+function-id) config │
 │     /api/session-capture  ─┘   consent + transcript                                     │
 │     /api/session-capture/status ─┘  ops/debug status JSON (backend, pending count)     │
+│     /builder-api/*        ─► agent builder app (cluster-internal, BUILDER_ORIGIN)    │
 └───────┬──────────────────────────────────────────────────────────┘
         │  (auth: Bearer <nvapi key> + function-id header, injected by nginx)
         ▼
@@ -134,6 +135,56 @@ means the request reached a UI fallback and does not prove backend health.
 This shallow check does not prove model readiness; also verify
 `/api/session-config` and a real voice turn.
 
+### Multilingual Frontend/Backend Models
+
+The chart serves Gemma 4 31B through `vllmModels.gemma4`. The enabled entry renders one Deployment and one Service from
+[`deployment-vllm-models.yaml`](../nvcf_helm/templates/deployment-vllm-models.yaml)
+and [`service-vllm-models.yaml`](../nvcf_helm/templates/service-vllm-models.yaml).
+It uses the `vllmHfImage` image, built from
+[`docker/Dockerfile.vllm-hf`](../docker/Dockerfile.vllm-hf), which holds no
+model weights. The pod downloads its Hugging Face checkpoint at startup, about 62 GB of BF16 weights that need one GPU with 80 GB or more of memory. The `gemma4` cache volume is 150Gi.
+
+The chart serves Nemotron 3.5 Super VL as an NVIDIA NIM through `llmSuperVl`, with the image set by `llmSuperVlImage` (`nvcr.io/nim/nvidia/nemotron-3.5-super-vl-120b-a12b`, tag `2.0.13-variant-build.1`). The NIM serves an OpenAI API on port 8000 and reports readiness at `/v1/health/ready`. It does not use `HF_TOKEN`.
+
+The following table lists the default chart entries:
+
+| Value | Service and port | Checkpoint | GPUs |
+| --- | --- | --- | --- |
+| `vllmModels.gemma4` | `nvidia-llm-vllm-gemma4:8003` | `google/gemma-4-31B-it` | 1 |
+| `llmSuperVl` | `nvidia-llm-super-vl:8000` | NIM model `nvidia/nemotron-3.5-super-vl-120b-a12b` | 1 |
+| `asrMultilingual` | `nemotron-asr-streaming-multilingual:50052` | Nemotron ASR Streaming NIM, `type=multi,mode=str` | 1 |
+
+The chart catalog lists `gemma-4-31b`, `nemotron-super-vl`, and
+`nemotron-asr-streaming-multilingual` only when their values are enabled. The
+Generic Frontend Backend Assistant offers the enabled Lightning, Gemma 4, and
+Super VL Talkers. Its Thinker is Super VL when enabled, then Nemotron 3 Super
+when `llmSuper.enabled` is `true`, with Lightning as the fallback. The chart
+adds `multilingual-generic-frontend-backend-agent`, with its `hindi` and
+`multilingual` variants, when `asrMultilingual.enabled` and
+`vllmModels.gemma4.enabled` are both `true`.
+
+`llmSuper.enabled` and `omni.enabled` now default to `false`. The default
+values request 7 GPUs on the 8-GPU node: English ASR, multilingual ASR,
+Lightning, Gemma 4, Super VL, Magpie, and Chatterbox. To keep Omni available, run
+it as a separate NVCF function and set `omniRemote.functionId`. The chart then
+points `nemotron-omni-nvfp4` at
+`https://<functionId>.invocation.api.nvcf.nvidia.com/v1` without a
+`health_path`, because the NVCF gateway gates readiness. The application
+authenticates to that host with the `NVCF_API_KEY` function secret. The Omni
+Subagents example is registered only when `omni.enabled` is `true` or
+`omniRemote.functionId` is set.
+
+The function needs two more secrets in addition to the existing five:
+
+- `HF_TOKEN`, which the `vllm-hf` entrypoint exports from
+  `/var/secrets/secrets.json` to download the Gemma 4 checkpoint from Hugging Face. The Super VL NIM
+  does not use it.
+- `NVCF_API_KEY`, which the application uses for LLM endpoints on
+  `*.invocation.api.nvcf.nvidia.com` hosts, such as the remote Omni function.
+
+The topology diagram above predates this layout and still shows the in-cluster
+Super and Omni pods.
+
 ---
 
 ## 2. One voice turn — the pipeline dataflow
@@ -161,8 +212,7 @@ Two independent signals must both land before a session finalizes — the pipeli
 finishing (log + audio written) and the browser's consent POST — and either can land on
 a **different pod** than the other, at `app.replicas > 1`. Coordination crosses pods via
 Redis (`src/session_capture/state.py`); artifacts cross pods via `session_store`
-(`src/session_store/`, local files or S3/SeaweedFS). Full design + the defect this
-replaced. Refer to `docs/current-deployed-pipeline-architecture.md` for the current design.
+(`src/session_store/`, local files or S3/SeaweedFS).
 
 ```
    POD A (ran the pipeline)              POD B (got the consent POST)
@@ -225,24 +275,18 @@ replaced. Refer to `docs/current-deployed-pipeline-architecture.md` for the curr
 
 Identical topology; fully isolated (separate NVCF function + separate Astra app/Vault
 secret; nothing shared). Promotion = re-point the **same artifacts** (chart version + app
-image + UI image) at prod — nothing is rebuilt. See `docs/staging.md` for exact commands.
-
-| | **Production** | **Staging ("preview")** |
-|---|---|---|
-| NVCF function | `81862ff8-…` (`nemotron-voice-agent`) | `d67e6989-…` (`nemotron-voice-agent-staging`) |
-| GPU / backend | 1× `OCI.GPU.H100_8x` on `nvcf-dgxc-k8s-oci-nrt-prd6-1`, always-on | same |
-| Astra app | `nemotron-voice-agent-deploy` | `nemotron-voice-agent-preview-deploy` |
-| Astra URL | `nemotron-voice-agent-deploy-backend.stg.astra.nvidia.com` | `nemotron-voice-agent-preview-deploy-backend.stg.astra.nvidia.com` |
-| Vault KV | `…/nemotron-voice-agent-deploy/stg` | `…/nemotron-voice-agent-preview-deploy/stg` |
+image + UI image) at prod — nothing is rebuilt.
 
 > The UI image is function-agnostic, so both lanes can run the **same** JFrog tag — which
 > function each talks to is decided purely by its Vault secret (`NVCF_HOST` /
 > `NVCF_FUNCTION_ID` / `NVIDIA_API_KEY`). Promote by bumping the tag / chart version and
 > re-pointing prod; the live app is never touched while staging is validated.
 
-**Auth is three separate credentials:** org NGC apikey (manage functions, push chart, NIM
+**Auth uses these separate credentials:** org NGC apikey (manage functions, push chart, NIM
 weight pulls, **capture upload**) · `nvapi-…` key (invocation/WS + `instance logs`/`execute`)
-· `sk-…` LiteLLM virtual key (Perplexity `web_search`, backend-only).
+· `sk-…` LiteLLM virtual key (Perplexity `web_search`, backend-only)
+· Hugging Face token `HF_TOKEN` (Gemma 4 checkpoint download)
+· `NVCF_API_KEY` (invoking the org's own NVCF functions, such as remote Omni).
 
 ---
 
@@ -251,7 +295,8 @@ weight pulls, **capture upload**) · `nvapi-…` key (invocation/WS + `instance 
 | Component | Where it runs | Role |
 |---|---|---|
 | Browser + SPA | user's browser | mic/speaker/cam; pipecat client-js |
-| UI (nginx + React) | Astra (prod + preview) | serve SPA + function-agnostic proxy (WS/HTTP/capture) |
+| UI (nginx + React) | Astra (prod + preview) | serve SPA + function-agnostic proxy (WS/HTTP/capture); proxies `/builder-api/` to the builder when `BUILDER_ORIGIN` is set |
+| **builder** (`docker/Dockerfile.agent-builder`) | second Astra app, CPU only, cluster-internal (`:7870`) | custom-agent builder API. Reads the catalog from the voice agent (`VOICE_AGENT_URL`) and calls the standalone Super VL NVCF function. Reuses the Vault secret for the NVCF key. Refer to [Build a Custom Agent](how-to/build-a-custom-agent.md) |
 | **app** | app pod (`:7860`) | pipecat pipeline; per-session log scratch; `/api/session-capture(/status)`; **in-process capture → tar → NGC** |
 | ASR / LLM×3 / TTS×2 (NIMs) | NIM pods | speech-to-speech pipeline services |
 | **prewarmer** | own pod (chart) | warm every NIM directly at boot + keep-alive |

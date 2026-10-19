@@ -18,6 +18,8 @@ export interface LLMService {
   extraParams: string;
   builtIn: boolean;
   source?: BuiltInServiceSource;
+  /** Base language codes the model speaks (from the catalog); empty when it declares none. */
+  supportedLanguages?: string[];
 }
 
 export interface Prompt {
@@ -85,7 +87,17 @@ export function useDefaultLLMs(pipelineMode = "") {
         extraParams: String(e.extra_params ?? ""),
         builtIn: true,
         source: normalizeServiceSource(e.source),
+        supportedLanguages: Array.isArray(e.supported_languages) ? e.supported_languages.filter((code): code is string => typeof code === "string") : [],
       })),
+  });
+}
+
+/** The example's backend (Thinker) model choices; empty for examples without a separate backend model. */
+export function useThinkerLLMs(pipelineMode = "") {
+  return useQuery({
+    ...serviceCatalogQueryOptions(pipelineMode),
+    select: (catalog): { id: string; name: string }[] =>
+      (catalog["thinker-llm"] ?? []).map((entry) => ({ id: entry.id, name: entry.name })),
   });
 }
 
@@ -181,6 +193,19 @@ export interface ServiceEntry {
 export type ServiceCatalog = Record<string, ServiceEntry[]>;
 export type DeploymentDefaults = Record<string, Array<ServiceEntry | Prompt> | undefined>;
 
+/** A launch preset of an example (registry `variants`), e.g. a fixed-language assistant. */
+export interface ExampleVariant {
+  id: string;
+  label: string;
+  description?: string;
+  /** BCP-47 code the variant locks the session to; empty lets the user choose. */
+  session_language?: string;
+  /** Catalog key of the Talker LLM the variant starts with, e.g. "gemma-4-31b". */
+  llm?: string;
+  /** Default voice name for the variant's language, e.g. "Leo"; the server resolves it per language. */
+  tts_voice?: string;
+}
+
 export interface DeploymentOption {
   id: string;
   key: string;
@@ -191,6 +216,7 @@ export interface DeploymentOption {
   backendHistory?: { defaultTurnLimit: number; maxTurnLimit: number };
   default_session_language?: string;
   defaults?: DeploymentDefaults;
+  variants?: ExampleVariant[];
 }
 
 export type TransportType = "webrtc" | "websocket";
@@ -271,10 +297,14 @@ export function useVoiceCatalog(
   asrFunctionId?: string,
   functionId?: string,
   model?: string,
+  /** Session-language context: the server also intersects with this Talker's languages. */
+  context?: { pipelineMode?: string; llmId?: string },
 ) {
   return useQuery<TTSConfig>({
     queryKey: [
       "tts-config",
+      context?.pipelineMode || "",
+      context?.llmId || "",
       server || "default",
       voiceId || "",
       functionId || "",
@@ -292,6 +322,8 @@ export function useVoiceCatalog(
       if (asrServer) params.set("asr_server", asrServer);
       if (asrModel) params.set("asr_model", asrModel);
       if (asrFunctionId) params.set("asr_function_id", asrFunctionId);
+      if (context?.pipelineMode) params.set("pipeline_mode", context.pipelineMode);
+      if (context?.llmId) params.set("llm_id", context.llmId);
       const url = params.size > 0 ? `/api/tts-config?${params.toString()}` : "/api/tts-config";
       return fetchJson<TTSConfig>(url);
     },
