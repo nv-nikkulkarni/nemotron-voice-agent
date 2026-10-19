@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Agent builder service: a small CPU-only FastAPI app (src/agent_builder) that holds the
+# builder prompt and the model key behind the UI's /builder-api/* proxy. It reads the
+# catalog from the voice agent and calls the standalone Super VL NVCF function.
+#
+# Runs non-root on port 7870 so it deploys unchanged on OpenShift/Astra (arbitrary UID).
+#
+# Build (linux/amd64 for Astra's OpenShift nodes):
+#   docker build --platform linux/amd64 -f docker/Dockerfile.agent-builder -t agent-builder .
+#
+# Run:
+#   docker run --rm -p 7870:7870 \
+#     -e BUILDER_LLM_URL=https://<function-id>.invocation.api.nvcf.nvidia.com/v1 \
+#     -e BUILDER_LLM_API_KEY=... -e BUILDER_LLM_FUNCTION_VERSION_ID=<version-id> \
+#     -e VOICE_AGENT_URL=http://nemotron-voice-agent-deploy-backend:7860 \
+#     agent-builder
+
+FROM nvcr.io/nvidia/base/ubuntu:noble-20260610
+
+ARG APP_VERSION=unknown
+ARG SOURCE_SHA=unknown
+LABEL maintainer="NVIDIA"
+LABEL description="Nemotron Voice Agent builder"
+LABEL org.opencontainers.image.version=${APP_VERSION}
+LABEL org.opencontainers.image.revision=${SOURCE_SHA}
+
+ENV PYTHONUNBUFFERED=1 \
+    PATH=/app/.venv/bin:$PATH
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    python3.12 \
+    python3.12-venv \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -LsSf https://astral.sh/uv/0.12.10/install.sh | sh \
+    && mv /root/.local/bin/uv /usr/local/bin/uv
+
+WORKDIR /app
+
+RUN mkdir -p /app/legal
+COPY LICENSE /app/legal/LICENSE
+COPY THIRD_PARTY_NOTICES.txt /app/legal/THIRD_PARTY_NOTICES.txt
+
+# Runtime dependencies only: every package, direct and transitive, is pinned in the requirements
+# file (regenerate with `uv pip compile docker/agent-builder-requirements.in`).
+COPY docker/agent-builder-requirements.txt /tmp/requirements.txt
+RUN uv venv --python python3.12 \
+    && uv pip install --python /app/.venv/bin/python -r /tmp/requirements.txt
+
+COPY src/agent_builder/ src/agent_builder/
+
+# OpenShift runs with an arbitrary UID in group 0.
+RUN chgrp -R 0 /app && chmod -R g=u /app
+USER 1000
+ENV PYTHONPATH=/app/src
+EXPOSE 7870
+
+CMD ["python", "-m", "uvicorn", "agent_builder.app:app_factory", "--factory", "--host", "0.0.0.0", "--port", "7870"]
