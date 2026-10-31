@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The delegation core of the repository UI bot (the Bluebird Cafe demo): core.yaml, with what differs.
+# config.yaml names this file under ui_bot.core_config.
+
+extends: core.yaml
+
+delegation:
+  result_format: speak_display         # a show item for the task cards, then the answer to speak
+
+backend:
+  prompt: thinker                      # the cafe's backend prompt; the bot adds the channel context, as for its talker
+  tools:
+    cafe: {}                           # the cafe's menu, cart and order tools run on the server

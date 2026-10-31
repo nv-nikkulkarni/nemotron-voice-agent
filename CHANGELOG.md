@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+This release adds the Frontend/Backend Live example, built from the Live gateway, a frontend adapter that hosts the cascade, a delegation core, and three backend adapters.
+
+### Added
+
+- **Frontend/Backend Live** example (`frontend-backend-live`): on every caller turn, a talker speaks a reply, delegates the turn to the backend, or waits, and a writer words the backend's results for speech. `config.yaml` configures the frontend and `core.yaml` the delegation core. Cloud, `/server`, and `/single-gpu` recipes are available, with the Bluebird Cafe ordering assistant as the reference.
+- **Live gateway** (`src/live/`), which serves live sessions that follow GPT-Live at `/v1/live`, over WebRTC or WebSocket. In Responses mode, the delegation core does a session's delegated work, and in client mode, the client app does it. The `frontend-backend-live` profiles serve the routes by default, and the `LIVE_` variables in `.env.example` set their bearer token (`LIVE_API_TOKEN`) and limits.
+- **Delegation core** (`src/delegation_core/`), which accepts each delegation through the OpenAI Responses API and streams its events back. Its interaction manager (IM) owns the delegated work: it starts, steers, or cancels work as the backend adapter's conductor decides, so a newer request can join work that already runs.
+- **Backend adapters**, selected by `backend.adapter` in `core.yaml`: `llm`, the backend LLM, directly connected (the default); `llm-agent`, a model conductor that runs LLM workers as parallel tasks (`core.agent.yaml`); and `harness`, an agent that you deploy, such as Hermes, connected over the Agent Client Protocol (ACP) (`core.harness.yaml`). The harness adds the `agent-client-protocol` 0.9.0 dependency.
+- **Live Console** (`/live.html`), a developer console that starts live sessions over WebRTC, shows their events, delegations, and conversation history, and steers them.
+- The `nemotron-ultra` entry in `services.yaml`: Nemotron 3 Ultra 550B A55B on the public NVIDIA API, the default backend model of the Frontend/Backend Live Cloud and Server profiles.
+- The Frontend/Backend Live Architecture page (`docs/design/architecture.md`), which describes each part, its configuration and extension points, and how to connect your own harness.
+
+### Changed
+
+- When a repository UI or Realtime gateway session starts, the server checks the readiness of every local LLM that the example uses, including the Frontend/Backend Agent's Thinker LLM.
+
 ## [2.3.0] - TBD
 
 This minor release upgrades Pipecat to 1.12.0, adopts its built-in transcript-independent Smart Turn handling for audio-only user turns, and adds streaming-input prefill for the Generic Assistant on single-GPU hosts.
